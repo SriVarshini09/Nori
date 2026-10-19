@@ -199,7 +199,23 @@ export const api = {
   agentActivity: async (limit = 50): Promise<AgentActivity[]> =>
     USE_MOCK ? (await mock()).agentActivity.slice(0, limit) : request("GET", `/api/agent/activity${qs({ limit })}`),
   agentStatus: async (): Promise<AgentStatus> => (USE_MOCK ? (await mock()).agentStatus() : request("GET", "/api/agent/status")),
-  agentTick: async (): Promise<AgentTickSummary> => (USE_MOCK ? (await mock()).agentTick() : request("POST", "/api/agent/tick")),
+  /** Runs one cycle. The server does it in the background (it can take minutes on a local model), so poll until it reports. */
+  agentTick: async (): Promise<AgentTickSummary> => {
+    if (USE_MOCK) return (await mock()).agentTick();
+    const first = await request<AgentTickSummary | { running: true }>("POST", "/api/agent/tick?quick=1");
+    if (!("running" in first)) return first;
+    const deadline = Date.now() + 15 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const st = await request<{ running: boolean; last?: AgentTickSummary; error?: string }>("GET", "/api/agent/tick");
+      if (st.error) throw new ApiError(500, st.error);
+      if (!st.running) {
+        if (st.last) return st.last;
+        throw new ApiError(500, "The run ended without a result. Check the activity feed for what it did.");
+      }
+    }
+    throw new ApiError(0, "The run is taking longer than expected. It keeps going in the background; check the activity feed.");
+  },
   agentChat: async (text: string): Promise<{ reply: string }> =>
     USE_MOCK ? (await mock()).agentReply(text) : request("POST", "/api/agent/chat", { text }),
 

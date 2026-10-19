@@ -67,6 +67,10 @@ Everything runs with no keys at all (heuristic extraction, feed polling, PDF, dr
 | `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` | Meta WhatsApp Cloud API | WhatsApp channel (outbound; inbound needs the webhook route exposed) |
 | `ALLOW_REAL_SUBMIT=true` | you | Lets the driver click Submit after you approve the filled form |
 
+### Running on a local model (Ollama)
+
+Local models work, with two settings worth knowing. Ollama ships with a 4096-token context window, too small for resume tailoring (the agent falls back to its rule-based draft and says so in the log): start Ollama with `OLLAMA_CONTEXT_LENGTH=16384`. And "thinking" models such as qwen3.5 are slow by default; Nori turns their reasoning off for extraction. Every model call has a deadline (`LLM_TIMEOUT_MS`, default 3 minutes), after which the rule-based fallback runs, so a stalled model never freezes the agent.
+
 ## Demo loop
 
 1. Paste a resume on /graph. The graph appears: roles, projects, skills, metrics with their source lines.

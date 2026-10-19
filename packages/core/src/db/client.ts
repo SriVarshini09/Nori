@@ -2,6 +2,7 @@ import { drizzle as drizzlePglite, type PgliteDatabase } from "drizzle-orm/pglit
 import { drizzle as drizzlePg, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { schema } from "./schema.js";
 import { MIGRATIONS } from "./migrations.js";
@@ -27,6 +28,8 @@ async function open(): Promise<Db> {
     db = drizzlePg(pool, { schema });
   } else {
     const dir = process.env.PGLITE_DIR ?? path.resolve("data/pglite");
+    // PGlite's own mkdir is not recursive: a fresh checkout has no ./data yet and would crash on first start.
+    if (dir !== ":memory:") mkdirSync(dir, { recursive: true });
     const client = dir === ":memory:" ? new PGlite() : new PGlite(dir);
     db = drizzlePglite(client, { schema });
   }

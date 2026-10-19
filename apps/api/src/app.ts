@@ -18,7 +18,7 @@ import {
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
-  agentTick, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
+  agentTick, tickRunning, type TickSummary, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
   LLM_PROVIDERS, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
   normalizeLanes, processLLM, queuedTodayByLane, saveUserCredentials, storedLanes, testUserModel, withUserLLM, LaneInput,
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
@@ -470,7 +470,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/jobs/poll", async (c) => {
     const { atsType, token } = await body(c, z.object({ atsType: z.enum(ATS_TYPES), token: z.string().min(1) }));
     const res = await pollTenant(db, atsType, token);
-    await matchJobs(db, c.get("user").id, res.ids).catch(() => []);
+    // A board can add hundreds of jobs: score them with the instant rules pass, not a model call each.
+    await computeMatchesForUser(db, c.get("user").id, { jobIds: res.ids, limit: Math.max(1, res.ids.length) }).catch(() => undefined);
     return c.json(res);
   });
 
@@ -492,6 +493,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       const [ranked] = await matchJobs(db, c.get("user").id, [d.job.id]);
       return c.json({ ...d, job: ranked?.job ?? d.job, match: ranked?.match ?? null });
     }
+    // Scored with the instant rules pass: let the model read this posting properly in the background for next time.
+    if (d.job.requirements?.via === "heuristic") void matchJobs(db, c.get("user").id, [d.job.id]).catch(() => undefined);
     return c.json(d);
   });
 
@@ -738,6 +741,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       tickMinutes: tickMinutes(),
       dailyCap: profile.autoApplyDailyCap, usedToday: Number(usedToday), minScore: profile.autoApplyMinScore,
       autoApprove: profile.resumeAutoApprove, reviewBeforeSubmit: profile.reviewBeforeSubmit,
+      /** False means every "submitted" application is a dry run: the form is filled and stopped, nothing is sent. */
+      liveSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
       channels: chs.filter((ch) => ch.kind !== "web"),
       awaitingReview: waiting.map((w) => ({
         applicationId: w.application.id, status: w.application.status, title: w.title, companyName: w.companyName,
@@ -747,7 +752,28 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   /** One agent cycle for the session user, in-process (the API owns the database). */
-  app.post("/api/agent/tick", async (c) => c.json(await agentTick(db, c.get("user").id, { runner: deps, notify, webUrl })));
+  /**
+   * ?quick=1 (the Run now button) starts the cycle in the background and answers 202 at once: a cycle can take minutes on a
+   * local model, longer than any proxy or browser will wait. The page polls GET /api/agent/tick. Without it the call waits
+   * for the whole cycle and returns the summary (scripts, the scheduler's HTTP tick).
+   */
+  const tickState = new Map<string, { startedAt: string; last?: TickSummary; error?: string }>();
+  app.post("/api/agent/tick", async (c) => {
+    const user = c.get("user");
+    if (!c.req.query("quick")) return c.json(await agentTick(db, user.id, { runner: deps, notify, webUrl }));
+    if (!tickRunning(user.id)) {
+      const startedAt = new Date().toISOString();
+      tickState.set(user.id, { startedAt });
+      agentTick(db, user.id, { runner: deps, notify, webUrl, maxAdvance: 0 })
+        .then((last) => tickState.set(user.id, { startedAt, last }))
+        .catch((e: unknown) => tickState.set(user.id, { startedAt, error: e instanceof Error ? e.message : String(e) }));
+    }
+    return c.json({ running: true, startedAt: tickState.get(user.id)?.startedAt ?? new Date().toISOString() }, 202);
+  });
+  app.get("/api/agent/tick", (c) => {
+    const user = c.get("user");
+    return c.json({ running: tickRunning(user.id), ...(tickState.get(user.id) ?? {}) });
+  });
 
   app.get("/api/agent/chat", async (c) => {
     const user = c.get("user");

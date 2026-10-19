@@ -4,6 +4,9 @@ import type { NextConfig } from "next";
 const API_URL = (process.env.API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
+  // Next's proxy gives up on a slow API call after 30 s and answers 500. Resume reading and auto-apply cycles on a local
+  // model can take minutes, so allow ten.
+  experimental: { proxyTimeout: 10 * 60_000 },
   turbopack: {
     rules: {
       "*.css": {

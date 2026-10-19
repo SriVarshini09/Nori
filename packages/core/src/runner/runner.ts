@@ -150,7 +150,7 @@ export function resumePoint(app: Pick<Application, "resumeId" | "resumeApprovedA
 async function stepTailoring(db: Db, app: Application, deps: RunnerDeps): Promise<ApplicationStatus> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1);
   if (!job) throw new Error(`Job ${app.jobId} not found`);
-  const requirements = await ensureRequirements(db, job.id);
+  const requirements = await ensureRequirements(db, job.id, { upgrade: true });
   if (!requirements) throw new Error(`Could not extract requirements for job ${job.id}`);
   await emit(db, app.id, "requirements", `${requirements.skills.length} skills, ${requirements.mustHaves.length} must-haves`,
     { seniority: requirements.seniority, roleFamily: requirements.roleFamily });

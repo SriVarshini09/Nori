@@ -216,6 +216,12 @@ export type JobRequirements = {
   disqualifiers: string[];
   keywords: string[];
   summary: string;
+  /**
+   * How these were extracted. "heuristic" = instant rule-based pass used to score many jobs cheaply; the model
+   * re-extracts the ones that matter (see ensureRequirements `upgrade`). "fallback" = the model failed, rules were kept.
+   * Absent on rows written before this field existed (treated as final).
+   */
+  via?: "llm" | "heuristic" | "fallback";
 };
 
 export const matches = pgTable("matches", {

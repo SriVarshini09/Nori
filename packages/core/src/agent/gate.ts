@@ -45,6 +45,9 @@ const ONSITE_RE = /\b(?:on-?site|in[- ]office|in person|office-based|5 days (?:a
 const MUST_LOCATE_RE = /\b(?:must|need to|required to|should)\s+(?:be\s+)?(?:located|based|reside|residing|live|living)\s+(?:in|within|near)\s+(?:the\s+)?([^.;:()\n]+)/i;
 const ONLY_OPEN_RE = /\bonly\s+(?:open|available)\s+to\s+(?:candidates|applicants)\s+(?:in|located in|based in)\s+(?:the\s+)?([^.;:()\n]+)/i;
 
+/** Titles that mark a role for people starting out. */
+const ENTRY_RE = /\b(intern(?:ship)?|new[- ]grad(?:uate)?|early[- ]career|entry[- ]level|apprentice(?:ship)?|co-?op|junior|jr\.?)(?=\W|$)/i;
+
 const US_RE = /^(?:us|u\.s\.?|usa|u\.s\.a\.?|united states(?: of america)?|america)$/i;
 const US_STATES: Record<string, string> = {
   AL: "alabama", AK: "alaska", AZ: "arizona", AR: "arkansas", CA: "california", CO: "colorado", CT: "connecticut", DE: "delaware",
@@ -198,6 +201,14 @@ export function checkDisqualifiers(job: GateJob, requirements: JobRequirements |
 
   // Years of experience (one year of grace).
   const start = ctx.earliestRoleStart ?? earliestRoleStart(ctx.graph);
+
+  // Roles for people starting out are not for someone with several years behind them.
+  const entry = ENTRY_RE.exec(job.title ?? "")?.[1]?.toLowerCase() ?? (requirements?.seniority === "intern" ? "intern" : undefined);
+  if (entry && start) {
+    const years = yearsSince(start, ctx.now);
+    if (years >= 3) reasons.push(`Entry-level role (${entry}); you have about ${Math.floor(years)} years of experience`);
+  }
+
   if (requirements?.yearsMin != null && start) {
     const years = yearsSince(start, ctx.now);
     if (years + 1 < requirements.yearsMin) {

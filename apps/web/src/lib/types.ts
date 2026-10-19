@@ -317,7 +317,7 @@ export type AgentActivity = {
   applicationId?: string | null;
   jobId?: string | null;
   message: string;
-  data: { job?: { title: string; companyName: string }; reasons?: string[]; count?: number };
+  data: { job?: { title: string; companyName: string }; reasons?: string[]; count?: number; dryRun?: boolean };
 };
 
 export type AgentAwaitingReview = {
@@ -336,6 +336,8 @@ export type AgentStatus = {
   minScore: number;
   autoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  /** False: the server runs in dry-run mode, forms are filled but never sent. Absent on older APIs. */
+  liveSubmit?: boolean;
   channels: { kind: string; address: string }[];
   awaitingReview: AgentAwaitingReview[];
   /** Hackathon contract: how the model is resolved right now, and per-lane queue counts. Optional for older APIs. */
@@ -385,4 +387,7 @@ export type AgentTickSummary = {
   awaitingReview: number;
   submitted: number;
   needsUser: number;
+  /** Open jobs that fit an enabled lane, and one sentence on why nothing was queued. Absent on older APIs. */
+  laneJobs?: number;
+  note?: string;
 };

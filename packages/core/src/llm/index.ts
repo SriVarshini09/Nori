@@ -32,6 +32,8 @@ export type JsonCall<T> = {
   schema: z.ZodType<T>;
   maxTokens?: number;
   effort?: "low" | "medium" | "high";
+  /** Give up after this long and let the caller fall back. Defaults to llmTimeoutMs(). */
+  timeoutMs?: number;
 };
 export type TextCall = { system: string; prompt: string; maxTokens?: number; timeoutMs?: number };
 
@@ -56,6 +58,16 @@ export type LLMSpec = {
 export const CLINE_BASE_URL = "https://api.cline.bot/api/v1";
 export const CLINE_DEFAULT_MODELS: Record<Tier, string> = { quality: "deepseek/deepseek-v4-pro", bulk: "qwen/qwen3.7-plus" };
 export const ollamaBaseUrl = () => (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1").replace(/\/$/, "");
+/**
+ * How long one LLM call may take before it is abandoned (the heuristic fallback then runs). A slow local model must
+ * not freeze ingestion, tailoring or the scheduler. LLM_TIMEOUT_MS overrides; default 3 minutes.
+ */
+export const llmTimeoutMs = () => {
+  const n = Number(process.env.LLM_TIMEOUT_MS);
+  return Number.isFinite(n) && n >= 1000 ? n : 180_000;
+};
+const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError" || /timed? ?out|aborted/i.test(e.message));
+const timeoutError = (model: string, ms: number) => new Error(`The model (${model}) did not answer within ${Math.round(ms / 1000)} s`);
 export const localOnly = () => process.env.LOCAL_ONLY === "1" || process.env.LOCAL_ONLY === "true";
 
 /** Hosts that count as local for LOCAL_ONLY. */
@@ -224,7 +236,7 @@ function anthropicLLM(spec: LLMSpec): LLM {
         system: call.system,
         output_config: { format: zodOutputFormat(call.schema as z.ZodType), effort: call.effort ?? "medium" },
         messages: [{ role: "user", content: call.prompt }],
-      });
+      }, { timeout: call.timeoutMs ?? llmTimeoutMs() }).catch((e: unknown) => { throw isTimeout(e) ? timeoutError(model, call.timeoutMs ?? llmTimeoutMs()) : e; });
       if (res.stop_reason === "refusal") throw new Error(`Model refused (${res.stop_details?.category ?? "unknown"})`);
       if (res.parsed_output == null) throw new Error("Structured output failed to parse");
       return call.schema.parse(res.parsed_output);
@@ -233,18 +245,60 @@ function anthropicLLM(spec: LLMSpec): LLM {
       const res = await client.messages.create({
         model, max_tokens: call.maxTokens ?? 8000, system: call.system,
         messages: [{ role: "user", content: call.prompt }],
-      }, call.timeoutMs ? { timeout: call.timeoutMs, maxRetries: 0 } : undefined);
+      }, { timeout: call.timeoutMs ?? llmTimeoutMs(), ...(call.timeoutMs ? { maxRetries: 0 } : {}) });
       return res.content.filter((b) => b.type === "text").map((b) => b.text).join("");
     },
   };
 }
+
+// ---------- local model context window ----------
+
+const ctxCache = new Map<string, { ctx: number | null; at: number }>();
+/**
+ * Context window of the model Ollama has loaded (GET /api/ps), or null when unknown. Ollama's default is only 4096
+ * tokens and silently cuts longer prompts, which makes the model answer with junk. OLLAMA_NUM_CTX overrides.
+ */
+async function ollamaContext(baseUrl: string, model: string): Promise<number | null> {
+  const forced = Number(process.env.OLLAMA_NUM_CTX);
+  if (Number.isFinite(forced) && forced > 0) return forced;
+  if (process.env.VITEST) return null;
+  const key = `${baseUrl}|${model}`;
+  const hit = ctxCache.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.ctx;
+  let ctx: number | null = null;
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/v1$/, "")}/api/ps`, { signal: AbortSignal.timeout(1500) });
+    const data = (await res.json()) as { models?: { name?: string; model?: string; context_length?: number }[] };
+    ctx = data.models?.find((m) => m.name === model || m.model === model)?.context_length ?? null;
+  } catch { ctx = null; }
+  ctxCache.set(key, { ctx, at: Date.now() });
+  return ctx;
+}
+
+/** Rough token count: three characters per token is conservative for English and JSON. */
+export const estimateTokens = (messages: { content: string }[]) => Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 3);
 
 function openAICompatLLM(spec: LLMSpec): LLM {
   const baseUrl = (spec.baseUrl ?? ollamaBaseUrl()).replace(/\/$/, "");
   const apiKey = spec.apiKey || "ollama";
   const model = spec.model;
 
-  async function chat(messages: { role: string; content: string }[], json: boolean, maxTokens: number, timeoutMs?: number): Promise<string> {
+  /**
+   * Thinking models served by Ollama (qwen3.5, deepseek-r1, ...) spend most of their time reasoning, which makes a
+   * structured extraction 10x slower for no gain. Turn reasoning off for extraction and down for drafting.
+   */
+  const reasoning = (effort?: "low" | "medium" | "high") =>
+    spec.mode === "ollama" ? { reasoning_effort: effort === "high" ? "medium" : effort === "medium" ? "low" : "none" } : {};
+
+  async function chat(messages: { role: string; content: string }[], json: boolean, maxTokens: number, signal: AbortSignal, effort?: "low" | "medium" | "high"): Promise<string> {
+    if (spec.mode === "ollama") {
+      // Room for the answer matters as much as the prompt: a JSON reply that runs out of window is cut off mid-object.
+      const need = estimateTokens(messages) + Math.min(maxTokens, 2000);
+      const ctx = await ollamaContext(baseUrl, model);
+      if (ctx && need > ctx) {
+        throw new Error(`The prompt needs about ${need} tokens but ${model} runs with a ${ctx}-token context, so it would be cut off. Start Ollama with OLLAMA_CONTEXT_LENGTH=16384 (or set OLLAMA_NUM_CTX if you already did).`);
+      }
+    }
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
@@ -254,8 +308,9 @@ function openAICompatLLM(spec: LLMSpec): LLM {
         // and Cline answers 500. Only send a cap when it is large enough to hold a real answer.
         ...(maxTokens >= 256 ? { max_tokens: maxTokens } : {}),
         ...(json ? { response_format: { type: "json_object" } } : {}),
+        ...reasoning(effort),
       }),
-      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+      signal,
     });
     if (!res.ok) throw new Error(`LLM ${res.status}: ${scrub((await res.text()).slice(0, 300), apiKey)}`);
     type Completion = { choices?: { message?: { content?: string } }[]; error?: { message?: string } | string };
@@ -276,8 +331,11 @@ function openAICompatLLM(spec: LLMSpec): LLM {
       const system = `${call.system}\n\nRespond with a single JSON object and nothing else. It must validate against this JSON Schema:\n${jsonSchema}`;
       let messages = [{ role: "system", content: system }, { role: "user", content: call.prompt }];
       let lastErr = "";
+      // one deadline for the whole call, retries included, so a stalled model cannot hold the caller for minutes
+      const ms = call.timeoutMs ?? llmTimeoutMs();
+      const signal = AbortSignal.timeout(ms);
       for (let attempt = 0; attempt < 2; attempt++) {
-        const raw = await chat(messages, true, call.maxTokens ?? 8000);
+        const raw = await chat(messages, true, call.maxTokens ?? 8000, signal, call.effort).catch((e: unknown) => { throw isTimeout(e) ? timeoutError(model, ms) : e; });
         const parsed = tryParseJson(raw);
         const result = parsed === undefined ? null : call.schema.safeParse(parsed);
         if (result?.success) return result.data;
@@ -287,7 +345,9 @@ function openAICompatLLM(spec: LLMSpec): LLM {
       throw new Error(`LLM JSON did not validate: ${lastErr}`);
     },
     async text(call) {
-      return chat([{ role: "system", content: call.system }, { role: "user", content: call.prompt }], false, call.maxTokens ?? 4000, call.timeoutMs);
+      const ms = call.timeoutMs ?? llmTimeoutMs();
+      return chat([{ role: "system", content: call.system }, { role: "user", content: call.prompt }], false, call.maxTokens ?? 4000, AbortSignal.timeout(ms))
+        .catch((e: unknown) => { throw isTimeout(e) ? timeoutError(model, ms) : e; });
     },
   };
 }

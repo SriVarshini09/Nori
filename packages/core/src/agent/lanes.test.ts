@@ -4,10 +4,12 @@ import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { openTestDb, type Db } from "../db/client.js";
-import { agentEvents, jobs, profiles, type Lane } from "../db/schema.js";
+import { agentEvents, applications, jobs, profiles, type Lane } from "../db/schema.js";
 import type { ApplyDriver, DriverContext, DriverResult } from "../contracts.js";
 import { ensureDefaultUser } from "../users.js";
 import { ingestResume } from "../graph/ingest.js";
+import { setLLM } from "../llm/index.js";
+import { computeMatchesForUser } from "../runner/jobs.js";
 import { renderHtml } from "../tailor/template.js";
 import type { RunnerDeps } from "../runner/index.js";
 import { agentTick } from "./loop.js";
@@ -163,6 +165,104 @@ describe("agentTick with lanes", () => {
     await addJob("Linear", "Staff Engineer", "Remote", true, 1, "\n- Kubernetes and Go\n- Rust and Kafka");
     const s = await agentTick(db, userId, { runner, parallelAvailable: () => false, maxAdvance: 0 });
     expect(s.queued).toBe(0);
-    expect(s.scored).toBe(2);
+    // Only the job that fits an enabled lane is scored: the other could never be queued, and scoring costs a model call.
+    expect(s.scored).toBe(1);
+  });
+
+  it("scores only jobs that fit a lane, and nothing at all without a career graph", async () => {
+    await db.update(profiles).set({
+      autoApplyDailyCap: 5, workAuth: { status: "citizen" },
+      preferences: { lanes: normalizeLanes([{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.3 }]) },
+    }).where(eq(profiles.userId, userId));
+    await addJob("Vercel", "Senior Frontend Engineer", "Remote", true);
+    await addJob("Acme", "Product Designer", "Remote", true, 1);
+    await addJob("Globex", "Account Executive", "Remote", true, 2);
+    const s = await agentTick(db, userId, { runner, parallelAvailable: () => false, maxAdvance: 0 });
+    expect(s.errors).toEqual([]);
+    expect(s.scored).toBe(1);
+
+    // A user whose resume has not been read yet gets no scoring and no queueing.
+    const other = await ensureDefaultUser(db, "nograph@example.com");
+    await db.update(profiles).set({ autoApplyDailyCap: 5, preferences: { titles: ["Senior Frontend Engineer"] } }).where(eq(profiles.userId, other.id));
+    const empty = await agentTick(db, other.id, { runner, parallelAvailable: () => false, maxAdvance: 0 });
+    expect(empty).toMatchObject({ scored: 0, queued: 0, errors: [] });
+  });
+
+  const setLanes = (cap: number, lanes: Parameters<typeof normalizeLanes>[0]) =>
+    db.update(profiles).set({ autoApplyDailyCap: cap, workAuth: { status: "citizen" }, preferences: { lanes: normalizeLanes(lanes) } }).where(eq(profiles.userId, userId));
+  // no network: an empty database would otherwise make the tick poll the real starter job boards
+  const tick = () => agentTick(db, userId, { runner, parallelAvailable: () => false, maxAdvance: 0, poll: async () => ({ added: 0, ids: [] }) });
+
+  it("starts one application per company and title when a role is posted once per city", async () => {
+    await setLanes(5, [{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.3 }]);
+    await addJob("Vercel", "Senior Frontend Engineer", "Remote - US", true);
+    await db.insert(jobs).values({
+      companyName: "Vercel", atsType: "web", externalId: "Vercel-Senior Frontend Engineer-eu", title: "Senior Frontend Engineer",
+      location: "Remote - EU", remote: true, descriptionText: DESC, applyUrl: "https://example.com/Vercel-eu", postedAt: new Date(),
+    });
+    const s = await tick();
+    expect(s.errors).toEqual([]);
+    expect(s.queued).toBe(1);
+    // and a later tick does not start the duplicate either
+    expect((await tick()).queued).toBe(0);
+  });
+
+  it("does not queue entry-level roles for an experienced candidate, and logs why", async () => {
+    await setLanes(5, [{ name: "Software", titles: ["Software Engineer"], minScore: 0.3 }]);
+    await addJob("Ramp", "Software Engineering Intern, Frontend", "Remote", true);
+    await addJob("Stripe", "Software Engineer, New Grad", "Remote", true, 2);
+    const s = await tick();
+    expect(s.queued).toBe(0);
+    expect(s.skipped.map((k) => k.reasons[0])).toEqual([
+      expect.stringMatching(/^Entry-level role \(intern\)/), expect.stringMatching(/^Entry-level role \(new grad\)/),
+    ]);
+    expect(s.note).toMatch(/checks skipped them/);
+  });
+
+  it("says why nothing was queued", async () => {
+    await setLanes(0, [{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.3 }]);
+    expect((await tick()).note).toMatch(/Auto apply is off/);
+
+    await setLanes(5, [{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.3, enabled: false }]);
+    expect((await tick()).note).toMatch(/No lane is enabled/);
+
+    await setLanes(5, [{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.3 }]);
+    await addJob("Acme", "Account Executive", "Remote", true);
+    const none = await tick();
+    expect(none).toMatchObject({ queued: 0, laneJobs: 0 });
+    expect(none.note).toMatch(/No open job fits your lane titles/);
+
+    await addJob("Vercel", "Senior Frontend Engineer", "Remote", true, 2, "\n- Kubernetes, Go, Rust, Kafka, Haskell, Erlang, COBOL");
+    await setLanes(5, [{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.99 }]);
+    const low = await tick();
+    expect(low.laneJobs).toBe(1);
+    expect(low.note).toMatch(/1 open job fits your lanes, but none scores 99% or more/);
+  });
+
+  it("scores with rules only: no model call per job", async () => {
+    let calls = 0;
+    setLLM({
+      provider: "openai-compatible", model: "fake", available: true, mode: "ollama",
+      async json() { calls++; throw new Error("must not be called while scoring"); },
+      async text() { calls++; return ""; },
+    } as never);
+    try {
+      await addJob("Vercel", "Senior Frontend Engineer", "Remote", true);
+      await addJob("Linear", "Senior Frontend Engineer", "Remote", true, 2);
+      const r = await computeMatchesForUser(db, userId);
+      expect(r.computed).toBe(2);
+      expect(calls).toBe(0);
+    } finally { setLLM(null); }
+  });
+
+  it("runs one cycle per user at a time: a second call joins the first instead of queueing everything twice", async () => {
+    await setLanes(5, [{ name: "Frontend", titles: ["Senior Frontend Engineer"], minScore: 0.3 }]);
+    await addJob("Vercel", "Senior Frontend Engineer", "Remote", true);
+    await addJob("Linear", "Senior Frontend Engineer", "Remote", true, 2);
+    const [a, b] = await Promise.all([tick(), tick()]);
+    expect(b).toBe(a); // the very same run
+    expect(a.queued).toBe(2);
+    const apps = await db.select().from(applications).where(eq(applications.userId, userId));
+    expect(apps).toHaveLength(2);
   });
 });

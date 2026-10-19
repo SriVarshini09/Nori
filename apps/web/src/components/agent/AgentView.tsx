@@ -6,7 +6,7 @@ import { ArrowRight, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AgentActivity, AgentStatus, AgentTickSummary, Lane, ModelMode } from "@/lib/types";
 import { pct } from "@/lib/format";
-import { Button, cx, Frame, Icon, IndexLabel, Square, Tag } from "../ui";
+import { Button, cx, Frame, Icon, IndexLabel, Notice, Square, Tag } from "../ui";
 import { AgentChat } from "./AgentChat";
 import { CapFrame, LanesFrame } from "./Lanes";
 import { ago, headline, inMin, KIND_ICON, KIND_LABEL } from "./kinds";
@@ -47,9 +47,10 @@ function summarize(s: AgentTickSummary): string {
   if (s.submitted) parts.push(`submitted ${s.submitted}`);
   if (s.awaitingReview) parts.push(`${s.awaitingReview} waiting on you`);
   if (s.needsUser) parts.push(`${s.needsUser} need${s.needsUser === 1 ? "s" : ""} an answer`);
-  if (parts.length === 0) return "Nothing new this run.";
+  if (parts.length === 0) return s.note ?? "Nothing new this run.";
   const text = parts.join(", ");
-  return text.charAt(0).toUpperCase() + text.slice(1) + ".";
+  // When nothing was queued, say why instead of leaving the user to guess.
+  return text.charAt(0).toUpperCase() + text.slice(1) + "." + (!s.queued && s.note ? ` ${s.note}` : "");
 }
 
 function StatusStrip({ status, now, onStatus, onTick }: { status: AgentStatus; now: number; onStatus: (s: AgentStatus) => void; onTick: () => void }) {
@@ -184,6 +185,7 @@ function Timeline({ items, resolved, onResolve, busyId, now }: {
                       {ago(a.ts, now)}
                     </time>
                   </div>
+                  {a.kind === "submitted" && a.data.dryRun && <div className="mt-2"><Tag mark="hollow">Dry run, nothing was sent</Tag></div>}
                   {a.kind === "skipped" && a.data.reasons && a.data.reasons.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">{a.data.reasons.map((r) => <Tag key={r}>{r}</Tag>)}</div>
                   )}
@@ -251,6 +253,16 @@ export function AgentView({ initialStatus, initialActivity, initialLanes }: { in
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-12">
+      {status.dailyCap === 0 && (
+        <div className="lg:col-span-12">
+          <Notice tone="amber" label="Auto apply is off">The daily cap is 0, so the agent will not start any application on its own. Raise the cap below.</Notice>
+        </div>
+      )}
+      {status.liveSubmit === false && (
+        <div className="lg:col-span-12">
+          <Notice tone="amber" label="Dry run">Forms are filled and stopped at the last step, nothing is sent to employers. Start the server with ALLOW_REAL_SUBMIT=true to apply for real.</Notice>
+        </div>
+      )}
       <div className="lg:col-span-12"><StatusStrip status={status} now={now} onStatus={setStatus} onTick={refresh} /></div>
       <div className="lg:col-span-12"><CapFrame status={status} onStatus={setStatus} /></div>
       <div className="lg:col-span-12"><LanesFrame lanes={lanes} status={status} onLanes={setLanes} /></div>

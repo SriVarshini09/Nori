@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   ensureDefaultUser, ingestResume, jobs, openTestDb, profiles, renderHtml,
@@ -98,5 +98,30 @@ describe("agent api", () => {
     const h = await call("GET", "/api/agent/chat");
     expect(h.json.map((m: any) => m.role)).toEqual(["user", "assistant"]);
     expect((await call("GET", "/api/channels")).json).toEqual([]); // the web chat row is not a push channel
+  });
+
+  it("POST /api/agent/tick?quick=1 answers at once and runs in the background; GET reports the result", async () => {
+    await db.insert(jobs).values({
+      companyName: "Globex", atsType: "web", externalId: "g1", title: "Senior Frontend Engineer", remote: true,
+      descriptionText: "Requirements:\n- React and TypeScript\n- Node.js and PostgreSQL", applyUrl: "https://example.com/g1",
+    });
+    const started = await call("POST", "/api/agent/tick?quick=1");
+    expect(started.status).toBe(202);
+    expect(started.json).toMatchObject({ running: true });
+    let state = (await call("GET", "/api/agent/tick")).json;
+    for (let i = 0; i < 100 && state.running; i++) { await new Promise((r) => setTimeout(r, 50)); state = (await call("GET", "/api/agent/tick")).json; }
+    expect(state.running).toBe(false);
+    expect(state.error).toBeUndefined();
+    expect(state.last).toMatchObject({ queued: 1, submitted: 0, errors: [] });
+    const apps = (await call("GET", "/api/applications")).json as { application: { status: string }; job: { companyName: string } }[];
+    expect(apps.find((a) => a.job.companyName === "Globex")?.application.status).toBe("queued");
+  });
+
+  it("says whether real submission is on, so a dry run is never mistaken for a sent application", async () => {
+    vi.stubEnv("ALLOW_REAL_SUBMIT", "false");
+    expect((await call("GET", "/api/agent/status")).json.liveSubmit).toBe(false);
+    vi.stubEnv("ALLOW_REAL_SUBMIT", "true");
+    expect((await call("GET", "/api/agent/status")).json.liveSubmit).toBe(true);
+    vi.unstubAllEnvs();
   });
 });

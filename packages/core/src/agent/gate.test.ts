@@ -93,4 +93,22 @@ describe("checkDisqualifiers", () => {
     expect(parseSalaryRange("$45 - $60 per hour")).toBeNull();
     expect(parseSalaryRange("3-5 years of experience")).toBeNull();
   });
+
+  it("13. skips entry-level roles for someone with several years behind them", () => {
+    const graph = { nodes: [{ id: "r1", type: "role", label: "Engineer", props: {}, startDate: "2018-06" }] as never };
+    const intern = checkDisqualifiers(job("x", { title: "Software Engineering Intern, Frontend" }), req(), citizen, { graph, now: NOW });
+    expect(intern.reasons[0]).toMatch(/^Entry-level role \(intern\); you have about 8 years/);
+    expect(checkDisqualifiers(job("x", { title: "Software Engineer, New Grad - Frontend" }), req(), citizen, { graph, now: NOW }).ok).toBe(false);
+    expect(checkDisqualifiers(job("x", { title: "Software Engineer, Early Career" }), req(), citizen, { graph, now: NOW }).ok).toBe(false);
+    expect(checkDisqualifiers(job("x", { title: "Junior Web Developer" }), req(), citizen, { graph, now: NOW }).ok).toBe(false);
+    // the model's own read of seniority counts when the title is silent
+    expect(checkDisqualifiers(job("x", { title: "Frontend Engineer" }), req({ seniority: "intern" }), citizen, { graph, now: NOW }).ok).toBe(false);
+    // ordinary titles, and words that merely contain the letters, pass
+    expect(checkDisqualifiers(job("x", { title: "Senior Frontend Engineer" }), req(), citizen, { graph, now: NOW }).ok).toBe(true);
+    expect(checkDisqualifiers(job("x", { title: "Internal Tools Engineer" }), req(), citizen, { graph, now: NOW }).ok).toBe(true);
+    // someone early in their career, or with no history on file, is never filtered out
+    const fresh = { nodes: [{ id: "r2", type: "role", label: "Intern", props: {}, startDate: "2026-01" }] as never };
+    expect(checkDisqualifiers(job("x", { title: "Software Engineering Intern" }), req(), citizen, { graph: fresh, now: NOW }).ok).toBe(true);
+    expect(checkDisqualifiers(job("x", { title: "Software Engineering Intern" }), req(), citizen, { now: NOW }).ok).toBe(true);
+  });
 });
