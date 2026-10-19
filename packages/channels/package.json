@@ -1,0 +1,13 @@
+{
+  "name": "@jobgraph/channels",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@composio/core": "^0.17.0",
+    "@jobgraph/core": "*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
+  }
+}

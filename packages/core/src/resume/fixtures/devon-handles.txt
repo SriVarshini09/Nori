@@ -1,0 +1,21 @@
+DEVON O'BRIEN
+Denver, CO 80202 | devon.obrien@example.com | 720-555-0110
+linkedin.com/in/devonobrien | github.com/devob | devob.io
+
+SUMMARY
+Backend engineer focused on messaging infrastructure and developer APIs.
+
+EXPERIENCE
+Backend Engineer at Twilio (Mar 2020 – Present)
+- Scaled the SMS routing service to 9,000 messages per second using Go and Redis
+- Cut p99 API latency from 480ms to 120ms by adding connection pooling
+
+Software Developer at Ibotta (2017 – 2020)
+- Built Ruby on Rails services for the receipt-scanning pipeline
+- Wrote PostgreSQL migrations for a 2TB offers database with zero downtime
+
+EDUCATION
+B.S. Computer Science, Colorado State University, 2017
+
+SKILLS
+Go, Ruby, Redis, PostgreSQL, Docker, gRPC

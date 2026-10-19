@@ -1,0 +1,18 @@
+{
+  "name": "@jobgraph/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@jobgraph/channels": "*",
+    "@jobgraph/core": "*",
+    "@jobgraph/drivers": "*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.6.0",
+    "mammoth": "^1.13.0",
+    "unpdf": "^1.9.0",
+    "zod": "^4.6.7"
+  }
+}

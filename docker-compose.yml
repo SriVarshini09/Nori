@@ -1,0 +1,12 @@
+# Production-shaped infra. Local dev runs on embedded PGlite and needs none of this.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: jobgraph
+      POSTGRES_PASSWORD: jobgraph
+      POSTGRES_DB: jobgraph
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+volumes:
+  pgdata:

@@ -1,0 +1,12 @@
+{
+  "name": "@jobgraph/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jobgraph/channels": "*",
+    "@jobgraph/core": "*",
+    "@jobgraph/drivers": "*",
+    "drizzle-orm": "^0.45.4"
+  }
+}

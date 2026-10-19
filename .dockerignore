@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+apps/companion/node_modules
+.next
+**/.next
+data
+.git
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+playwright-report
+test-results
+apps/web/design-shots

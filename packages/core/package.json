@@ -1,0 +1,21 @@
+{
+  "name": "@jobgraph/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@electric-sql/pglite": "^0.5.10",
+    "drizzle-orm": "^0.45.4",
+    "mammoth": "^1.13.0",
+    "pg": "^8.13.0",
+    "playwright": "^1.50.0",
+    "unpdf": "^1.9.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "docx": "^9.12.0"
+  }
+}

@@ -1,0 +1,196 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setLLM, type LLM } from "../llm/index.js";
+import { tailorResume, validateBullet, bulletSupport, keywordCoverage, yearsOfExperience } from "./rewrite.js";
+import { renderHtml } from "./template.js";
+import { atsChecks } from "./ats.js";
+import { strengthenOpener, startsWithVerb } from "./verbs.js";
+import { sampleBaseline, sampleEvidence, sampleRequirements } from "./sample.fixture.js";
+import type { TailorInput } from "../contracts.js";
+
+const offline: LLM = {
+  provider: "none", model: "none", available: false,
+  async json() { throw new Error("offline"); }, async text() { throw new Error("offline"); },
+};
+
+const input: TailorInput = {
+  baseline: sampleBaseline, requirements: sampleRequirements, evidence: sampleEvidence,
+  jobTitle: "Senior Full-Stack Engineer", companyName: "Omega Pay",
+};
+
+function bulletsById(c: TailorInput["baseline"]) {
+  return new Map(c.experience.flatMap((r) => r.bullets).map((b) => [b.id, b]));
+}
+
+describe("tailorResume (heuristic, offline)", () => {
+  beforeEach(() => setLLM(offline));
+  afterEach(() => setLLM(null));
+
+  it("records a change exactly for each bullet whose text changed", async () => {
+    const r = await tailorResume(input);
+    expect(r.usedLLM).toBe(false);
+    const before = bulletsById(sampleBaseline);
+    const after = bulletsById(r.content);
+    const changed = [...after.values()].filter((b) => before.get(b.id)!.text !== b.text).map((b) => b.id).sort();
+    const bulletChanges = r.changes.filter((c) => before.has(c.bulletId));
+    expect(bulletChanges.map((c) => c.bulletId).sort()).toEqual(changed);
+    expect(changed.length).toBeGreaterThan(0);
+    for (const c of bulletChanges) {
+      expect(c.before).toBe(before.get(c.bulletId)!.text);
+      expect(c.after).toBe(after.get(c.bulletId)!.text);
+      expect(c.before).not.toBe(c.after);
+      expect(c.reason.length).toBeGreaterThan(10);
+      expect(c.nodeIds).toEqual(before.get(c.bulletId)!.nodeIds);
+    }
+    // untouched bullets produce no change entries
+    expect(r.changes.find((c) => c.bulletId === "b7")).toBeUndefined();
+  });
+
+  it("only adds skills backed by the bullet's own evidence, and fixes weak openers", async () => {
+    const r = await tailorResume(input);
+    const after = bulletsById(r.content);
+    expect(after.get("b1")!.text).toMatch(/^Built the merchant dashboard/);
+    expect(after.get("b1")!.text).toMatch(/\(React, TypeScript\)$/);
+    expect(after.get("b5")!.text).toMatch(/\(Node\.js\)$/);
+    // b6 mentions no evidence-backed required skill: never gets one
+    expect(after.get("b6")!.text).toBe(bulletsById(sampleBaseline).get("b6")!.text);
+  });
+
+  it("preserves provenance for every bullet", async () => {
+    const r = await tailorResume(input);
+    const before = bulletsById(sampleBaseline);
+    expect(Object.keys(r.provenance).sort()).toEqual([...before.keys()].sort());
+    for (const [id, b] of before) expect(r.provenance[id]).toEqual(b.nodeIds);
+    for (const b of bulletsById(r.content).values()) expect(b.nodeIds).toEqual(before.get(b.id)!.nodeIds);
+  });
+
+  it("puts required skills first, writes a factual summary and reports coverage", async () => {
+    const r = await tailorResume(input);
+    const first = r.content.skills[0];
+    expect(first.group).toBe("Frameworks");
+    expect(first.items).toEqual(["React", "Node.js", "Express", "Jest"]); // Node.js added from the graph
+    expect(r.content.skills[1].items[0]).toBe("TypeScript");
+    expect(r.content.skills.flatMap((g) => g.items)).toEqual(expect.arrayContaining(["React", "TypeScript", "PostgreSQL"]));
+    const yrs = yearsOfExperience(sampleBaseline.experience)!;
+    expect(r.content.summary).toMatch(new RegExp(`^Senior Software Engineer with ${yrs} years of hands-on experience in React, TypeScript, Node\\.js and PostgreSQL\\.`));
+    // only one distinct recent skill (accessibility) is left after the top four, so the clause is dropped
+    expect(r.content.summary).not.toMatch(/recent work/);
+    expect(r.content.summary).not.toMatch(/\b(I|my|we)\b/);
+    expect(r.changes.some((c) => c.bulletId === "summary")).toBe(true);
+    expect(r.keywordCoverage).toBeGreaterThanOrEqual(0.83);
+    expect(keywordCoverage(sampleBaseline, sampleRequirements)).toBeLessThanOrEqual(r.keywordCoverage);
+  });
+
+  it("summary dedupes skills case-insensitively, lists up to 3 recent skills, and never repeats the title", async () => {
+    const req = {
+      ...sampleRequirements,
+      skills: [{ name: "React", required: true }, { name: "Mentoring", required: true }],
+      keywords: ["mentoring", "Mentoring", "code review", "accessibility", "Code Review", "pairing", "WCAG"],
+    };
+    const baseline = structuredClone(sampleBaseline);
+    baseline.skills = [{ group: "Frameworks", items: ["React"] }];
+    const r = await tailorResume({ ...input, baseline, requirements: req, jobTitle: "Senior Software Engineer" });
+    const s = r.content.summary!;
+    expect(s.match(/Senior Software Engineer/g)).toHaveLength(1);
+    expect(s).toMatch(/^Senior Software Engineer with \d+ years of hands-on experience in React and Mentoring\./);
+    expect(s).toMatch(/with recent work in code review, accessibility and pairing\.$/);
+    expect(s).not.toMatch(/Mentoring and Mentoring|mentoring.*Mentoring/i);
+    expect(yearsOfExperience([{ title: "x", company: "y", start: "2019-03", bullets: [] }], new Date(2026, 9, 1))).toBe(7);
+    expect(yearsOfExperience([{ title: "x", company: "y", bullets: [] }])).toBeNull();
+  });
+
+  it("reorders bullets inside a role by requirement keywords without dropping any", async () => {
+    const r = await tailorResume(input);
+    const ids = r.content.experience[0].bullets.map((b) => b.id);
+    expect(ids.sort()).toEqual(["b1", "b2", "b3", "b4"]);
+    expect(r.content.experience[0].bullets[0].id).toBe("b1");
+    expect(r.content.experience[0].bullets.at(-1)!.id).toBe("b4");
+  });
+});
+
+describe("validator", () => {
+  const orig = sampleBaseline.experience[0].bullets[1]; // b2: 900ms -> 250ms
+  const support = bulletSupport(orig, sampleEvidence);
+  const vocab = ["React", "TypeScript", "Node.js", "PostgreSQL", "Kubernetes", "Redis"];
+
+  it("accepts a faithful rewrite", () => {
+    expect(validateBullet(orig, { text: "Reduced p95 API latency from 900ms to 250ms with PostgreSQL query indexes and a Redis read-through cache", nodeIds: orig.nodeIds }, support, vocab)).toEqual({ ok: true });
+  });
+  it("rejects invented numbers", () => {
+    const v = validateBullet(orig, { text: "Reduced p95 API latency by 85% for 3M users with PostgreSQL indexes and caching", nodeIds: orig.nodeIds }, support, vocab);
+    expect(v.ok).toBe(false);
+    expect(!v.ok && v.reason).toMatch(/85|3/);
+  });
+  it("rejects nodeIds outside the original bullet", () => {
+    const v = validateBullet(orig, { text: "Reduced p95 API latency from 900ms to 250ms with PostgreSQL query indexes", nodeIds: [...orig.nodeIds, "m99"] }, support, vocab);
+    expect(v.ok).toBe(false);
+  });
+  it("rejects tools the evidence never mentions", () => {
+    const v = validateBullet(orig, { text: "Reduced p95 API latency from 900ms to 250ms by moving PostgreSQL onto Kubernetes", nodeIds: orig.nodeIds }, support, vocab);
+    expect(v.ok).toBe(false);
+    expect(!v.ok && v.reason).toMatch(/Kubernetes/);
+  });
+
+  it("falls back to the heuristic for a fabricated LLM bullet and keeps the good ones", async () => {
+    const fake: LLM = {
+      provider: "anthropic", model: "fake", available: true,
+      async text() { return ""; },
+      async json<T>(): Promise<T> {
+        const exp = sampleBaseline.experience.map((r) => ({ bullets: r.bullets.map((b) => ({ id: b.id, text: b.text, nodeIds: b.nodeIds })) }));
+        exp[0].bullets[0] = { id: "b1", text: "Built a merchant dashboard in React and TypeScript adopted by 50,000 businesses and generating $10M revenue", nodeIds: ["r1", "m1"] };
+        exp[0].bullets[1] = { id: "b2", text: "Reduced p95 API latency from 900ms to 250ms with PostgreSQL query indexes and a read-through cache", nodeIds: ["r1", "m2", "s-pg"] };
+        return { experience: exp, summary: "Senior Software Engineer with hands-on experience in React, TypeScript, Node.js and PostgreSQL.", skillsOrder: ["React", "TypeScript"] } as T;
+      },
+    };
+    setLLM(fake);
+    try {
+      const r = await tailorResume(input);
+      expect(r.usedLLM).toBe(true);
+      expect(r.rejected.map((x) => x.bulletId)).toEqual(["b1"]);
+      const after = bulletsById(r.content);
+      expect(after.get("b1")!.text).not.toMatch(/50,000|10M/);
+      expect(after.get("b1")!.text).toMatch(/^Built the merchant dashboard/); // heuristic version
+      expect(after.get("b2")!.text).toMatch(/^Reduced p95 API latency/);
+      expect(r.provenance.b1).toEqual(["r1", "m1", "s-react"]);
+      expect(r.changes.find((c) => c.bulletId === "b2")!.reason).toMatch(/PostgreSQL|wording/);
+    } finally {
+      setLLM(null);
+    }
+  });
+});
+
+describe("template + ats", () => {
+  it("renders ATS-safe single-column HTML with ordered headings", () => {
+    const html = renderHtml(sampleBaseline);
+    expect(html).not.toMatch(/<table|<img|<svg/i);
+    expect(html).toMatch(/<h1>Jordan Rivera<\/h1>/);
+    const heads = [...html.matchAll(/<h2>(.*?)<\/h2>/g)].map((m) => m[1]);
+    expect(heads).toEqual(["Summary", "Experience", "Education", "Skills", "Certifications"]);
+    expect(html).toContain("@page { size: Letter; margin: 0.5in; }");
+    expect(html).toContain("Apr 2021 – Present");
+    expect(renderHtml(sampleBaseline, "tight")).toContain("font-size: 10.5pt");
+  });
+
+  it("scores a clean tailored resume high and flags problems", async () => {
+    setLLM(offline);
+    const r = await tailorResume(input);
+    setLLM(null);
+    const good = atsChecks(r.content, renderHtml(r.content), sampleRequirements, 1);
+    expect(good.checks.filter((c) => !c.pass)).toEqual([]);
+    expect(good.score).toBe(100);
+    const bad = structuredClone(r.content);
+    bad.experience[0].bullets[0].text = "I was on the team";
+    bad.experience[1].start = undefined; bad.experience[1].end = undefined;
+    const rep = atsChecks(bad, renderHtml(bad).replace("</body>", "<img src=x></body>"), sampleRequirements, 2);
+    const failed = rep.checks.filter((c) => !c.pass).map((c) => c.id).sort();
+    expect(failed).toEqual(["action_verbs", "bullet_length", "dates", "layout", "one_page", "pronouns"]);
+    expect(rep.score).toBeLessThan(50);
+  });
+
+  it("verb helpers", () => {
+    expect(strengthenOpener("Responsible for managing a team of 4")).toBe("Managed a team of 4");
+    expect(strengthenOpener("Responsible for the billing platform")).toBe("Owned the billing platform");
+    expect(strengthenOpener("Responsible for juggling things")).toBe("Responsible for juggling things");
+    expect(startsWithVerb("Architected a system")).toBe(true);
+    expect(startsWithVerb("The system")).toBe(false);
+  });
+});

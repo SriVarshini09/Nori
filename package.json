@@ -1,0 +1,37 @@
+{
+  "name": "jobgraph",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Career-graph driven job application agent: find, tailor, apply, track.",
+  "workspaces": [
+    "packages/*",
+    "apps/api",
+    "apps/worker",
+    "apps/web"
+  ],
+  "scripts": {
+    "api": "tsx watch apps/api/src/index.ts",
+    "demo": "cross-env EMBED_WORKER=1 tsx apps/api/src/index.ts",
+    "demo:console": "cross-env EMBED_WORKER=1 CHANNEL_CONSOLE=1 tsx apps/api/src/index.ts",
+    "worker": "tsx apps/worker/src/index.ts",
+    "agent": "cross-env CHANNEL_CONSOLE=1 tsx apps/worker/src/index.ts",
+    "agent:tick": "tsx apps/worker/src/tick.ts",
+    "web": "npm run dev --workspace apps/web",
+    "companion": "node apps/companion/scripts/start.js",
+    "db:migrate": "tsx packages/core/src/db/migrate.ts",
+    "seed": "tsx apps/worker/src/seed.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.2",
+    "@neon/env": "^1.6.3"
+  }
+}

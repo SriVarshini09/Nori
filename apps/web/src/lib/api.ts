@@ -1,0 +1,226 @@
+/**
+ * Typed client for the jobgraph HTTP API (ARCHITECTURE.md "HTTP API" and "Auth and onboarding").
+ * In the browser every call is same-origin (`/api/...`, proxied to apps/api by next.config rewrites) so the
+ * httpOnly `jg_session` cookie rides along. On the server, calls go straight to the API with the incoming
+ * request's cookie header forwarded. When NEXT_PUBLIC_USE_MOCK is not "0" (default) every call is answered
+ * from ./mock instead of the network.
+ */
+import type {
+  AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
+  InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
+  Preferences, Profile, Resume, TrackerStats, User,
+} from "./types";
+
+export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
+/** Server-side base URL of apps/api. The browser never uses it. */
+const SERVER_API_URL = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string, public detail: string = message) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Base URL + headers for the current runtime: relative in the browser, absolute with forwarded cookies on the server. */
+async function target(): Promise<{ base: string; headers: Record<string, string> }> {
+  if (typeof window !== "undefined") return { base: "", headers: {} };
+  const headers: Record<string, string> = {};
+  try {
+    const { headers: incoming } = await import("next/headers");
+    const h = await incoming();
+    const cookie = h.get("cookie");
+    if (cookie) headers.cookie = cookie;
+    const ua = h.get("user-agent");
+    if (ua) headers["user-agent"] = ua;
+  } catch { /* outside a request scope (build time) */ }
+  return { base: SERVER_API_URL, headers };
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const { base, headers } = await target();
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isForm) headers["content-type"] = "application/json";
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
+      cache: "no-store",
+      credentials: "include",
+    });
+  } catch (e) {
+    throw new ApiError(0, `Cannot reach the jobgraph API${base ? ` at ${base}` : ""}. Start apps/api or set NEXT_PUBLIC_USE_MOCK=1. (${(e as Error).message})`, "Cannot reach the server. Try again in a moment.");
+  }
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const j = (await res.json()) as { error?: string; message?: string };
+      msg = j.error ?? j.message ?? msg;
+    } catch { /* not json */ }
+    throw new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, msg);
+  }
+  if (res.status === 204) return undefined as T;
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("json")) return (await res.text()) as unknown as T;
+  return (await res.json()) as T;
+}
+
+/** Mock mode has no API to set the httpOnly cookie, so a readable stand-in keeps the proxy gate working. */
+function mockSession(on: boolean) {
+  if (typeof document === "undefined") return;
+  document.cookie = on ? "jg_session=mock; path=/; max-age=2592000; samesite=lax" : "jg_session=; path=/; max-age=0";
+}
+
+const mock = () => import("./mock");
+const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+};
+
+export const api = {
+  // ---- auth
+  session: async (): Promise<{ user: User }> => (USE_MOCK ? { user: (await mock()).me.user } : request("GET", "/api/auth/session")),
+  login: async (email: string, password: string): Promise<{ user: User }> => {
+    if (USE_MOCK) { mockSession(true); return { user: { ...(await mock()).me.user, email } }; }
+    return request("POST", "/api/auth/login", { email, password });
+  },
+  signup: async (email: string, password: string, name: string): Promise<{ user: User }> => {
+    if (USE_MOCK) { mockSession(true); return { user: { ...(await mock()).me.user, email, name } }; }
+    return request("POST", "/api/auth/signup", { email, password, name });
+  },
+  logout: async (): Promise<void> => {
+    if (USE_MOCK) { mockSession(false); return; }
+    await request("POST", "/api/auth/logout");
+  },
+  /** Permanently deletes the signed-in account and all its data. `confirm` must equal the account email. Mock mode is a no-op. */
+  deleteAccount: async (confirm: string): Promise<void> => {
+    if (USE_MOCK) return;
+    await request("DELETE", "/api/auth/account", { confirm });
+  },
+
+  // ---- onboarding
+  onboarding: async (): Promise<OnboardingState> => (USE_MOCK ? (await mock()).onboarding : request("GET", "/api/onboarding")),
+  /** Merges `data` into the profile and advances past `step`. */
+  saveOnboarding: async (step: OnboardingStepId, data: Record<string, unknown>): Promise<{ profile: Profile }> =>
+    USE_MOCK ? { profile: { ...(await mock()).me.profile, ...data } as Profile } : request("PUT", "/api/onboarding", { step, data }),
+  uploadResumeFile: async (file: File): Promise<IngestResult> => {
+    if (USE_MOCK) return (await mock()).ingest;
+    const form = new FormData();
+    form.append("file", file);
+    return request("POST", "/api/profile/resume-file", form);
+  },
+
+  // ---- health / me / profile
+  health: async (): Promise<{ ok: boolean }> => (USE_MOCK ? { ok: true } : request("GET", "/api/health")),
+  me: async (): Promise<Me> => (USE_MOCK ? (await mock()).me : request("GET", "/api/me")),
+  updateProfile: async (patch: Partial<Omit<Profile, "preferences">> & { preferences?: Preferences }): Promise<Profile> => {
+    if (USE_MOCK) return { ...(await mock()).me.profile, ...patch, preferences: { ...(await mock()).me.profile.preferences, ...patch.preferences } } as Profile;
+    return request("PUT", "/api/profile", patch);
+  },
+  uploadResume: async (text: string): Promise<IngestResult> =>
+    USE_MOCK ? (await mock()).ingest : request("POST", "/api/profile/resume", { text }),
+
+  // ---- graph
+  graph: async (): Promise<Graph> => (USE_MOCK ? (await mock()).graph : request("GET", "/api/graph")),
+  /** Downloads nodes + edges + profile (no credentials) as JSON. */
+  exportGraph: async (): Promise<void> => {
+    const save = (href: string) => {
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = "jobgraph-graph.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    if (!USE_MOCK) { save("/api/graph/export"); return; }
+    const m = await mock();
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ profile: m.me.profile, ...m.graph }, null, 2)], { type: "application/json" }));
+    save(url);
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  },
+  addFact: async (text: string): Promise<{ nodesCreated: number }> =>
+    USE_MOCK ? { nodesCreated: 2 } : request("POST", "/api/graph/facts", { text }),
+
+  // ---- jobs
+  listJobs: async (p: { q?: string; limit?: number; minScore?: number; status?: string } = {}): Promise<JobWithMatch[]> =>
+    USE_MOCK ? (await mock()).listJobs(p) : request("GET", `/api/jobs${qs(p)}`),
+  discoverJobs: async (q: DiscoverQuery): Promise<{ added: number; jobs: JobWithMatch[] | Job[] }> =>
+    USE_MOCK ? { added: 3, jobs: (await mock()).listJobs({ limit: 3 }) } : request("POST", "/api/jobs/discover", q),
+  addJobByUrl: async (url: string): Promise<{ job: Job }> =>
+    USE_MOCK ? { job: (await mock()).getJob("j7").job } : request("POST", "/api/jobs/url", { url }),
+  pollFeed: async (atsType: string, token: string): Promise<{ added: number }> =>
+    USE_MOCK ? { added: 0 } : request("POST", "/api/jobs/poll", { atsType, token }),
+  getJob: async (id: string): Promise<JobDetail> => (USE_MOCK ? (await mock()).getJob(id) : request("GET", `/api/jobs/${id}`)),
+  researchJob: async (id: string): Promise<{ research: NonNullable<Company["research"]> }> =>
+    USE_MOCK ? { research: (await mock()).researchCompany(id)! } : request("POST", `/api/jobs/${id}/research`),
+
+  // ---- applications
+  createApplication: async (jobId: string): Promise<Application> =>
+    USE_MOCK ? (await mock()).createApplication(jobId) : request("POST", "/api/applications", { jobId }),
+  listApplications: async (status?: string): Promise<ApplicationListItem[]> =>
+    USE_MOCK ? (await mock()).listApplications(status) : request("GET", `/api/applications${qs({ status })}`),
+  getApplication: async (id: string): Promise<ApplicationDetail> =>
+    USE_MOCK ? (await mock()).getApplication(id) : request("GET", `/api/applications/${id}`),
+  approveResume: async (id: string): Promise<void> => {
+    if (!USE_MOCK) await request("POST", `/api/applications/${id}/approve-resume`);
+  },
+  approveForm: async (id: string, answers?: Record<string, string>): Promise<void> => {
+    if (!USE_MOCK) await request("POST", `/api/applications/${id}/approve-form`, answers ? { answers } : {});
+  },
+  answerQuestions: async (id: string, answers: Record<string, string>): Promise<void> => {
+    if (!USE_MOCK) await request("POST", `/api/applications/${id}/answer`, { answers });
+  },
+  skipApplication: async (id: string): Promise<void> => {
+    if (!USE_MOCK) await request("POST", `/api/applications/${id}/skip`);
+  },
+  retryApplication: async (id: string): Promise<void> => {
+    if (!USE_MOCK) await request("POST", `/api/applications/${id}/retry`);
+  },
+  /** SSE endpoint (text/event-stream of RunEvent). Use with EventSource. */
+  eventsUrl: (id: string) => `/api/applications/${id}/events`,
+
+  // ---- resumes
+  getResume: async (id: string): Promise<Resume> => request("GET", `/api/resumes/${id}`),
+  resumePdfUrl: (id: string) => `/api/resumes/${id}.pdf`,
+  resumeHtmlUrl: (id: string) => `/api/resumes/${id}.html`,
+
+  // ---- inbox / tracker
+  listInbox: async (): Promise<InboxMessage[]> => (USE_MOCK ? (await mock()).inbox : request("GET", "/api/inbox")),
+  syncInbox: async (): Promise<{ imported: number }> => (USE_MOCK ? { imported: 2 } : request("POST", "/api/inbox/sync")),
+  trackerStats: async (): Promise<TrackerStats> => (USE_MOCK ? (await mock()).trackerStats : request("GET", "/api/tracker/stats")),
+  syncSheet: async (): Promise<{ spreadsheetUrl: string }> =>
+    USE_MOCK ? { spreadsheetUrl: "https://docs.google.com/spreadsheets/d/mock-jobgraph-tracker" } : request("POST", "/api/tracker/sync-sheet"),
+
+  // ---- agent
+  agentActivity: async (limit = 50): Promise<AgentActivity[]> =>
+    USE_MOCK ? (await mock()).agentActivity.slice(0, limit) : request("GET", `/api/agent/activity${qs({ limit })}`),
+  agentStatus: async (): Promise<AgentStatus> => (USE_MOCK ? (await mock()).agentStatus() : request("GET", "/api/agent/status")),
+  agentTick: async (): Promise<AgentTickSummary> => (USE_MOCK ? (await mock()).agentTick() : request("POST", "/api/agent/tick")),
+  agentChat: async (text: string): Promise<{ reply: string }> =>
+    USE_MOCK ? (await mock()).agentReply(text) : request("POST", "/api/agent/chat", { text }),
+
+  // ---- model settings and lanes (hackathon)
+  modelSettings: async (): Promise<ModelSettings> => (USE_MOCK ? (await mock()).modelSettings() : request("GET", "/api/settings/model")),
+  saveModelSettings: async (input: ModelSettingsInput): Promise<ModelSettings> =>
+    USE_MOCK ? (await mock()).saveModelSettings(input) : request("PUT", "/api/settings/model", input),
+  testModel: async (): Promise<ModelTestResult> => (USE_MOCK ? (await mock()).testModel() : request("POST", "/api/settings/model/test")),
+  lanes: async (): Promise<Lane[]> => (USE_MOCK ? (await mock()).lanes() : request("GET", "/api/lanes")),
+  saveLanes: async (lanes: Lane[]): Promise<Lane[]> => (USE_MOCK ? (await mock()).saveLanes(lanes) : request("PUT", "/api/lanes", lanes)),
+
+  // ---- channels / integrations
+  listChannels: async (): Promise<Channel[]> => (USE_MOCK ? (await mock()).channels : request("GET", "/api/channels")),
+  listIntegrations: async (): Promise<Integration[]> => (USE_MOCK ? (await mock()).integrations : request("GET", "/api/integrations")),
+  connectIntegration: async (toolkit: string): Promise<{ redirectUrl: string }> =>
+    USE_MOCK ? { redirectUrl: `https://connect.composio.dev/mock/${toolkit}` } : request("POST", `/api/integrations/${toolkit}/connect`),
+};
+
+/** Screenshot files are written under data/artifacts/<id>/; the API is assumed to expose them at /api/artifacts/<rest>. */
+export function artifactUrl(path: string): string {
+  if (/^(https?:|data:)/.test(path)) return path;
+  const rest = path.replace(/\\/g, "/").replace(/^.*artifacts\//, "");
+  return `/api/artifacts/${rest}`;
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@jobgraph/companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "jobgraph desktop companion: menu-bar / tray popover for the agent",
+  "main": "main.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "icons": "node scripts/make-icons.js",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "electron": "^44.9.0",
+    "menubar": "^9.5.3",
+    "pngjs": "^7.0.0"
+  },
+  "build": {
+    "appId": "dev.jobgraph.companion",
+    "productName": "jobgraph companion",
+    "files": [
+      "main.js",
+      "assets/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
