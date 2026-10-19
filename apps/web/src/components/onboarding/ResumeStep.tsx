@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ClipboardPaste, FileCheck2, FileUp, RotateCcw, ThumbsUp } from "lucide-react";
+import { ArrowRight, ClipboardPaste, FileCheck2, FileUp, LoaderCircle, RotateCcw, ThumbsUp } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { GraphNode, IngestResult } from "@/lib/types";
-import { Button, Frame, Icon, IndexLabel, Notice, cx, idx, inputClass } from "../ui";
+import { CountUp } from "../dash/client";
+import { Icon, Notice, cx, inputClass } from "../ui";
+import { ObButton, Soft } from "./controls";
 
 const ACCEPT = [".pdf", ".docx", ".txt"];
 const TYPE_RANK: Record<string, number> = { role: 0, company: 1, project: 2, metric: 3, skill: 4, education: 5, tool: 6 };
@@ -27,10 +29,12 @@ async function topNodes(result: IngestResult): Promise<GraphNode[]> {
   }
 }
 
-export function ResumeStep({ hasResume, busy, onDone }: {
+export function ResumeStep({ hasResume, busy, onDone, onResult }: {
   hasResume: boolean;
   busy?: boolean;
   onDone: (result: IngestResult | null) => Promise<void> | void;
+  /** Lets the wizard react (the mascot comments) as soon as the resume has been read. */
+  onResult?: (result: IngestResult) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"file" | "paste">("file");
@@ -48,6 +52,7 @@ export function ResumeStep({ hasResume, busy, onDone }: {
     try {
       const r = await run();
       setResult(r);
+      onResult?.(r);
       setNodes(await topNodes(r));
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : (e as Error).message);
@@ -69,39 +74,43 @@ export function ResumeStep({ hasResume, busy, onDone }: {
   if (result) {
     return (
       <div>
-        <Frame className="grid grid-cols-2 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: "Nodes", value: result.nodesCreated },
-            { label: "Connections", value: result.edgesCreated },
-          ].map((s, i) => (
-            <div key={s.label} className={cx("p-5 sm:p-6", i > 0 && "border-l border-line")}>
-              <IndexLabel index={idx(i + 1)}>{s.label}</IndexLabel>
-              <div className="mt-3 font-display text-[2.75rem] font-medium leading-none tracking-[-0.04em] text-ink tnum">{s.value}</div>
+            { label: "Facts about you", value: result.nodesCreated, grad: "from-emerald-500 to-teal-600" },
+            { label: "Connections", value: result.edgesCreated, grad: "from-sky-500 to-indigo-600" },
+          ].map((st, i) => (
+            <div key={st.label} className="ob-pop rounded-2xl border border-black/[0.07] bg-gradient-to-br from-white to-stone/40 p-5" style={{ ["--i" as string]: i }}>
+              <div className={cx("bg-gradient-to-br bg-clip-text font-display text-[3rem] font-medium leading-none tracking-[-0.045em] text-transparent", st.grad)}>
+                <CountUp value={st.value} />
+              </div>
+              <div className="mt-2 text-[13px] font-medium text-muted">{st.label}</div>
             </div>
           ))}
-          <div className="col-span-2 flex items-end border-t border-line p-5 text-meta text-muted sm:col-span-1 sm:border-l sm:border-t-0 sm:p-6">
+          <div className="ob-pop flex items-end rounded-2xl bg-stone/60 p-5 text-meta text-muted" style={{ ["--i" as string]: 2 }}>
             {result.usedLLM ? "Read with the language model." : "Read with the built-in parser."}
           </div>
-        </Frame>
+        </div>
 
         {nodes.length > 0 && (
-          <ol className="mt-8 grid border-t border-line sm:grid-cols-2 sm:gap-x-8">
-            {nodes.map((n, i) => (
-              <li key={n.id} className="grid grid-cols-[2rem_minmax(0,1fr)] items-baseline gap-x-3 border-b border-line py-3">
-                <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>
-                <span className="flex min-w-0 items-center justify-between gap-3">
-                  <span className="truncate text-body-sm text-ink" title={n.label}>{n.label}</span>
-                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.1em] text-faint">{n.type}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
+          <div className="mt-6">
+            <p className="mb-3 text-label font-medium uppercase text-muted">What I found</p>
+            <ul className="flex flex-wrap gap-2">
+              {nodes.map((n, i) => (
+                <li key={n.id} className="ob-pop inline-flex items-center gap-2 rounded-full bg-white py-1.5 pl-3 pr-2 text-[13px] font-medium text-ink ring-1 ring-black/10" style={{ ["--i" as string]: i + 3 }} title={n.label}>
+                  <span className="max-w-[16rem] truncate">{n.label}</span>
+                  <span className="rounded-full bg-stone px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">{n.type}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
-        <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-5">
-          <Button variant="secondary" icon={RotateCcw} onClick={() => { setResult(null); setNodes([]); }} disabled={busy}>Try another file</Button>
+        <div className="mt-9 flex flex-wrap items-center gap-3 border-t border-black/[0.06] pt-6">
+          <ObButton variant="soft" onClick={() => { setResult(null); setNodes([]); }} disabled={busy}><Icon icon={RotateCcw} />Try another file</ObButton>
           <div className="flex-1" />
-          <Button variant="primary" icon={ThumbsUp} onClick={() => onDone(result)} disabled={busy}>{busy ? "Saving..." : "Looks right"}</Button>
+          <ObButton onClick={() => onDone(result)} disabled={busy}>
+            {busy ? <><Icon icon={LoaderCircle} className="animate-spin" />Saving</> : <><Icon icon={ThumbsUp} />Looks right</>}
+          </ObButton>
         </div>
       </div>
     );
@@ -111,16 +120,18 @@ export function ResumeStep({ hasResume, busy, onDone }: {
   if (!replace) {
     return (
       <div>
-        <Frame className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-line"><Icon icon={FileCheck2} /></span>
+        <Soft tint className="flex flex-wrap items-center gap-4">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-md"><Icon icon={FileCheck2} size={20} /></span>
           <div className="min-w-0 flex-1">
-            <div className="text-body-sm font-medium text-ink">Resume on file</div>
+            <div className="text-[15px] font-medium text-ink">Resume on file</div>
             <div className="text-meta text-muted">Your graph is already built from it.</div>
           </div>
-          <Button variant="secondary" icon={FileUp} onClick={() => setReplace(true)}>Replace</Button>
-        </Frame>
-        <div className="mt-8 flex justify-end border-t border-line pt-5">
-          <Button variant="primary" arrow onClick={() => onDone(null)} disabled={busy}>{busy ? "Saving..." : "Continue"}</Button>
+          <ObButton variant="soft" onClick={() => setReplace(true)}><Icon icon={FileUp} />Replace</ObButton>
+        </Soft>
+        <div className="mt-9 flex justify-end border-t border-black/[0.06] pt-6">
+          <ObButton onClick={() => onDone(null)} disabled={busy}>
+            {busy ? <><Icon icon={LoaderCircle} className="animate-spin" />Saving</> : <>Continue<Icon icon={ArrowRight} /></>}
+          </ObButton>
         </div>
       </div>
     );
@@ -135,17 +146,20 @@ export function ResumeStep({ hasResume, busy, onDone }: {
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files?.[0]); }}
           className={cx(
-            "relative flex cursor-pointer flex-col items-center justify-center border border-dashed px-6 py-16 text-center transition-colors duration-150",
-            drag ? "border-ink bg-stone/60" : "border-line-strong bg-paper hover:border-ink",
-            reading && "pointer-events-none opacity-60",
+            "group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed px-6 py-16 text-center transition-all duration-300",
+            drag ? "scale-[1.02] border-emerald-500 bg-emerald-50 shadow-[0_0_0_8px_rgba(16,185,129,0.12)]" : "border-black/15 bg-gradient-to-br from-white to-stone/40 hover:border-emerald-500/60 hover:shadow-[0_20px_50px_-30px_rgba(16,185,129,0.6)]",
+            reading && "pointer-events-none",
           )}
         >
           <input ref={fileRef} type="file" accept={ACCEPT.join(",")} className="sr-only" onChange={(e) => pick(e.target.files?.[0])} />
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-canvas"><Icon icon={FileUp} /></span>
-          <span className="mt-4 font-display text-title font-medium text-ink">
-            {reading ? `Reading ${reading}...` : "Drop your resume here"}
+          {reading && <span aria-hidden="true" className="ob-scan" />}
+          <span className={cx("flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br from-emerald-400 to-teal-600 text-white shadow-[0_14px_30px_-12px_rgba(16,185,129,0.9)]", !reading && "ob-float-icon")}>
+            {reading ? <Icon icon={LoaderCircle} size={26} className="animate-spin" /> : <Icon icon={FileUp} size={26} />}
           </span>
-          <span className="mt-1 text-meta text-muted">{reading ? "Building your career graph." : "or click to choose a PDF, DOCX or TXT"}</span>
+          <span className="mt-5 font-display text-[22px] font-medium tracking-[-0.025em] text-ink">
+            {reading ? `Reading ${reading}` : drag ? "Drop it, I have got it" : "Drop your resume here"}
+          </span>
+          <span className="mt-1.5 text-meta text-muted">{reading ? "Building your career graph..." : "or click to choose a PDF, DOCX or TXT"}</span>
         </label>
       ) : (
         <div>
@@ -156,18 +170,18 @@ export function ResumeStep({ hasResume, busy, onDone }: {
             onChange={(e) => setText(e.target.value)}
           />
           <div className="mt-3 flex justify-end">
-            <Button variant="primary" arrow={!reading} onClick={() => ingest(() => api.uploadResume(text), "pasted text")} disabled={!!reading || text.trim().length < 40}>
-              {reading ? "Reading..." : "Read resume"}
-            </Button>
+            <ObButton onClick={() => ingest(() => api.uploadResume(text), "pasted text")} disabled={!!reading || text.trim().length < 40}>
+              {reading ? <><Icon icon={LoaderCircle} className="animate-spin" />Reading</> : <>Read resume<Icon icon={ArrowRight} /></>}
+            </ObButton>
           </div>
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-5 flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={() => setMode(mode === "file" ? "paste" : "file")}
-          className="inline-flex items-center gap-2 text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
+          className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-stone hover:text-ink"
         >
           <Icon icon={mode === "file" ? ClipboardPaste : FileUp} />
           {mode === "file" ? "Paste text instead" : "Upload a file instead"}

@@ -52,10 +52,10 @@ const CRUMB: Record<string, string> = Object.fromEntries(NAV.flat().map((n) => [
 function Wordmark() {
   return (
     <Link href="/dashboard" className="inline-flex items-center gap-2" aria-label="Nori home">
-      <span aria-hidden="true" className="relative block h-3 w-3 bg-ink">
-        <span className="absolute bottom-0 right-0 h-1 w-1 bg-accent" />
+      <span aria-hidden="true" className="relative flex h-7 w-7 items-center justify-center rounded-[10px] bg-gradient-to-br from-[#0f2a21] to-[#1f5a45] shadow-[0_6px_14px_-6px_rgba(15,42,33,0.7)]">
+        <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-[#6ef0b3] to-[#ffb347]" />
       </span>
-      <span className="font-display text-[17px] font-semibold tracking-[-0.04em] text-ink">Nori</span>
+      <span className="font-display text-[19px] font-semibold tracking-[-0.04em] text-ink">Nori</span>
     </Link>
   );
 }
@@ -66,7 +66,7 @@ function NavList({ data, onNavigate, exclude = [] }: { data: ShellData; onNaviga
   return (
     <nav aria-label="Main" className="flex flex-col gap-5">
       {groups.map((group, gi) => (
-        <ul key={gi} className={cx(gi > 0 && "border-t border-line pt-5")}>
+        <ul key={gi} className={cx(gi > 0 && "border-t border-black/5 pt-5")}>
           {group.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const count = item.count?.(data) ?? 0;
@@ -77,17 +77,15 @@ function NavList({ data, onNavigate, exclude = [] }: { data: ShellData; onNaviga
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
                   className={cx(
-                    "group relative flex items-center gap-3 py-[7px] text-[11.5px] font-medium uppercase tracking-[0.09em] transition-colors duration-150",
-                    active ? "text-ink" : "text-muted hover:text-ink",
+                    "group relative my-0.5 flex items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] font-medium transition-all duration-150",
+                    active ? "bg-white text-ink shadow-[0_1px_2px_rgba(20,19,17,0.06),0_8px_18px_-10px_rgba(20,19,17,0.25)]" : "text-muted hover:bg-white/60 hover:text-ink",
                   )}
                 >
-                  <Icon icon={item.icon} className={active ? "text-ink" : "text-ink-2 group-hover:text-ink"} />
+                  <Icon icon={item.icon} size={17} className={active ? "text-emerald-700" : "text-ink-2 group-hover:text-ink"} />
                   <span className="flex-1">{item.label}</span>
-                  {count > 0 && <span className="text-[11px] tracking-normal tnum text-muted">{count}</span>}
-                  <span
-                    aria-hidden="true"
-                    className={cx("absolute -left-4 top-1/2 h-[6px] w-[6px] -translate-y-1/2 bg-accent transition-opacity duration-150", active ? "opacity-100" : "opacity-0")}
-                  />
+                  {count > 0 && (
+                    <span className={cx("min-w-5 rounded-full px-1.5 text-center text-[11px] font-semibold tnum", active ? "bg-emerald-100 text-emerald-800" : "bg-stone text-ink-2")}>{count}</span>
+                  )}
                 </Link>
               </li>
             );
@@ -163,8 +161,8 @@ function StatsStrip({ data, className }: { data: ShellData; className?: string }
         <span className="text-ink">{data.interviewsThisWeek}</span> interview{data.interviewsThisWeek === 1 ? "" : "s"}
       </Link>
       {data.needsYouCount > 0 && (
-        <Link href="/applications" className="ml-1 inline-flex items-center gap-1.5 border-l border-line pl-3 text-ink sm:ml-3 sm:pl-4 transition-colors duration-150 hover:text-accent-ink">
-          <Square tone="accent" size={6} />
+        <Link href="/applications" className="ml-1 inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-[12px] font-semibold text-amber-900 transition-colors duration-150 hover:bg-amber-200 sm:ml-3">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
           {data.needsYouCount} need you
         </Link>
       )}
@@ -196,7 +194,7 @@ export function Shell({ data, children }: { data: ShellData; children: ReactNode
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[var(--shell-w)_minmax(0,1fr)]">
       {/* desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen flex-col gap-10 border-r border-line px-6 py-5 lg:flex">
+      <aside className="sticky top-0 hidden h-screen flex-col gap-10 border-r border-black/5 px-4 py-5 lg:flex">
         <div className="flex h-7 items-center"><Wordmark /></div>
         <NavList data={data} />
         <SearchBox />
@@ -260,7 +258,7 @@ export function Shell({ data, children }: { data: ShellData; children: ReactNode
       </nav>
 
       <div className="flex min-w-0 flex-col">
-        <div className="sticky top-0 z-30 hidden h-12 items-center justify-between gap-6 border-b border-line bg-canvas px-10 lg:flex">
+        <div className="sticky top-0 z-30 hidden h-14 items-center justify-between gap-6 border-b border-black/5 bg-canvas/80 px-10 backdrop-blur-md lg:flex">
           <Crumbs />
           <StatsStrip data={data} />
         </div>

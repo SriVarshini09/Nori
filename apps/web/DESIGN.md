@@ -154,3 +154,16 @@ If a line explains what the UI already shows, delete it.
 `design-shots/` holds reference captures of `/dashboard`, `/applications/app-2` and `/jobs` at 1280
 and 375px wide (mock data), plus `login-1280`, `onboarding-step1-1280`, `onboarding-step4-1280` and
 `application-decluttered-1280`.
+
+## Dashboard "aurora" (supersedes the monochrome rules above for `/dashboard` and the shell)
+
+The dashboard moved to a cinematic dark-green hero with colour, depth and motion. Code lives in
+`src/components/dash/`, styles are the `.dash-*` classes at the end of `globals.css`.
+
+- **Nori the mascot** (`Doll.tsx`): a three.js clay rice-ball in a seaweed wrap. Follows the cursor, blinks, waves,
+  squashes and sparkles when clicked, and speaks a rotating bubble built from live numbers. Pauses off-screen;
+  static frame under `prefers-reduced-motion`; renders nothing without WebGL.
+- **Scroll-driven motion**: `.reveal`, `.dash-bar`, `.dash-col`, `.dash-parallax` use native CSS
+  `animation-timeline: view()/scroll()` inside `@supports`, so unsupported browsers simply show the content.
+- **Tilt cards** (`Tilt.tsx`), in-view **count-ups** (`CountUp`), a live **ticker**, gradient **rings**.
+- Colour is allowed here: jade, sun, coral, iris, sky via Tailwind palette chips and `--jade` etc. tokens.

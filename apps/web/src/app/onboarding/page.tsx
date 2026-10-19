@@ -6,8 +6,9 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 
 export const metadata: Metadata = { title: "Set up" };
 
-export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ step?: string | string[] }> }) {
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ step?: string | string[]; welcome?: string | string[] }> }) {
   const sp = await searchParams;
+  const replay = (Array.isArray(sp.welcome) ? sp.welcome[0] : sp.welcome) === "1";
   const asked = (Array.isArray(sp.step) ? sp.step[0] : sp.step) as OnboardingStepId | undefined;
 
   const res = await api.onboarding().catch((e: unknown) => e);
@@ -28,5 +29,5 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     ? asked
     : state.step === "done" ? "resume" : state.step;
 
-  return <OnboardingWizard initialStep={initial} serverStep={state.step} profile={state.profile} integrations={integrations} model={model} />;
+  return <OnboardingWizard initialStep={initial} serverStep={state.step} profile={state.profile} integrations={integrations} model={model} replayWelcome={replay} />;
 }
