@@ -295,36 +295,60 @@ Hard rules:
 9. summary: two lines (25 to 45 words) built from the most recent title and the strongest supported skills. No invented claims.
 10. skillsOrder: the candidate's existing skills, most relevant to this job first. Do not add skills that are not in the list.`;
 
-function buildPrompt(ctx: Ctx): string {
+/**
+ * The tailoring prompt at one of three sizes, for models with small context windows (Ollama ships with 4096 tokens):
+ *   0 full evidence (up to 8 lines per bullet), indented
+ *   1 at most 3 evidence lines per bullet, cut to 160 characters, compact JSON, no nice-to-haves
+ *   2 bullets only, no evidence text
+ * Shrinking never weakens the truthfulness check: the model's output is validated against the full evidence
+ * locally (validateBullet), whatever the prompt carried.
+ */
+export function buildPrompt(ctx: Ctx, level: 0 | 1 | 2 = 0): string {
   const { input } = ctx;
+  const cut = (t: string) => (t.length > 160 ? `${t.slice(0, 157)}...` : t);
+  const evidenceOf = (nodeIds: string[]) => {
+    if (level === 2) return undefined;
+    const lines = nodeIds.flatMap((id) => (ctx.byNode.get(id) ?? []).map((e) => `${e.label}: ${e.text}`));
+    return level === 0 ? lines.slice(0, 8) : lines.slice(0, 3).map(cut);
+  };
   const roles = sectionsOf(input.baseline).map((sec, i) => {
     const role = sec.key.startsWith("exp:") ? input.baseline.experience[Number(sec.key.slice(4))] : undefined;
     const proj = sec.key.startsWith("proj:") ? input.baseline.projects?.[Number(sec.key.slice(5))] : undefined;
     return {
       index: i,
       heading: role ? `${role.title} at ${role.company}` : `Project: ${proj?.name ?? ""}`,
-      bullets: sec.bullets.map((b) => ({
-        id: b.id, text: b.text, nodeIds: b.nodeIds,
-        evidence: b.nodeIds.flatMap((id) => (ctx.byNode.get(id) ?? []).map((e) => `${e.label}: ${e.text}`)).slice(0, 8),
-      })),
+      bullets: sec.bullets.map((b) => ({ id: b.id, text: b.text, nodeIds: b.nodeIds, evidence: evidenceOf(b.nodeIds) })),
     };
   });
-  return JSON.stringify({
-    job: { title: input.jobTitle, company: input.companyName, summary: input.requirements.summary },
+  const payload = {
+    job: { title: input.jobTitle, company: input.companyName, summary: level === 0 ? input.requirements.summary : cut(input.requirements.summary ?? "") },
     requiredSkills: ctx.required,
-    niceToHave: ctx.nice,
-    keywords: ctx.keywords,
-    mustHaves: input.requirements.mustHaves,
+    niceToHave: level === 0 ? ctx.nice : undefined,
+    keywords: level === 0 ? ctx.keywords : ctx.keywords.slice(0, 12),
+    mustHaves: level === 0 ? input.requirements.mustHaves : input.requirements.mustHaves?.slice(0, 5),
     candidateSkills: input.baseline.skills.flatMap((g) => g.items),
     roles,
     note: "Return experience[] with one entry per item in roles[], same order (projects included at the end).",
-  }, null, 1);
+  };
+  return level === 0 ? JSON.stringify(payload, null, 1) : JSON.stringify(payload);
 }
 
+/** The model could not take the prompt at this size (Ollama's window guard throws this); a smaller one may fit. */
+const isWindowError = (e: unknown) => /would be cut off|context (length|window)|maximum context/i.test(e instanceof Error ? e.message : String(e));
+
 async function llmDraft(ctx: Ctx): Promise<Draft> {
-  const out: LlmOut = await getLLM().json({
-    name: "tailored_resume", system: TAILOR_SYSTEM, prompt: buildPrompt(ctx), schema: LlmSchema, maxTokens: 8000, effort: "medium",
-  });
+  let out: LlmOut | undefined;
+  for (const level of [0, 1, 2] as const) {
+    try {
+      out = await getLLM().json({
+        name: "tailored_resume", system: TAILOR_SYSTEM, prompt: buildPrompt(ctx, level), schema: LlmSchema, maxTokens: level === 0 ? 8000 : 4000, effort: "medium",
+      });
+      break;
+    } catch (e) {
+      if (level === 2 || !isWindowError(e)) throw e;
+    }
+  }
+  if (!out) throw new Error("the model returned nothing");
   const base = structuredClone(ctx.input.baseline);
   const reasons = new Map<string, string>();
   const rejected: Draft["rejected"] = [];

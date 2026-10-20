@@ -195,4 +195,44 @@ describe("template + ats", () => {
     expect(startsWithVerb("Architected a system")).toBe(true);
     expect(startsWithVerb("The system")).toBe(false);
   });
+
+  it("shrinks the prompt until a small-window model can take it, and still checks the output against the full evidence", async () => {
+    const sizes: number[] = [];
+    // The first two sizes do not fit this window; the third does.
+    const small: LLM = {
+      provider: "ollama", model: "tiny-4k", available: true,
+      async text() { return ""; },
+      async json<T>(call: { prompt: string }): Promise<T> {
+        sizes.push(call.prompt.length);
+        if (sizes.length < 3) throw new Error("The prompt needs about 5000 tokens but tiny-4k runs with a 4096-token context, so it would be cut off.");
+        const exp = sampleBaseline.experience.map((r) => ({ bullets: r.bullets.map((b) => ({ id: b.id, text: b.text, nodeIds: b.nodeIds })) }));
+        exp[0].bullets[0] = { id: "b1", text: "Built a merchant dashboard in React and TypeScript adopted by 50,000 businesses", nodeIds: ["r1", "m1"] };
+        return { experience: exp, summary: "Senior Software Engineer with hands-on experience in React, TypeScript, Node.js and PostgreSQL.", skillsOrder: ["React"] } as T;
+      },
+    };
+    setLLM(small);
+    try {
+      const r = await tailorResume(input);
+      expect(r.usedLLM).toBe(true);
+      expect(sizes.length).toBe(3); // full, compact, bullets only
+      expect(sizes[0]).toBeGreaterThan(sizes[1]);
+      expect(sizes[1]).toBeGreaterThan(sizes[2]);
+      expect(r.rejected.map((x) => x.bulletId)).toContain("b1"); // the invented number is still caught
+      expect(bulletsById(r.content).get("b1")!.text).not.toMatch(/50,000/);
+    } finally {
+      setLLM(null);
+    }
+  });
+
+  it("does not hide a failure that has nothing to do with the window", async () => {
+    let calls = 0;
+    setLLM({ provider: "ollama", model: "x", available: true, async text() { return ""; }, async json() { calls++; throw new Error("LLM 500: boom"); } });
+    try {
+      const r = await tailorResume(input);
+      expect(calls).toBe(1);
+      expect(r.usedLLM).toBe(false); // heuristic fallback, as before
+    } finally {
+      setLLM(null);
+    }
+  });
 });
