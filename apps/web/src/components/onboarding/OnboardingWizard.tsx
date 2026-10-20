@@ -6,7 +6,7 @@ import {
   ArrowRight, BadgeCheck, Check, FileText, FileUp, ListChecks, Network, Plug, ShieldCheck, SlidersHorizontal, UserRound, type LucideIcon,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { ONBOARDING_STEPS, type IngestResult, type Integration, type ModelSettings, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
+import { ONBOARDING_STEPS, type IngestResult, type Integration, type ModelPresetsInfo, type ModelSettings, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
 import { Icon, Notice, cx } from "../ui";
 import { Doll } from "../dash/Doll";
 import { Letters } from "../Letters";
@@ -143,12 +143,13 @@ function Confetti() {
   );
 }
 
-export function OnboardingWizard({ initialStep, serverStep, profile: initialProfile, integrations, model, replayWelcome = false }: {
+export function OnboardingWizard({ initialStep, serverStep, profile: initialProfile, integrations, model, presets, replayWelcome = false }: {
   initialStep: OnboardingStepId;
   serverStep: OnboardingStep;
   profile: Profile;
   integrations: Integration[];
   model: ModelSettings | null;
+  presets: ModelPresetsInfo;
   /** `/onboarding?welcome=1` plays the intro again. */
   replayWelcome?: boolean;
 }) {
@@ -324,7 +325,7 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
             {meta.id === "preferences" && <PreferencesStep {...common} />}
             {meta.id === "integrations" && (
               <>
-                <IntegrationsStep initial={integrations} model={model} busy={busy} onBack={back} onFinish={finish} />
+                <IntegrationsStep initial={integrations} model={model} presets={presets} busy={busy} onBack={back} onFinish={finish} />
                 {error && <div className="mt-5"><Notice tone="red">{error}</Notice></div>}
               </>
             )}

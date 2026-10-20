@@ -21,18 +21,18 @@ Decision rule: a service stays only if it removes real work for the user and not
 Order is by value. Effort in agent-hours is rough.
 
 ### A. Models (do first)
-- [ ] A1. Provider registry: one table of presets (id, label, base URL, key help link, default quality and bulk model, supports JSON mode, context size). Presets: OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, Together, Ollama, LM Studio, custom OpenAI-compatible. (4h)
-- [ ] A2. Settings UI: pick a preset, paste a key, pick models, "Test connection" shows the real result. Keys stay encrypted at rest and never reach the browser again. (4h)
-- [ ] A3. Model list from the provider (`/models`) so users choose from real names instead of typing them. (2h)
+- [x] A1. Provider registry: one table of presets (id, label, base URL, key help link, default quality and bulk model, supports JSON mode, context size). Presets: OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, Together, Ollama, LM Studio, custom OpenAI-compatible. (4h)
+- [x] A2. Settings UI: pick a preset, paste a key, pick models, "Test connection" shows the real result. Keys stay encrypted at rest and never reach the browser again. (4h)
+- [x] A3. Model list from the provider (`/models`) so users choose from real names instead of typing them. (2h)
 - [ ] A4. Local-first path: detect Ollama and LM Studio on their default ports, list installed models, warn when the context window is under 8k, show a one-line fix. (3h)
-- [ ] A5. Restrict the model-test base URL on hosted deployments (known gap, see MORNING.md): allow private addresses only when `LOCAL_ONLY` or an explicit env flag is set. (1h)
+- [x] A5. Restrict the model-test base URL on hosted deployments (known gap, see MORNING.md): allow private addresses only when `LOCAL_ONLY` or an explicit env flag is set. (1h)
 - [ ] A6. Cost and limits: per-user daily token cap and a visible "this run used about N tokens" line. (3h)
 - [ ] A7. Sign in with ChatGPT provider (OAuth 2.0 / OIDC authorization-code + PKCE, token storage, refresh, revoke). Blocked on OpenAI approving the app and publishing developer terms. Build the provider interface now so it is a drop-in. (8h once unblocked)
 - [ ] A8. Re-run the tailoring quality check on three real resumes against each class of model (large hosted, small hosted, 7B local) and record where the heuristic fallback kicks in. (4h)
 
 ### B. Discovery without a key
 - [ ] B1. `SearchProvider` interface with adapters: none (ATS feeds only), Parallel, Brave Search, SearXNG (self-hosted), Tavily. Selected by env or Settings. (5h)
-- [ ] B2. Curated company registry (ATS token per company, by tag and region) seeded from public sources, editable by the user; "add a company by careers URL" auto-detects its ATS. (6h)
+- [x] B2. Curated company registry (ATS token per company, by tag and region) seeded from public sources, editable by the user; "add a company by careers URL" auto-detects its ATS. (6h)
 - [ ] B3. Replace Parallel company research with fetch-and-summarise using the SSRF-guarded fetcher and the user's model; keep citations. (5h)
 
 ### C. Mail without a third party

@@ -373,7 +373,15 @@ export type AgentStatus = {
 export type ModelProvider = "cline" | "ollama" | "openai-compatible" | "anthropic";
 export type ModelMode = "cline" | "openai-compatible" | "anthropic" | "ollama" | "heuristic";
 
+export type ModelPreset = {
+  id: string; label: string; line: string; provider: ModelProvider; baseUrl: string | null; editableUrl: boolean;
+  needsKey: boolean; local: boolean; keyUrl?: string; defaults?: { quality?: string; bulk?: string };
+};
+export type ModelPresetsInfo = { presets: ModelPreset[]; strictUrls: boolean; localOnly: boolean };
+
 export type ModelSettings = {
+  /** The preset the saved provider and URL correspond to (set by the server). */
+  preset?: string | null;
   provider: ModelProvider;
   baseUrl: string | null;
   qualityModel: string | null;
