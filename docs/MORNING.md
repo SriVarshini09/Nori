@@ -36,6 +36,9 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 | Item | State |
 |---|---|
 | Real applications on Lever / Ashby / SmartRecruiters | Drivers route and open the application step (tested offline). Never run against a live posting. SmartRecruiters uses web components that the generic filler may not reach. Do a dry run on a posting you pick. |
+| OpenAI | **Verified for real (20 Oct 2026).** Key accepted, 135 models listed, connection test and real tailoring run on gpt-4.1-mini, gpt-4.1, gpt-5-mini and gpt-5; the whole pipeline (read resume, graph, match, tailor, summary) ran on gpt-4.1 / gpt-4.1-mini. The run found and fixed a real bug: gpt-5 and o-series models reject `temperature` and `max_tokens`. Repeat with `npm run live:model -- <model>` and `npm run live:flow`. Speed: gpt-4.1 about 10 s per tailoring, gpt-5-mini 23 s, gpt-5 43 s. |
+| Anthropic, Gemini and other providers | Same adapter, not run against the real services. |
+| Local models (Ollama) | Tried qwen3:4b and qwen3.5:9b: neither returned usable JSON for a whole-resume tailoring (timeout / invalid JSON), so Nori falls back to its rules. Per-role requests and JSON repair are planned. |
 | Hosted model, Composio (Gmail/Sheets/Calendar/Slack), Parallel, Telegram, WhatsApp, Resend email | **Blocked: needs keys.** Nothing ran against these. `npm run doctor` prints exactly which variable each one needs. |
 | Reset / confirm emails | Without (`RESEND_API_KEY` or `SMTP_URL`) + `EMAIL_FROM` the links are written to the API log, not emailed. In production that means users cannot recover accounts. |
 | Privacy and Terms text | Drafted from what the code actually does. Have someone qualified review before launch. Set `NEXT_PUBLIC_CONTACT_EMAIL` so they show a real contact (otherwise they point to the GitHub issues page). |

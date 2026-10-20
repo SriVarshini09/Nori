@@ -110,10 +110,11 @@ function buildWeb() {
   if (r.status !== 0) throw new Error("web build failed");
 }
 
-export async function startStack(opts: { build?: boolean } = {}): Promise<Stack> {
+export async function startStack(opts: { build?: boolean; realModel?: boolean } = {}): Promise<Stack> {
   // Deterministic runs: never talk to a local model or a hosted one; the heuristic paths are what the tests cover.
   process.env.OLLAMA_BASE_URL = "http://127.0.0.1:1/v1";
-  delete process.env.ANTHROPIC_API_KEY; delete process.env.HOSTED_LLM_API_KEY; delete process.env.OPENAI_COMPAT_API_KEY;
+  // (realModel keeps the model settings from .env, for scripts/live-flow.mts, which runs the pipeline against a real provider.)
+  if (!opts.realModel) { delete process.env.ANTHROPIC_API_KEY; delete process.env.HOSTED_LLM_API_KEY; delete process.env.OPENAI_COMPAT_API_KEY; }
   const db = await openTestDb();
   await seedBoardRegistry(db); // the curated companies, as the worker does on start
   const artifactsRoot = await mkdtemp(path.join(os.tmpdir(), "nori-e2e-"));

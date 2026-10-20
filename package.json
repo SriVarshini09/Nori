@@ -26,6 +26,8 @@
     "gate:fast": "node scripts/gate.mjs --fast",
     "serve": "tsx scripts/serve.mts",
     "doctor": "tsx scripts/doctor.mts",
+    "live:model": "tsx scripts/live-model-check.mts",
+    "live:flow": "tsx scripts/live-flow.mts",
     "crawl": "tsx scripts/crawl.mts",
     "e2e": "vitest run --config vitest.e2e.config.ts"
   },
