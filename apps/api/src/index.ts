@@ -4,6 +4,7 @@ import { createAgent, getDb, warmLLM, type OutboundMessage } from "@jobgraph/cor
 import { createChannelRouter, sendToUser, type ChannelRouter } from "@jobgraph/channels";
 import { startRuntime, type Runtime } from "../../worker/src/runtime.js";
 import { createApp, defaultRunnerDeps } from "./app.js";
+import { checkEnv } from "./env-check.js";
 
 export { createApp } from "./app.js";
 
@@ -11,6 +12,14 @@ const embed = process.env.EMBED_WORKER === "1" || process.env.EMBED_WORKER === "
 // `npm run demo` acts as one local user without sign-in; DEFAULT_USER_EMAIL from .env wins.
 // Never in production: there every request belongs to a signed-in account and MCP uses MCP_USER_EMAIL.
 if (embed && !process.env.DEFAULT_USER_EMAIL && process.env.NODE_ENV !== "production") process.env.DEFAULT_USER_EMAIL = "dev@jobgraph.local";
+
+const envCheck = checkEnv();
+for (const w of envCheck.warnings) console.warn(`[api] warning: ${w}`);
+if (envCheck.errors.length) {
+  for (const e of envCheck.errors) console.error(`[api] configuration error: ${e}`);
+  // A bad production configuration must not serve traffic; in development the errors are loud but the server still starts.
+  if (process.env.NODE_ENV === "production") process.exit(1);
+}
 
 const port = Number(process.env.API_PORT ?? 4000);
 const db = await getDb();

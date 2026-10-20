@@ -30,7 +30,7 @@ import {
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
-import { defaultMailer, resetEmail, verifyEmail, type Mailer } from "./mailer.js";
+import { defaultMailer, mailerState, resetEmail, verifyEmail, type Mailer } from "./mailer.js";
 import { defaultRateRules, rateLimit, securityHeaders, type RateRule } from "./security.js";
 import { bad, body, describeDevice, uuidOk } from "./http.js";
 import { mountFontRoute, mountResumeRoutes } from "./resume-routes.js";
@@ -365,7 +365,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     })),
     localOnly: localOnly(),
     embeddedWorker: process.env.EMBED_WORKER === "1",
-    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN) },
+    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode === "resend" && !mailerState().blockedBy },
     allowRealSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
   }));
 

@@ -24,6 +24,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "gate": "node scripts/gate.mjs",
     "gate:fast": "node scripts/gate.mjs --fast",
+    "doctor": "tsx scripts/doctor.mts",
     "crawl": "tsx scripts/crawl.mts",
     "e2e": "vitest run --config vitest.e2e.config.ts"
   },
