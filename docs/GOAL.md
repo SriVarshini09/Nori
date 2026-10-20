@@ -18,7 +18,7 @@ Make Nori a product that works end to end for a real user: every link, route and
 
 ## Guardrails (never, even if it would be faster)
 
-- No deploy, no push, no force push, no merge to `main`. Commits on `launch/overnight` only.
+- No deploy, no force push, no push to `main`, no merge on the user's behalf. Commits on `launch/overnight` only. **Pushing `launch/overnight` to GitHub (SriVarshini09/Nori) after every task is authorised by the user (20 Oct 2026)**, after a scan of the added lines for secrets.
 - `ALLOW_REAL_SUBMIT` stays off. Never submit a real application.
 - No sign-ups or logins on third-party services; no entering credentials anywhere. Secrets only from the environment (`.env`, gitignored).
 - Never touch the shared dev servers on ports 3000/4000 or the `data/` folder of the main checkout. This work uses ports 3200/4200 and a scratch database.
