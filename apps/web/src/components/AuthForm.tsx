@@ -163,6 +163,12 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
           </ObButton>
         </form>
 
+        {signup && (
+          <p className="mt-4 text-[12px] leading-relaxed text-muted">
+            By creating an account you agree to the <Link href="/terms" className="underline underline-offset-2 hover:text-ink">Terms</Link> and the <Link href="/privacy" className="underline underline-offset-2 hover:text-ink">Privacy page</Link>.
+          </p>
+        )}
+
         <p className="mt-7 border-t border-black/[0.06] pt-5 text-meta text-muted">
           {signup ? "Already have an account? " : "New to Nori? "}
           <Link href={signup ? "/login" : "/signup"} className="font-semibold text-emerald-700 underline decoration-emerald-600/30 underline-offset-4 transition-colors hover:decoration-emerald-600">

@@ -157,11 +157,11 @@ try {
   await authed.addCookies([{ name: cookie[0], value: cookie.slice(1).join("="), url: WEB, httpOnly: true, sameSite: "Lax" }]);
 
   // ---- signed out
-  for (const p of ["/login", "/signup"]) {
+  for (const p of ["/", "/login", "/signup", "/forgot-password", "/privacy", "/terms"]) {
     const r = await visit(anon, WEB + p, "visitor", { expectFinal: new RegExp(`^${p}$`), expected401: true });
     if (r) for (const l of r.links) await checkLink(anon, l, r.label, false);
   }
-  for (const p of ["/", "/dashboard", "/jobs", "/applications", "/agent", "/graph", "/inbox", "/tracker", "/resume", "/profile", "/settings", "/onboarding", "/companion"]) {
+  for (const p of ["/dashboard", "/jobs", "/applications", "/agent", "/graph", "/inbox", "/tracker", "/resume", "/profile", "/settings", "/onboarding", "/companion"]) {
     await visit(anon, WEB + p, "visitor", { expectFinal: /^\/login(\?.*)?$/, expected401: true });
   }
   await visit(anon, WEB + "/definitely-not-a-page", "visitor", { expectFinal: /./, expected401: true });
@@ -181,7 +181,7 @@ try {
   const anonPhone = await browser.newContext(phone);
   const authedPhone = await browser.newContext(phone);
   await authedPhone.addCookies([{ name: cookie[0], value: cookie.slice(1).join("="), url: WEB, httpOnly: true, sameSite: "Lax" }]);
-  for (const p of ["/login", "/signup", "/forgot-password", "/reset-password?token=x".replace("x", "x".repeat(24))]) await visit(anonPhone, WEB + p, "visitor@phone", { expected401: true });
+  for (const p of ["/", "/privacy", "/terms", "/login", "/signup", "/forgot-password", "/reset-password?token=x".replace("x", "x".repeat(24))]) await visit(anonPhone, WEB + p, "visitor@phone", { expected401: true });
   for (const p of routes) await visit(authedPhone, WEB + p, "user@phone", { expectFinal: p === "/" ? /^\/dashboard/ : /^\/(?!login)/ });
 
   // an unknown application and an unknown job must fail gracefully, not crash

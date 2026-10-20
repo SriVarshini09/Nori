@@ -61,7 +61,7 @@ export default async function SettingsPage() {
           <div className="mt-8 grid grid-cols-12"><div className={body}><SecurityPanel user={user} /></div></div>
         </section>
         <section>
-          <SectionHeader index="09" label="Danger zone" size="md" title={<>Delete<br />everything.</>} />
+          <SectionHeader index="08" label="Danger zone" size="md" title={<>Delete<br />everything.</>} />
           <div className="mt-8 grid grid-cols-12"><div className={body}><DangerZone email={user.email} /></div></div>
         </section>
       </div>

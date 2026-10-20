@@ -5,15 +5,17 @@ import { NextResponse, type NextRequest } from "next/server";
  * The cookie is only checked for presence here; the API validates it, and the (app) layout sends a
  * rejected session back to /login and an unfinished onboarding to /onboarding.
  */
-const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email"];
+const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email", "/privacy", "/terms"];
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  // The landing page is public too; it sends signed-in visitors on to the dashboard itself.
+  if (pathname === "/") return NextResponse.next();
   if (PUBLIC.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next();
   if (req.cookies.get("jg_session")?.value) return NextResponse.next();
   const url = req.nextUrl.clone();
   url.pathname = "/login";
-  url.search = pathname === "/" || pathname === "/dashboard" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
+  url.search = pathname === "/dashboard" ? "" : `?next=${encodeURIComponent(pathname + search)}`;
   return NextResponse.redirect(url);
 }
 
