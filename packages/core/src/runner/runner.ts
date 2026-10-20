@@ -14,13 +14,14 @@ import { computeMatch } from "../match/score.js";
 import { tailorResume, type TailorOutcome } from "../tailor/rewrite.js";
 import { renderPdf } from "../tailor/pdf.js";
 import { getProfile } from "../users.js";
+import { baselineFromDoc, getDefaultResumeDoc } from "../resume/docs.js";
 import { emit } from "./events.js";
 import { withUserLLM } from "../llm/index.js";
 import { LIKELY_QUESTIONS, isProfileField, makeAnswerQuestion, toApplicantProfile, type ComposedAnswer } from "./answers.js";
 
 export type Application = typeof applications.$inferSelect;
 
-export type RenderFn = (content: ResumeContent, outPath: string, opts: { requirements?: JobRequirements | null }) =>
+export type RenderFn = (content: ResumeContent, outPath: string, opts: { requirements?: JobRequirements | null; templateId?: string; theme?: unknown }) =>
   Promise<RenderResult & { content?: ResumeContent }>;
 
 /**
@@ -159,7 +160,9 @@ async function stepTailoring(db: Db, app: Application, deps: RunnerDeps): Promis
   await emit(db, app.id, "match", `Match ${Math.round(match.score * 100)}%`, { score: match.score, reasons: match.reasons, missing: match.missing });
 
   const profile = await getProfile(db, app.userId);
-  const baseline = await buildBaselineResume(db, app.userId, profile);
+  const styleDoc = await getDefaultResumeDoc(db, app.userId);
+  const baseline = baselineFromDoc(await buildBaselineResume(db, app.userId, profile), styleDoc);
+  const style = { templateId: styleDoc?.templateId ?? "classic", theme: styleDoc?.theme ?? {} };
   const evidence = await retrieveEvidence(db, app.userId, requirements);
   const tailor = await (deps.tailor ?? tailorResume)({ baseline, requirements, evidence, jobTitle: job.title, companyName: job.companyName });
   await emit(db, app.id, "tailor",
@@ -169,12 +172,12 @@ async function stepTailoring(db: Db, app: Application, deps: RunnerDeps): Promis
   const [{ n }] = await db.select({ n: count() }).from(resumes).where(eq(resumes.applicationId, app.id));
   const version = Number(n) + 1;
   const outPath = path.join(artifactsRootOf(deps), app.id, `resume-v${version}.pdf`);
-  const render = await (deps.render ?? renderPdf)(tailor.content, outPath, { requirements });
+  const render = await (deps.render ?? renderPdf)(tailor.content, outPath, { requirements, ...style });
   const [resume] = await db.insert(resumes).values({
     userId: app.userId, applicationId: app.id, version,
     content: render.content ?? tailor.content, provenance: tailor.provenance, changes: tailor.changes,
     html: render.html, pdfPath: render.pdfPath, pages: render.pages, atsScore: render.atsScore, atsChecks: render.atsChecks,
-    keywordCoverage: tailor.keywordCoverage,
+    keywordCoverage: tailor.keywordCoverage, templateId: style.templateId, theme: style.theme as Record<string, unknown>,
   }).returning();
   await emit(db, app.id, "render", `Rendered ${render.pages} page(s), ATS score ${render.atsScore}`,
     { resumeId: resume.id, version, pages: render.pages, atsScore: render.atsScore });

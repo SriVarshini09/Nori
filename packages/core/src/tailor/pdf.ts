@@ -3,7 +3,7 @@ import path from "node:path";
 import type { RenderResult } from "../contracts.js";
 import type { JobRequirements, ResumeContent } from "../db/schema.js";
 import { countPdfPages, renderResume } from "../resume/render.js";
-import type { TemplateId } from "../resume/templates.js";
+import { isTemplateId } from "../resume/templates.js";
 import type { Density } from "../resume/theme.js";
 
 export { countPdfPages };
@@ -16,7 +16,7 @@ export type RenderOutcome = RenderResult & {
   steps: string[];
 };
 
-export type RenderOptions = { requirements?: JobRequirements | null; maxPages?: number; templateId?: TemplateId; theme?: unknown };
+export type RenderOptions = { requirements?: JobRequirements | null; maxPages?: number; templateId?: string; theme?: unknown };
 
 /**
  * Render a tailored resume to a Letter or A4 PDF at outPath. Re-renders with denser type and trimmed content until it
@@ -24,7 +24,7 @@ export type RenderOptions = { requirements?: JobRequirements | null; maxPages?: 
  */
 export async function renderPdf(content: ResumeContent, outPath: string, opts: RenderOptions = {}): Promise<RenderOutcome> {
   await mkdir(path.dirname(path.resolve(outPath)), { recursive: true });
-  const r = await renderResume(content, { templateId: opts.templateId, theme: opts.theme, requirements: opts.requirements, maxPages: opts.maxPages, trim: true });
+  const r = await renderResume(content, { templateId: isTemplateId(opts.templateId) ? opts.templateId : undefined, theme: opts.theme, requirements: opts.requirements, maxPages: opts.maxPages, trim: true });
   await writeFile(outPath, r.pdf);
   return {
     html: r.html, pdfPath: path.resolve(outPath), pages: r.pages, atsScore: r.atsScore, atsChecks: r.atsChecks,

@@ -15,7 +15,7 @@ export { closeSharedBrowser } from "./browser.js";
 export { displayUrl, hrefOf } from "./format.js";
 export { SAMPLE_RESUME, SAMPLE_PERSONAS, STUDENT_RESUME, UNICODE_RESUME, longResume } from "./sample-content.js";
 export {
-  MAX_DOCS, MAX_VERSIONS, ResumeDocError, createBlankResumeDoc, createResumeDoc, createResumeDocFromGraph, deleteResumeDoc, duplicateResumeDoc, ensureResumeDoc,
+  MAX_DOCS, MAX_VERSIONS, ResumeDocError, baselineFromDoc, mergeStyle, stableJson, createBlankResumeDoc, createResumeDoc, createResumeDocFromGraph, deleteResumeDoc, duplicateResumeDoc, ensureResumeDoc,
   getDefaultResumeDoc, getResumeDoc, listResumeDocVersions, listResumeDocs, rebuildResumeDocFromGraph, restoreResumeDocVersion, setDefaultResumeDoc, updateResumeDoc,
   type NewResumeDoc, type ResumeDoc, type ResumeDocPatch, type ResumeDocVersion,
 } from "./docs.js";

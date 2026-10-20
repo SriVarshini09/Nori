@@ -14,7 +14,7 @@ import {
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
-  advanceOnboarding, authenticate, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
+  advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -30,6 +30,8 @@ import {
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
 import { defaultRateRules, rateLimit, securityHeaders, type RateRule } from "./security.js";
+import { bad, body, uuidOk } from "./http.js";
+import { mountFontRoute, mountResumeRoutes } from "./resume-routes.js";
 import { MAX_RESUME_BYTES, extractResumeFile, resumeKind } from "./extract.js";
 import { SCANNED_PDF_ERROR, type ExtractedLink, type ExtractedResume } from "@jobgraph/core";
 import { ProfileBody, STEP_SCHEMAS, buildProfilePatch } from "./profile-fields.js";
@@ -57,19 +59,6 @@ export type AppOptions = {
 
 export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
   return { pickDriver, waitForCode: (db, userId, hint, timeoutMs) => waitForVerificationCode(db, userId, hint, timeoutMs), ...overrides };
-}
-
-const bad = (message: string, status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 503 = 400) => new HTTPException(status, { message });
-
-async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
-  let raw: unknown = {};
-  const text = await c.req.text();
-  if (text.trim()) {
-    try { raw = JSON.parse(text); } catch { throw bad("Body must be JSON"); }
-  }
-  const r = schema.safeParse(raw);
-  if (!r.success) throw bad(r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
-  return r.data;
 }
 
 /** GET /api/jobs scores at most this many unscored rows per request. */
@@ -199,7 +188,6 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     if (!row) throw bad("Application not found", 404);
     return row;
   };
-  const uuidOk = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
 
   app.use("*", cors({
     origin: (origin) => (!origin || origin === webUrl || /^http:\/\/(localhost|127\.0\.0\.1):3000$/.test(origin) ? origin || "*" : null),
@@ -224,7 +212,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.notFound((c) => c.json({ error: `No route ${c.req.method} ${c.req.path}` }, 404));
 
   // ---------- auth ----------
-  const PUBLIC = /^\/api\/(auth\/|health$|webhooks\/)/;
+  const PUBLIC = /^\/api\/(auth\/|health$|webhooks\/|resume-fonts\/)/;
   app.use("/api/*", async (c, next) => {
     if (c.req.method === "OPTIONS" || PUBLIC.test(c.req.path)) return next();
     const r = await resolveUser(c);
@@ -315,6 +303,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const result = await ingestResume(db, userId, text, { links });
     await db.update(profiles).set({ rawResumeText: text, updatedAt: new Date() }).where(eq(profiles.userId, userId));
     await rescore(c, userId);
+    // The user's first resume document, so the resume studio has something to edit right away. Best effort.
+    await ensureResumeDoc(db, userId).catch((e) => console.warn(`[api] could not create the first resume document: ${(e as Error).message}`));
     return result;
   };
 
@@ -614,6 +604,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     });
   });
 
+  // ---------- resume studio: templates, library, exports, tailored edits ----------
+  mountFontRoute(app);
+  mountResumeRoutes(app, { db, deps });
+
   // ---------- resumes + artifacts ----------
   app.get("/api/resumes/:id", async (c) => {
     const raw = c.req.param("id");
@@ -634,6 +628,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.get("/api/artifacts/*", async (c) => {
     const rel = decodeURIComponent(c.req.path.replace(/^\/api\/artifacts\/?/, ""));
     if (!rel || rel.includes("\0")) throw bad("File not found", 404);
+    // files live under <applicationId>/...; only the application's owner may read them
+    const appId = rel.split("/")[0];
+    const owned = uuidOk(appId) && (await db.select({ id: applications.id }).from(applications).where(and(eq(applications.id, appId), eq(applications.userId, c.get("user").id))).limit(1)).length > 0;
+    if (!owned) throw bad("File not found", 404);
     const file = path.resolve(artifactsRoot, rel);
     const inside = path.relative(artifactsRoot, file);
     if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) throw bad("File not found", 404);

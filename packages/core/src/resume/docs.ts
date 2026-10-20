@@ -22,6 +22,19 @@ export function stableJson(v: unknown): string {
   return JSON.stringify(v, (_k, val) => (val && typeof val === "object" && !Array.isArray(val) ? Object.fromEntries(Object.entries(val as Record<string, unknown>).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) : val));
 }
 
+/**
+ * The template and theme a change produces. Picking another template adopts that template's look; changing only
+ * the theme keeps the template and layers the new values over the current ones.
+ */
+export function mergeStyle(cur: { templateId: string; theme: Record<string, unknown> }, patch: { templateId?: string; theme?: unknown }): { templateId: TemplateId; theme: Record<string, unknown> } {
+  if (patch.templateId !== undefined && !isTemplateId(patch.templateId)) throw new ResumeDocError("Unknown template");
+  const templateId: TemplateId = patch.templateId === undefined ? (isTemplateId(cur.templateId) ? cur.templateId : "classic") : (patch.templateId as TemplateId);
+  const templateChanged = templateId !== cur.templateId;
+  if (patch.theme === undefined && !templateChanged) return { templateId, theme: cur.theme };
+  if (patch.theme !== undefined && (typeof patch.theme !== "object" || patch.theme === null)) throw new ResumeDocError("Theme must be an object");
+  return { templateId, theme: cleanTheme(templateId, { ...(templateChanged ? {} : cur.theme), ...((patch.theme as object | undefined) ?? {}) }) };
+}
+
 /** A theme stored on a document: only the user's overrides, validated. */
 const cleanTheme = (templateId: TemplateId, theme: unknown) => {
   const full = themeFor(templateId, theme);
@@ -110,11 +123,7 @@ export async function updateResumeDoc(db: Db, userId: string, id: string, patch:
   if (opts.expectedVersion !== undefined && opts.expectedVersion !== doc.version) {
     throw new ResumeDocError(`This resume changed in another tab or device (now version ${doc.version}). Reload to continue.`, 409);
   }
-  const templateId: TemplateId = patch.templateId === undefined ? (doc.templateId as TemplateId) : isTemplateId(patch.templateId) ? patch.templateId : (() => { throw new ResumeDocError("Unknown template"); })();
-  const templateChanged = templateId !== doc.templateId;
-  const theme = patch.theme === undefined && !templateChanged
-    ? doc.theme
-    : cleanTheme(templateId, patch.theme === undefined ? undefined : { ...(templateChanged ? {} : doc.theme), ...(patch.theme as object) });
+  const { templateId, theme } = mergeStyle(doc, patch);
   const next = {
     name: patch.name === undefined ? doc.name : patch.name.trim().slice(0, 120) || doc.name,
     content: patch.content ?? doc.content,
@@ -177,3 +186,21 @@ export async function rebuildResumeDocFromGraph(db: Db, userId: string, id: stri
   return updateResumeDoc(db, userId, id, { content }, { label: "Before refreshing from your graph" });
 }
 
+
+/**
+ * Start a tailored resume from the career graph, but keep what the user set in their default document: their contact
+ * details (they may have fixed a typo), their summary (it becomes the "before" in the review diff), section order and extras.
+ * Bullets always come from the graph so each one keeps its evidence.
+ */
+export function baselineFromDoc(baseline: ResumeContent, doc: ResumeDoc | null): ResumeContent {
+  if (!doc) return baseline;
+  const c = doc.content;
+  return {
+    ...baseline,
+    name: c.name?.trim() || baseline.name,
+    contact: { ...baseline.contact, ...c.contact },
+    ...(c.summary ? { summary: c.summary } : {}),
+    ...(c.layout ? { layout: c.layout } : {}),
+    ...(c.extras?.length ? { extras: c.extras } : {}),
+  };
+}
