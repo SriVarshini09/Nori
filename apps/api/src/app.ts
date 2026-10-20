@@ -14,12 +14,13 @@ import {
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
-  advanceOnboarding, authenticate, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
+  advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
+  changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
-  agentTick, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
-  LLM_PROVIDERS, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
+  agentTick, tickRunning, type TickSummary, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
+  LLM_PROVIDERS, MODEL_PRESETS, savedApiKey, UnsafeUrlError, assertModelUrlAllowed, listProviderModels, presetIdFor, strictModelUrls, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
   normalizeLanes, processLLM, queuedTodayByLane, saveUserCredentials, storedLanes, testUserModel, withUserLLM, LaneInput,
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
@@ -29,6 +30,10 @@ import {
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
+import { defaultMailer, mailerState, resetEmail, verifyEmail, type Mailer } from "./mailer.js";
+import { defaultRateRules, rateLimit, securityHeaders, type RateRule } from "./security.js";
+import { bad, body, describeDevice, uuidOk } from "./http.js";
+import { mountFontRoute, mountResumeRoutes } from "./resume-routes.js";
 import { MAX_RESUME_BYTES, extractResumeFile, resumeKind } from "./extract.js";
 import { SCANNED_PDF_ERROR, type ExtractedLink, type ExtractedResume } from "@jobgraph/core";
 import { ProfileBody, STEP_SCHEMAS, buildProfilePatch } from "./profile-fields.js";
@@ -50,23 +55,16 @@ export type AppOptions = {
   defaultUserEmail?: string | null;
   /** Push agent notifications (tick results, background chat work). Defaults to channels' sendToUser. */
   notify?: (userId: string, msg: OutboundMessage) => Promise<unknown>;
+  /** Rate limiting: true or unset = the default rules (off under test runners), false = off, or custom rules. */
+  rateLimit?: boolean | RateRule[];
+  /** How long approve-form waits for a resumed run to reach the form review (default 25 s, under the web proxy timeout). */
+  approveWaitMs?: number;
+  /** Sends verification and password-reset email. Defaults to Resend when RESEND_API_KEY is set, else logs to the console. */
+  mailer?: Mailer;
 };
 
 export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
   return { pickDriver, waitForCode: (db, userId, hint, timeoutMs) => waitForVerificationCode(db, userId, hint, timeoutMs), ...overrides };
-}
-
-const bad = (message: string, status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 503 = 400) => new HTTPException(status, { message });
-
-async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
-  let raw: unknown = {};
-  const text = await c.req.text();
-  if (text.trim()) {
-    try { raw = JSON.parse(text); } catch { throw bad("Body must be JSON"); }
-  }
-  const r = schema.safeParse(raw);
-  if (!r.success) throw bad(r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
-  return r.data;
 }
 
 /** GET /api/jobs scores at most this many unscored rows per request. */
@@ -135,6 +133,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   const secure = process.env.NODE_ENV === "production";
   const cookieDomain = secure ? process.env.COOKIE_DOMAIN?.trim() || undefined : undefined;
   const cookieScope = { path: "/", secure, ...(cookieDomain ? { domain: cookieDomain } : {}) };
+  const mailer = opts.mailer ?? defaultMailer();
+  const linkTo = (route: string, token: string) => `${webUrl.replace(/\/$/, "")}/${route}?token=${encodeURIComponent(token)}`;
+  /** Email is best effort: a mail failure is logged, never shown to the person (and never reveals whether an account exists). */
+  const sendMail = (to: string, mail: ReturnType<typeof verifyEmail>) =>
+    mailer({ to, ...mail }).catch((err) => console.warn(`[api] email to ${to} failed:`, (err as Error).message));
+  const sendVerification = async (user: SessionUser) => {
+    await sendMail(user.email, verifyEmail(linkTo("verify-email", await issueAuthToken(db, user.id, "verify"))));
+  };
   const setSession = (c: Context, token: string) => setCookie(c, SESSION_COOKIE, token, {
     ...cookieScope, httpOnly: true, sameSite: cookieDomain ? "None" : "Lax", maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
@@ -196,7 +202,6 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     if (!row) throw bad("Application not found", 404);
     return row;
   };
-  const uuidOk = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
 
   app.use("*", cors({
     origin: (origin) => (!origin || origin === webUrl || /^http:\/\/(localhost|127\.0\.0\.1):3000$/.test(origin) ? origin || "*" : null),
@@ -205,6 +210,11 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     exposeHeaders: ["mcp-session-id"],
     credentials: true,
   }));
+
+  app.use("*", securityHeaders({ hsts: secure }));
+  // Off under test runners (they hammer signup and login), on everywhere else unless explicitly disabled.
+  const limits = opts.rateLimit ?? !(process.env.VITEST || process.env.NODE_ENV === "test");
+  if (limits) app.use("/api/*", rateLimit(Array.isArray(limits) ? limits : defaultRateRules()));
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
@@ -216,7 +226,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.notFound((c) => c.json({ error: `No route ${c.req.method} ${c.req.path}` }, 404));
 
   // ---------- auth ----------
-  const PUBLIC = /^\/api\/(auth\/|health$|webhooks\/)/;
+  const PUBLIC = /^\/api\/(auth\/|health$|webhooks\/|resume-fonts\/)/;
   app.use("/api/*", async (c, next) => {
     if (c.req.method === "OPTIONS" || PUBLIC.test(c.req.path)) return next();
     const r = await resolveUser(c);
@@ -236,6 +246,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const user = await createPasswordUser(db, b);
     if (!user) throw bad("An account with that email already exists", 409);
     setSession(c, await createSession(db, user.id, c.req.header("user-agent")));
+    void sendVerification(user).catch(() => undefined);
     return c.json({ user: publicUser(user) }, 201);
   });
 
@@ -267,6 +278,77 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.body(null, 204);
   });
 
+  // The signed-in person behind this request's own session cookie (not the dev fallback user).
+  const ownSession = async (c: Context) => {
+    const token = getCookie(c, SESSION_COOKIE);
+    const user = await getSessionUser(db, token);
+    if (!user || !token) throw bad("Not signed in", 401);
+    return { user, token };
+  };
+  const NewPassword = z.string().min(8, "Password must be at least 8 characters").max(200);
+
+  // Always the same answer, so the form cannot be used to find out which addresses have an account.
+  app.post("/api/auth/forgot-password", async (c) => {
+    const { email } = await body(c, z.object({ email: z.string().trim().email("Enter a valid email").max(320) }));
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    if (user?.passwordHash) void sendMail(user.email, resetEmail(linkTo("reset-password", await issueAuthToken(db, user.id, "reset"))));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/reset-password", async (c) => {
+    const b = await body(c, z.object({ token: z.string().min(10).max(200), password: NewPassword }));
+    const done = await resetPassword(db, b.token, b.password);
+    if (!done) throw bad("This reset link is invalid or has expired. Ask for a new one.", 400);
+    clearSession(c);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/change-password", async (c) => {
+    const { user, token } = await ownSession(c);
+    const b = await body(c, z.object({ current: z.string().max(200), next: NewPassword }));
+    if (b.current === b.next) throw bad("Choose a password different from the current one", 400);
+    const r = await changePassword(db, user.id, b.current, b.next, sha256(token));
+    if (r === "no_password") throw bad("This account has no password to change", 400);
+    if (r === "wrong_password") throw bad("Your current password is not right", 400);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/resend-verification", async (c) => {
+    const { user } = await ownSession(c);
+    if (!user.emailVerifiedAt) await sendVerification(user);
+    return c.json({ ok: true, verified: Boolean(user.emailVerifiedAt) });
+  });
+
+  // Opened from the email link, before or without a session.
+  app.post("/api/auth/verify-email", async (c) => {
+    const { token } = await body(c, z.object({ token: z.string().min(10).max(200) }));
+    const userId = await consumeAuthToken(db, token, "verify");
+    if (!userId || !(await markEmailVerified(db, userId))) throw bad("This confirmation link is invalid or has expired. Request a new one from Settings.", 400);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/auth/sessions", async (c) => {
+    const { user, token } = await ownSession(c);
+    return c.json((await listSessions(db, user.id, token)).map((s) => ({
+      id: s.id, current: s.current, device: describeDevice(s.userAgent), createdAt: s.createdAt, expiresAt: s.expiresAt,
+    })));
+  });
+
+  app.post("/api/auth/sessions/revoke-others", async (c) => {
+    const { user, token } = await ownSession(c);
+    return c.json({ revoked: await revokeOtherSessions(db, user.id, token) });
+  });
+
+  app.delete("/api/auth/sessions/:id", async (c) => {
+    const { user, token } = await ownSession(c);
+    const id = c.req.param("id");
+    if (!uuidOk(id)) throw bad("Session not found", 404);
+    const own = (await listSessions(db, user.id, token)).find((s) => s.id === id);
+    if (own?.current) throw bad("This is the session you are using. Use Log out instead.", 400);
+    if (!(await revokeSessionById(db, user.id, id))) throw bad("Session not found", 404);
+    return c.body(null, 204);
+  });
+
   app.get("/api/auth/session", async (c) => {
     const r = await resolveUser(c);
     if (!r) throw bad("Not signed in", 401);
@@ -283,7 +365,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     })),
     localOnly: localOnly(),
     embeddedWorker: process.env.EMBED_WORKER === "1",
-    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN) },
+    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode !== "console" && !mailerState().blockedBy },
     allowRealSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
   }));
 
@@ -307,6 +389,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const result = await ingestResume(db, userId, text, { links });
     await db.update(profiles).set({ rawResumeText: text, updatedAt: new Date() }).where(eq(profiles.userId, userId));
     await rescore(c, userId);
+    // The user's first resume document, so the resume studio has something to edit right away. Best effort.
+    await ensureResumeDoc(db, userId).catch((e) => console.warn(`[api] could not create the first resume document: ${(e as Error).message}`));
     return result;
   };
 
@@ -376,7 +460,36 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     bulkModel: z.string().trim().max(200).nullable().optional(),
   });
 
-  app.get("/api/settings/model", async (c) => c.json(await modelSettings(db, c.get("user").id)));
+  const savedKeyOf = (userId: string) => savedApiKey(db, userId);
+
+  // What a person can pick, plus the rules this server applies (so the screen can explain a refusal before it happens).
+  app.get("/api/settings/model/presets", (c) => c.json({
+    presets: MODEL_PRESETS, strictUrls: strictModelUrls(), localOnly: localOnly(),
+  }));
+
+  app.get("/api/settings/model", async (c) => {
+    const s = await modelSettings(db, c.get("user").id);
+    return c.json({ ...s, preset: presetIdFor(s.provider, s.baseUrl) });
+  });
+
+  // The provider's own list of model ids, using the key typed in the form or else the saved one. The key is never echoed.
+  app.post("/api/settings/model/models", async (c) => {
+    const user = c.get("user");
+    const b = await body(c, z.object({
+      provider: z.enum(LLM_PROVIDERS), apiKey: z.string().trim().max(1000).optional(),
+      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).nullable().optional().or(z.literal("").transform(() => null)),
+    }));
+    const current = await getUserCredentials(db, user.id);
+    const same = current?.provider === b.provider;
+    const apiKey = b.apiKey || (same ? await savedKeyOf(user.id) : null);
+    const baseUrl = b.baseUrl !== undefined ? b.baseUrl : same ? current?.baseUrl ?? null : null;
+    if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
+    try {
+      return c.json({ models: await listProviderModels({ provider: b.provider, baseUrl, apiKey }) });
+    } catch (err) {
+      throw bad(err instanceof Error ? err.message : "Could not list models", 422);
+    }
+  });
 
   app.put("/api/settings/model", async (c) => {
     const user = c.get("user");
@@ -385,6 +498,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const baseUrl = b.baseUrl !== undefined ? b.baseUrl : current?.provider === b.provider ? current.baseUrl : null;
     if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
     if (b.provider === "openai-compatible" && !baseUrl) throw bad("baseUrl is required for an OpenAI-compatible provider");
+    if (b.provider === "ollama" && strictModelUrls()) throw bad("This server cannot reach a model on your own computer. Add a hosted provider's key, or run Nori on your computer.", 422);
+    await assertModelUrlAllowed(baseUrl).catch((err) => { throw bad(err instanceof UnsafeUrlError ? err.message : "That model address cannot be used", 422); });
     await saveUserCredentials(db, user.id, b);
     return c.json(await modelSettings(db, user.id));
   });
@@ -462,15 +577,53 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.post("/api/jobs/url", async (c) => {
     const { url } = await body(c, z.object({ url: z.string().url() }));
-    const { job, added } = await addJobFromUrl(db, url);
+    // Whatever is wrong with the link is the person's to fix: answer 422 with the reason rather than a 500.
+    const { job, added } = await addJobFromUrl(db, url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
     const [ranked] = await matchJobs(db, c.get("user").id, [job.id]);
     return c.json({ job: ranked?.job ?? job, match: ranked?.match ?? null, added });
+  });
+
+  // ---------- companies: the boards Nori watches, and the ones a user follows ----------
+  app.get("/api/companies", async (c) => {
+    const n = (k: string, d: number, max: number) => Math.min(max, Math.max(0, Number.parseInt(c.req.query(k) ?? "", 10) || d));
+    return c.json(await listCompanies(db, c.get("user").id, {
+      q: c.req.query("q") ?? undefined, followedOnly: c.req.query("followed") === "1", limit: n("limit", 60, 200), offset: n("offset", 0, 100_000),
+    }));
+  });
+
+  const BoardRef = z.object({ atsType: z.enum(["greenhouse", "lever", "ashby", "smartrecruiters"]), token: z.string().min(1).max(200) });
+
+  app.post("/api/companies/follow", async (c) => {
+    const { atsType, token } = await body(c, BoardRef);
+    if (!(await followCompany(db, c.get("user").id, atsType, token))) throw bad("Nori is not watching that company yet", 404);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/api/companies/follow", async (c) => {
+    const { atsType, token } = await body(c, BoardRef);
+    await unfollowCompany(db, c.get("user").id, atsType, token);
+    return c.body(null, 204);
+  });
+
+  // Paste a company's careers page or a posting link: find its job board, read it, and follow the company.
+  app.post("/api/companies/detect", async (c) => {
+    const { url } = await body(c, z.object({ url: z.string().trim().url().max(2000) }));
+    const user = c.get("user");
+    const found = await detectBoard(url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
+    if (!found) throw bad("No supported job board (Greenhouse, Lever, Ashby or SmartRecruiters) was found on that page. Try pasting a link to one of its job postings.", 422);
+    const res = await pollTenant(db, found.atsType, found.token).catch(() => { throw bad(`Found the ${found.atsType} board "${found.token}", but its job feed did not answer. Check the link and try again.`, 422); });
+    if (res.total === 0) throw bad(`The ${found.atsType} board "${found.token}" has no open jobs right now.`, 422);
+    await db.update(companies).set({ name: found.name }).where(and(eq(companies.atsType, found.atsType), eq(companies.atsToken, found.token), sql`${companies.name} = ${prettifyToken(found.token)}`));
+    await followCompany(db, user.id, found.atsType, found.token);
+    await computeMatchesForUser(db, user.id, { jobIds: res.ids, limit: Math.max(1, res.ids.length) }).catch(() => undefined);
+    return c.json({ atsType: found.atsType, token: found.token, name: found.name, openJobs: res.total, added: res.added });
   });
 
   app.post("/api/jobs/poll", async (c) => {
     const { atsType, token } = await body(c, z.object({ atsType: z.enum(ATS_TYPES), token: z.string().min(1) }));
     const res = await pollTenant(db, atsType, token);
-    await matchJobs(db, c.get("user").id, res.ids).catch(() => []);
+    // A board can add hundreds of jobs: score them with the instant rules pass, not a model call each.
+    await computeMatchesForUser(db, c.get("user").id, { jobIds: res.ids, limit: Math.max(1, res.ids.length) }).catch(() => undefined);
     return c.json(res);
   });
 
@@ -492,6 +645,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       const [ranked] = await matchJobs(db, c.get("user").id, [d.job.id]);
       return c.json({ ...d, job: ranked?.job ?? d.job, match: ranked?.match ?? null });
     }
+    // Scored with the instant rules pass: let the model read this posting properly in the background for next time.
+    if (d.job.requirements?.via === "heuristic") void matchJobs(db, c.get("user").id, [d.job.id]).catch(() => undefined);
     return c.json(d);
   });
 
@@ -547,8 +702,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.post("/api/applications/:id/approve-form", async (c) => {
-    const a = await loadApp(c, c.req.param("id"));
+    let a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers.optional() }));
+    // Answering a question resumes the run in the background, so an approve that follows at once finds the
+    // application still filling the form. Wait for it to reach the review instead of rejecting a valid request.
+    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); (a.status === "filling" || a.status === "queued") && Date.now() < deadline;) {
+      await new Promise((r) => setTimeout(r, 400));
+      a = await loadApp(c, a.id);
+    }
     if (a.status !== "form_review") throw bad(`Application is ${a.status}, not form_review`, 409);
     await kick(c, () => approveForm(db, a.id, deps, answers));
     return c.json(await loadApp(c, a.id));
@@ -603,6 +764,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     });
   });
 
+  // ---------- resume studio: templates, library, exports, tailored edits ----------
+  mountFontRoute(app);
+  mountResumeRoutes(app, { db, deps });
+
   // ---------- resumes + artifacts ----------
   app.get("/api/resumes/:id", async (c) => {
     const raw = c.req.param("id");
@@ -623,6 +788,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.get("/api/artifacts/*", async (c) => {
     const rel = decodeURIComponent(c.req.path.replace(/^\/api\/artifacts\/?/, ""));
     if (!rel || rel.includes("\0")) throw bad("File not found", 404);
+    // files live under <applicationId>/...; only the application's owner may read them
+    const appId = rel.split("/")[0];
+    const owned = uuidOk(appId) && (await db.select({ id: applications.id }).from(applications).where(and(eq(applications.id, appId), eq(applications.userId, c.get("user").id))).limit(1)).length > 0;
+    if (!owned) throw bad("File not found", 404);
     const file = path.resolve(artifactsRoot, rel);
     const inside = path.relative(artifactsRoot, file);
     if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) throw bad("File not found", 404);
@@ -738,6 +907,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       tickMinutes: tickMinutes(),
       dailyCap: profile.autoApplyDailyCap, usedToday: Number(usedToday), minScore: profile.autoApplyMinScore,
       autoApprove: profile.resumeAutoApprove, reviewBeforeSubmit: profile.reviewBeforeSubmit,
+      /** False means every "submitted" application is a dry run: the form is filled and stopped, nothing is sent. */
+      liveSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
       channels: chs.filter((ch) => ch.kind !== "web"),
       awaitingReview: waiting.map((w) => ({
         applicationId: w.application.id, status: w.application.status, title: w.title, companyName: w.companyName,
@@ -747,7 +918,28 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   /** One agent cycle for the session user, in-process (the API owns the database). */
-  app.post("/api/agent/tick", async (c) => c.json(await agentTick(db, c.get("user").id, { runner: deps, notify, webUrl })));
+  /**
+   * ?quick=1 (the Run now button) starts the cycle in the background and answers 202 at once: a cycle can take minutes on a
+   * local model, longer than any proxy or browser will wait. The page polls GET /api/agent/tick. Without it the call waits
+   * for the whole cycle and returns the summary (scripts, the scheduler's HTTP tick).
+   */
+  const tickState = new Map<string, { startedAt: string; last?: TickSummary; error?: string }>();
+  app.post("/api/agent/tick", async (c) => {
+    const user = c.get("user");
+    if (!c.req.query("quick")) return c.json(await agentTick(db, user.id, { runner: deps, notify, webUrl }));
+    if (!tickRunning(user.id)) {
+      const startedAt = new Date().toISOString();
+      tickState.set(user.id, { startedAt });
+      agentTick(db, user.id, { runner: deps, notify, webUrl, maxAdvance: 0 })
+        .then((last) => tickState.set(user.id, { startedAt, last }))
+        .catch((e: unknown) => tickState.set(user.id, { startedAt, error: e instanceof Error ? e.message : String(e) }));
+    }
+    return c.json({ running: true, startedAt: tickState.get(user.id)?.startedAt ?? new Date().toISOString() }, 202);
+  });
+  app.get("/api/agent/tick", (c) => {
+    const user = c.get("user");
+    return c.json({ running: tickRunning(user.id), ...(tickState.get(user.id) ?? {}) });
+  });
 
   app.get("/api/agent/chat", async (c) => {
     const user = c.get("user");

@@ -158,6 +158,7 @@ export function heuristicRequirements(job: { title: string; descriptionText: str
     disqualifiers,
     keywords: [...new Set(keywords)],
     summary: text.replace(/\s+/g, " ").trim().slice(0, 300),
+    via: "heuristic",
   };
 }
 
@@ -180,10 +181,19 @@ function normalizeLLM(r: z.infer<typeof JobRequirementsSchema>): JobRequirements
     disqualifiers: r.disqualifiers.slice(0, 8),
     keywords: [...new Set(r.keywords.map((k) => k.trim()).filter(Boolean))].slice(0, 30),
     summary: r.summary.slice(0, 600),
+    via: "llm",
   };
 }
 
-export async function extractRequirements(job: { title: string; descriptionText: string }): Promise<{ requirements: JobRequirements; usedLLM: boolean }> {
+export type RequirementOptions = {
+  /** false: rules only, instant, never calls the model. Used when scoring many jobs at once. */
+  llm?: boolean;
+  /** Re-extract a rules-only result with the model, when one is available. For jobs that are about to matter. */
+  upgrade?: boolean;
+};
+
+export async function extractRequirements(job: { title: string; descriptionText: string }, opts: Pick<RequirementOptions, "llm"> = {}): Promise<{ requirements: JobRequirements; usedLLM: boolean }> {
+  if (opts.llm === false) return { requirements: heuristicRequirements(job), usedLLM: false };
   const { value, usedLLM } = await withFallback<JobRequirements>(
     async () => {
       const r = await getLLM("bulk").json({
@@ -206,16 +216,19 @@ export async function extractRequirements(job: { title: string; descriptionText:
     "extractRequirements",
     "bulk",
   );
+  // A model that is configured but failed (timeout, bad JSON) is not retried on every later look: keep the rules result.
+  if (!usedLLM && getLLM("bulk").available) value.via = "fallback";
   return { requirements: value, usedLLM };
 }
 
 /** Compute and store jobs.requirements if it is still null. Returns the requirements, or null if the job does not exist. */
-export async function ensureRequirements(db: Db, jobId: string): Promise<JobRequirements | null> {
+export async function ensureRequirements(db: Db, jobId: string, opts: RequirementOptions = {}): Promise<JobRequirements | null> {
   const [row] = await db.select({ title: jobs.title, descriptionText: jobs.descriptionText, requirements: jobs.requirements })
     .from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!row) return null;
-  if (row.requirements) return row.requirements;
-  const { requirements } = await extractRequirements(row);
+  const upgrade = opts.upgrade && opts.llm !== false && row.requirements?.via === "heuristic" && getLLM("bulk").available;
+  if (row.requirements && !upgrade) return row.requirements;
+  const { requirements } = await extractRequirements(row, { llm: opts.llm });
   await db.update(jobs).set({ requirements }).where(eq(jobs.id, jobId));
   return requirements;
 }

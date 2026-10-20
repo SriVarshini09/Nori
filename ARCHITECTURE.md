@@ -104,6 +104,13 @@ Model tiers: `getLLM("quality")` for writing (bullets, answers, chat) and `getLL
 
 Lanes: `profiles.preferences.lanes = [{ id, name, titles[], locations[], remote: "only"|"ok"|"no", minScore, enabled }]`. The agent tick considers every enabled lane, best matches first, drawing from one shared `autoApplyDailyCap`. A job qualifies for a lane when its title matches any lane title (case-insensitive substring or canonical skill) and location/remote constraints hold.
 
+How a cycle stays fast and honest (`agentTick`, one at a time per user):
+- Scoring uses an instant rules-only requirements pass (`jobs.requirements.via = "heuristic"`) and only for jobs that fit an enabled lane. A model call per job never finishes on a local model, and a job outside every lane can never be queued.
+- Before a daily-cap slot is spent, a job that passes the rule checks gets one closer read by the model (`ensureRequirements(..., { upgrade: true })`, at most `maxUpgrades` per cycle, default 8). Score, lane and checks are then re-evaluated. Tailoring and form filling also upgrade.
+- Every model call has a deadline (`LLM_TIMEOUT_MS`, default 180000); on timeout the heuristic fallback runs. Local Ollama models get `reasoning_effort` off for extraction (thinking models are about 10x slower) and a context-window guard: a prompt that will not fit `OLLAMA_CONTEXT_LENGTH` (probed from `/api/ps`, or `OLLAMA_NUM_CTX`) falls back at once instead of returning cut-off JSON.
+- Gate extras: entry-level titles (intern, new grad, early career, junior) are skipped for someone with 3+ years; one application per company and title.
+- `TickSummary.note` says in one sentence why nothing was queued (cap 0, no lane, no job fits, below the score bar, all skipped).
+
 Single process: `npm run demo` starts the API with the scheduler and channel listeners inside it (`EMBED_WORKER=1`), so the embedded database has one owner.
 
 ```
@@ -113,7 +120,10 @@ POST /api/settings/model/test         -> { ok, model, latencyMs, sample } (one t
 GET  /api/lanes                       -> Lane[]
 PUT  /api/lanes                       Lane[] -> Lane[]
 GET  /api/graph/export                -> application/json download of nodes + edges + profile (no credentials)
-GET  /api/agent/status                adds { mode, lanes: [{ id, name, enabled, queuedToday }] }
+GET  /api/agent/status                adds { mode, lanes: [{ id, name, enabled, queuedToday }], liveSubmit } (liveSubmit false = dry run: forms are filled, nothing is sent)
+POST /api/agent/tick                  runs one cycle and waits; returns the TickSummary (scripts, scheduler)
+POST /api/agent/tick?quick=1          starts the cycle in the background, 202 { running, startedAt } (the Run now button; a cycle can outlast any proxy)
+GET  /api/agent/tick                  -> { running, startedAt?, last?: TickSummary, error? }
 GET  /companion                       (web) compact view for the tray popover: status line, waiting-on-you with Approve/Skip, chat box; 360x560
 ```
 Cline endpoint: base URL `https://api.cline.bot/api/v1`, OpenAI-compatible `/chat/completions`, bearer = the user's Cline API key. Default quality model `deepseek/deepseek-v4-pro`, bulk `qwen/qwen3.7-plus` (confirm live; model ids may need the `cline-pass/` prefix on ClinePass accounts).

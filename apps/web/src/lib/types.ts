@@ -13,7 +13,9 @@ export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type InboxKind =
   | "verification_code" | "recruiter_reply" | "interview" | "rejection" | "offer" | "confirmation" | "other";
 
-export type User = { id: string; email: string; name: string | null; createdAt: string };
+export type User = { id: string; email: string; name: string | null; emailVerifiedAt?: string | null; createdAt: string };
+
+export type SessionInfo = { id: string; current: boolean; device: string; createdAt: string; expiresAt: string };
 
 export type Preferences = {
   titles?: string[];
@@ -215,19 +217,38 @@ export type Application = {
   updatedAt: string;
 };
 
-export type ResumeBullet = { id: string; text: string; nodeIds: string[] };
+export type ResumeBullet = { id: string; text: string; nodeIds: string[]; /** Written or changed by the user. */ edited?: boolean };
 export type ResumeChange = { bulletId: string; before: string; after: string; reason: string; nodeIds: string[] };
 export type AtsCheck = { id: string; label: string; pass: boolean; detail?: string; weight: number };
 export type ResumeContent = {
   name: string;
-  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string };
+  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string; github?: string };
   summary?: string;
   experience: { title: string; company: string; location?: string; start?: string; end?: string; bullets: ResumeBullet[] }[];
   education: { school: string; degree?: string; field?: string; start?: string; end?: string }[];
   skills: { group: string; items: string[] }[];
   projects?: { name: string; bullets: ResumeBullet[] }[];
   certifications?: string[];
+  extras?: { title: string; items: string[] }[];
+  layout?: { sections?: string[]; hidden?: string[] };
 };
+
+export type ResumeTheme = {
+  font: string; headingFont?: string; accent: string; fontSize: number; lineHeight: number; margin: number;
+  pageSize: "letter" | "a4"; headerAlign: "left" | "center"; pages: number;
+};
+export type ResumeTemplateInfo = { id: string; name: string; description: string; bestFor: string; atsSafe: boolean; columns: 1 | 2; theme: ResumeTheme };
+export type ResumeTemplates = { templates: ResumeTemplateInfo[]; fonts: { id: string; label: string; kind: "sans" | "serif" | "mono" }[]; pageSizes: { id: string; label: string }[] };
+export type ResumeDocSummary = {
+  id: string; name: string; source: "graph" | "upload" | "manual" | "copy" | "text"; templateId: string; theme: ResumeTheme; isDefault: boolean;
+  version: number; createdAt: string; updatedAt: string; headline: string; stats: { roles: number; bullets: number; words: number };
+};
+export type ResumeDoc = Omit<ResumeDocSummary, "stats" | "headline"> & { content: ResumeContent };
+export type ResumeVersion = { id: string; version: number; name: string; templateId: string; label: string | null; createdAt: string; headline: string; stats: { roles: number; bullets: number; words: number } };
+export type ResumePreview = {
+  html: string; pages: number; targetPages: number; atsScore: number; atsChecks: AtsCheck[]; density: string; steps: string[]; theme: ResumeTheme; templateId: string;
+};
+export type ResumeFormat = "pdf" | "docx" | "txt" | "json" | "html";
 
 export type Resume = {
   id: string;
@@ -241,6 +262,9 @@ export type Resume = {
   atsScore: number | null;
   atsChecks: AtsCheck[];
   keywordCoverage: number | null;
+  templateId?: string;
+  theme?: Partial<ResumeTheme>;
+  edited?: boolean;
   createdAt: string;
 };
 
@@ -317,7 +341,7 @@ export type AgentActivity = {
   applicationId?: string | null;
   jobId?: string | null;
   message: string;
-  data: { job?: { title: string; companyName: string }; reasons?: string[]; count?: number };
+  data: { job?: { title: string; companyName: string }; reasons?: string[]; count?: number; dryRun?: boolean };
 };
 
 export type AgentAwaitingReview = {
@@ -336,6 +360,8 @@ export type AgentStatus = {
   minScore: number;
   autoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  /** False: the server runs in dry-run mode, forms are filled but never sent. Absent on older APIs. */
+  liveSubmit?: boolean;
   channels: { kind: string; address: string }[];
   awaitingReview: AgentAwaitingReview[];
   /** Hackathon contract: how the model is resolved right now, and per-lane queue counts. Optional for older APIs. */
@@ -347,7 +373,15 @@ export type AgentStatus = {
 export type ModelProvider = "cline" | "ollama" | "openai-compatible" | "anthropic";
 export type ModelMode = "cline" | "openai-compatible" | "anthropic" | "ollama" | "heuristic";
 
+export type ModelPreset = {
+  id: string; label: string; line: string; provider: ModelProvider; baseUrl: string | null; editableUrl: boolean;
+  needsKey: boolean; local: boolean; keyUrl?: string; defaults?: { quality?: string; bulk?: string };
+};
+export type ModelPresetsInfo = { presets: ModelPreset[]; strictUrls: boolean; localOnly: boolean };
+
 export type ModelSettings = {
+  /** The preset the saved provider and URL correspond to (set by the server). */
+  preset?: string | null;
   provider: ModelProvider;
   baseUrl: string | null;
   qualityModel: string | null;
@@ -385,4 +419,12 @@ export type AgentTickSummary = {
   awaitingReview: number;
   submitted: number;
   needsUser: number;
+  /** Open jobs that fit an enabled lane, and one sentence on why nothing was queued. Absent on older APIs. */
+  laneJobs?: number;
+  note?: string;
 };
+
+export type BoardAts = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export type WatchedCompany = { id: string; name: string; atsType: BoardAts; token: string; openJobs: number; followed: boolean };
+export type CompanyList = { companies: WatchedCompany[]; total: number };
+export type DetectedCompany = { atsType: BoardAts; token: string; name: string; openJobs: number; added: number };

@@ -26,9 +26,11 @@ const authorization = {
 
 const screening = {
   heardAbout: str(200),
-  salaryExpectation: z.object({
-    amount: z.number().nonnegative(), currency: z.string().trim().max(10).optional(), period: z.enum(["year", "month", "hour"]).optional(),
-  }).nullable().optional(),
+  // An object with no amount means "no preference" (older clients send { amount: null }); store it as null.
+  salaryExpectation: z.preprocess(
+    (v) => (v && typeof v === "object" && (v as { amount?: unknown }).amount == null ? null : v),
+    z.object({ amount: z.number().nonnegative(), currency: z.string().trim().max(10).optional(), period: z.enum(["year", "month", "hour"]).optional() }).nullable().optional(),
+  ),
   earliestStartDate: str(100),
   noticePeriodWeeks: z.number().int().min(0).max(104).nullable().optional(),
   eeo: z.object({ gender: z.string().max(100), race: z.string().max(100), veteran: z.string().max(100), disability: z.string().max(100) }).partial().optional(),

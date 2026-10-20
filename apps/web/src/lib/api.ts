@@ -7,8 +7,8 @@
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
-  InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
-  Preferences, Profile, Resume, TrackerStats, User,
+  InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelPresetsInfo, ModelProvider, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
+  BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
 } from "./types";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
@@ -81,6 +81,27 @@ const qs = (params: Record<string, string | number | boolean | undefined | null>
   return s ? `?${s}` : "";
 };
 
+/** Calls only the live API can answer. In mock mode they explain how to turn live mode on instead of faking a renderer. */
+async function live<T>(method: string, path: string, body?: unknown): Promise<T> {
+  if (USE_MOCK) throw new ApiError(0, "The resume studio needs the live API. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.", "The resume studio is not available in demo mode.");
+  return request<T>(method, path, body);
+}
+
+/** Download or inline-view URLs (same-origin, cookie authenticated). */
+export const resumeDocUrl = (id: string, format: ResumeFormat, inline = false) => `/api/resume-docs/${id}/download?format=${format}${inline ? "&inline=1" : ""}`;
+export const resumeUrl = (id: string, format: ResumeFormat, inline = false) => `/api/resumes/${id}/download?format=${format}${inline ? "&inline=1" : ""}`;
+export const templatePreviewUrl = (id: string) => `/api/resume-templates/${id}/preview`;
+
+/** Demo mode has no server to ask, so it offers a short fixed list. */
+const MOCK_PRESETS: ModelPresetsInfo = {
+  strictUrls: false, localOnly: false,
+  presets: [
+    { id: "openai", label: "OpenAI", line: "GPT models with your OpenAI API key", provider: "openai-compatible", baseUrl: "https://api.openai.com/v1", editableUrl: false, needsKey: true, local: false, keyUrl: "https://platform.openai.com/api-keys" },
+    { id: "anthropic", label: "Anthropic", line: "Claude models with your API key", provider: "anthropic", baseUrl: null, editableUrl: false, needsKey: true, local: false, keyUrl: "https://console.anthropic.com/settings/keys", defaults: { quality: "claude-opus-5-5", bulk: "claude-haiku-5-5" } },
+    { id: "ollama", label: "Ollama (on this computer)", line: "Runs on your machine, no key, nothing leaves it", provider: "ollama", baseUrl: "http://localhost:11434", editableUrl: true, needsKey: false, local: true, defaults: { quality: "qwen3:14b", bulk: "qwen3:4b" } },
+  ],
+};
+
 export const api = {
   // ---- auth
   session: async (): Promise<{ user: User }> => (USE_MOCK ? { user: (await mock()).me.user } : request("GET", "/api/auth/session")),
@@ -96,11 +117,30 @@ export const api = {
     if (USE_MOCK) { mockSession(false); return; }
     await request("POST", "/api/auth/logout");
   },
+  /** Always resolves (the server answers the same for every address). */
+  forgotPassword: async (email: string): Promise<void> => {
+    if (USE_MOCK) return;
+    await request("POST", "/api/auth/forgot-password", { email });
+  },
+  resetPassword: (token: string, password: string): Promise<{ ok: true }> => live("POST", "/api/auth/reset-password", { token, password }),
+  changePassword: (current: string, next: string): Promise<{ ok: true }> => live("POST", "/api/auth/change-password", { current, next }),
+  verifyEmail: (token: string): Promise<{ ok: true }> => live("POST", "/api/auth/verify-email", { token }),
+  resendVerification: (): Promise<{ ok: true; verified: boolean }> => live("POST", "/api/auth/resend-verification", {}),
+  sessions: (): Promise<SessionInfo[]> => live("GET", "/api/auth/sessions"),
+  revokeSession: async (id: string): Promise<void> => { await live("DELETE", `/api/auth/sessions/${id}`); },
+  revokeOtherSessions: (): Promise<{ revoked: number }> => live("POST", "/api/auth/sessions/revoke-others", {}),
   /** Permanently deletes the signed-in account and all its data. `confirm` must equal the account email. Mock mode is a no-op. */
   deleteAccount: async (confirm: string): Promise<void> => {
     if (USE_MOCK) return;
     await request("DELETE", "/api/auth/account", { confirm });
   },
+
+  // ---- companies
+  listCompanies: (p: { q?: string; followed?: boolean; limit?: number; offset?: number } = {}): Promise<CompanyList> =>
+    live("GET", `/api/companies${qs({ q: p.q, followed: p.followed ? 1 : undefined, limit: p.limit, offset: p.offset })}`),
+  followCompany: async (atsType: BoardAts, token: string): Promise<void> => { await live("POST", "/api/companies/follow", { atsType, token }); },
+  unfollowCompany: async (atsType: BoardAts, token: string): Promise<void> => { await live("DELETE", "/api/companies/follow", { atsType, token }); },
+  detectCompany: (url: string): Promise<DetectedCompany> => live("POST", "/api/companies/detect", { url }),
 
   // ---- onboarding
   onboarding: async (): Promise<OnboardingState> => (USE_MOCK ? (await mock()).onboarding : request("GET", "/api/onboarding")),
@@ -199,7 +239,23 @@ export const api = {
   agentActivity: async (limit = 50): Promise<AgentActivity[]> =>
     USE_MOCK ? (await mock()).agentActivity.slice(0, limit) : request("GET", `/api/agent/activity${qs({ limit })}`),
   agentStatus: async (): Promise<AgentStatus> => (USE_MOCK ? (await mock()).agentStatus() : request("GET", "/api/agent/status")),
-  agentTick: async (): Promise<AgentTickSummary> => (USE_MOCK ? (await mock()).agentTick() : request("POST", "/api/agent/tick")),
+  /** Runs one cycle. The server does it in the background (it can take minutes on a local model), so poll until it reports. */
+  agentTick: async (): Promise<AgentTickSummary> => {
+    if (USE_MOCK) return (await mock()).agentTick();
+    const first = await request<AgentTickSummary | { running: true }>("POST", "/api/agent/tick?quick=1");
+    if (!("running" in first)) return first;
+    const deadline = Date.now() + 15 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const st = await request<{ running: boolean; last?: AgentTickSummary; error?: string }>("GET", "/api/agent/tick");
+      if (st.error) throw new ApiError(500, st.error);
+      if (!st.running) {
+        if (st.last) return st.last;
+        throw new ApiError(500, "The run ended without a result. Check the activity feed for what it did.");
+      }
+    }
+    throw new ApiError(0, "The run is taking longer than expected. It keeps going in the background; check the activity feed.");
+  },
   agentChat: async (text: string): Promise<{ reply: string }> =>
     USE_MOCK ? (await mock()).agentReply(text) : request("POST", "/api/agent/chat", { text }),
 
@@ -207,9 +263,31 @@ export const api = {
   modelSettings: async (): Promise<ModelSettings> => (USE_MOCK ? (await mock()).modelSettings() : request("GET", "/api/settings/model")),
   saveModelSettings: async (input: ModelSettingsInput): Promise<ModelSettings> =>
     USE_MOCK ? (await mock()).saveModelSettings(input) : request("PUT", "/api/settings/model", input),
+  modelPresets: async (): Promise<ModelPresetsInfo> => (USE_MOCK ? MOCK_PRESETS : request("GET", "/api/settings/model/presets")),
+  listModels: (input: { provider: ModelProvider; apiKey?: string; baseUrl?: string | null }): Promise<{ models: string[] }> =>
+    live("POST", "/api/settings/model/models", input),
   testModel: async (): Promise<ModelTestResult> => (USE_MOCK ? (await mock()).testModel() : request("POST", "/api/settings/model/test")),
   lanes: async (): Promise<Lane[]> => (USE_MOCK ? (await mock()).lanes() : request("GET", "/api/lanes")),
   saveLanes: async (lanes: Lane[]): Promise<Lane[]> => (USE_MOCK ? (await mock()).saveLanes(lanes) : request("PUT", "/api/lanes", lanes)),
+
+  // ---- resume studio (live API only)
+  resumeTemplates: async (): Promise<ResumeTemplates> => live("GET", "/api/resume-templates"),
+  resumeDocs: async (): Promise<ResumeDocSummary[]> => live("GET", "/api/resume-docs"),
+  resumeDoc: async (id: string): Promise<ResumeDoc> => live("GET", `/api/resume-docs/${id}`),
+  createResumeDoc: async (b: { from: "graph" | "blank" | "copy" | "content"; name?: string; copyOf?: string; content?: ResumeContent; templateId?: string; theme?: Partial<ResumeTheme>; makeDefault?: boolean }): Promise<ResumeDoc> =>
+    live("POST", "/api/resume-docs", b),
+  updateResumeDoc: async (id: string, b: { name?: string; content?: ResumeContent; templateId?: string; theme?: Partial<ResumeTheme>; expectedVersion?: number }): Promise<ResumeDoc> =>
+    live("PUT", `/api/resume-docs/${id}`, b),
+  deleteResumeDoc: async (id: string): Promise<void> => { await live("DELETE", `/api/resume-docs/${id}`); },
+  setDefaultResumeDoc: async (id: string): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/default`),
+  duplicateResumeDoc: async (id: string, name?: string): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/duplicate`, { name }),
+  refreshResumeDoc: async (id: string): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/refresh-from-graph`),
+  resumeDocVersions: async (id: string): Promise<ResumeVersion[]> => live("GET", `/api/resume-docs/${id}/versions`),
+  restoreResumeDocVersion: async (id: string, version: number): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/versions/${version}/restore`),
+  previewResume: async (content: ResumeContent, templateId: string, theme: Partial<ResumeTheme>): Promise<ResumePreview> =>
+    live("POST", "/api/resume/preview", { content, templateId, theme }),
+  editApplicationResume: async (applicationId: string, b: { content?: ResumeContent; templateId?: string; theme?: Partial<ResumeTheme> }): Promise<{ resume: Resume; application: Application }> =>
+    live("PUT", `/api/applications/${applicationId}/resume`, b),
 
   // ---- channels / integrations
   listChannels: async (): Promise<Channel[]> => (USE_MOCK ? (await mock()).channels : request("GET", "/api/channels")),

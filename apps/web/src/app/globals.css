@@ -14,7 +14,7 @@
   --ink: #141311;         /* text, primary button, ticks */
   --ink-2: #3a3732;       /* secondary text on paper */
   --muted: #6f6a60;       /* muted text */
-  --faint: #9a9487;       /* index numbers, placeholders */
+  --faint: #726c5f;       /* index numbers, placeholders (4.5:1 on every paper tone) */
   --accent: #b8632b;      /* burnt amber: used sparingly */
   --accent-ink: #8f4a1f;  /* accent text on cream (AA) */
 
@@ -123,3 +123,128 @@ summary::-webkit-details-marker { display: none; }
     radial-gradient(80% 60% at 64% 72%, rgba(232, 158, 92, 0.75), rgba(232, 158, 92, 0) 70%),
     linear-gradient(180deg, #3b3442 0%, #6c5260 24%, #b0705a 50%, #dc965f 66%, #eab47c 74%, #a7704c 82%, #4a3528 100%);
 }
+
+/*
+ * Dashboard "aurora" language: deep nori-green hero with drifting light, glass tiles, soft elevated cards,
+ * colourful tone chips. Scoped to the dashboard components in src/components/dash.
+ */
+:root {
+  --nori-950: #06110d;
+  --nori-900: #0a1b15;
+  --nori-800: #0f2a21;
+  --jade: #4ade9c;
+  --sun: #ffb347;
+  --coral: #ff7a59;
+  --iris: #8b7cff;
+  --sky: #5ec2ff;
+}
+
+.dash-hero {
+  background:
+    radial-gradient(55% 80% at 100% 0%, rgba(255, 110, 190, 0.34), transparent 62%),
+    radial-gradient(60% 90% at 0% 100%, rgba(52, 232, 160, 0.34), transparent 62%),
+    radial-gradient(40% 55% at 62% 100%, rgba(255, 176, 71, 0.26), transparent 70%),
+    linear-gradient(135deg, #052e2c 0%, #0a4a43 38%, #22226b 100%);
+}
+.dash-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(80% 100% at 70% 0%, #000 0%, transparent 75%);
+  pointer-events: none;
+}
+.dash-blob { position: absolute; border-radius: 9999px; filter: blur(70px); opacity: 0.55; pointer-events: none; animation: dash-drift 16s ease-in-out infinite alternate; }
+.dash-glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.dash-card {
+  background: #fff;
+  border: 1px solid rgba(20, 19, 17, 0.06);
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(20, 19, 17, 0.04), 0 18px 40px -22px rgba(20, 19, 17, 0.18);
+  transition: transform 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+.dash-lift:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(20, 19, 17, 0.05), 0 28px 50px -22px rgba(20, 19, 17, 0.28); }
+.dash-grad-text { background: linear-gradient(100deg, #6ef0b3 0%, #ffd27a 55%, #ff9c7a 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.dash-btn { background: linear-gradient(135deg, #0f2a21, #1d4a39); color: #eafff4; transition: transform 160ms var(--ease), box-shadow 160ms var(--ease), filter 160ms; box-shadow: 0 6px 16px -6px rgba(15, 42, 33, 0.55); }
+.dash-btn:hover { transform: translateY(-1px); filter: brightness(1.12); box-shadow: 0 10px 22px -8px rgba(15, 42, 33, 0.6); }
+.dash-btn-sun { background: linear-gradient(135deg, #ffb347, #ff7a59); color: #2a1206; box-shadow: 0 6px 16px -6px rgba(255, 122, 89, 0.7); }
+
+.dash-in { opacity: 0; animation: dash-up 640ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 70ms); }
+.dash-ring { stroke-dasharray: 0 100; animation: dash-ring 1.3s var(--ease) 0.2s forwards; }
+.dash-bar { transform-origin: left center; transform: scaleX(0); animation: dash-grow 900ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 90ms + 200ms); }
+.dash-col { transform-origin: bottom center; transform: scaleY(0); animation: dash-growy 800ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 60ms + 250ms); }
+.dash-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 9999px; border: 2px solid currentColor; opacity: 0; animation: dash-ping 2s ease-out infinite; }
+
+@keyframes dash-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(40px, 24px, 0) scale(1.15); } }
+@keyframes dash-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes dash-ring { to { stroke-dasharray: var(--p) 100; } }
+@keyframes dash-grow { to { transform: scaleX(1); } }
+@keyframes dash-growy { to { transform: scaleY(1); } }
+@keyframes dash-ping { 0% { opacity: 0.55; transform: scale(0.8); } 80%, 100% { opacity: 0; transform: scale(1.9); } }
+
+/* ---- mascot, ticker, tilt, scroll-driven reveals ---- */
+.dash-bubble { animation: dash-bubble 520ms var(--ease) both; }
+.dash-float { animation: dash-float 6s ease-in-out infinite; }
+.dash-float-b { animation: dash-float 7.5s ease-in-out -2s infinite; }
+.dash-marquee { display: flex; width: max-content; animation: dash-marquee 48s linear infinite; }
+.dash-marquee:hover { animation-play-state: paused; }
+.dash-tilt { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0); transition: transform 180ms var(--ease), box-shadow 220ms var(--ease); will-change: transform; }
+.dash-tilt::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: var(--glow, 0); transition: opacity 200ms; background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(110, 240, 179, 0.22), rgba(139, 124, 255, 0.1) 40%, transparent 65%); }
+.dash-aurora-line { background: linear-gradient(90deg, transparent, rgba(110, 240, 179, 0.7), rgba(255, 179, 71, 0.7), rgba(139, 124, 255, 0.7), transparent); }
+
+@keyframes dash-bubble { from { opacity: 0; transform: translateY(8px) scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes dash-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes dash-marquee { to { transform: translateX(-50%); } }
+@keyframes dash-reveal { from { opacity: 0; transform: translateY(56px) scale(0.97); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes dash-parallax { to { transform: translateY(-90px); } }
+@keyframes dash-hero-out { to { transform: translateY(40px) scale(0.97); opacity: 0.55; } }
+
+/* Native scroll-linked animation where the browser supports it; everything stays visible where it does not. */
+@supports (animation-timeline: view()) {
+  .reveal { animation: dash-reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
+  .dash-bar { animation: dash-grow linear both; animation-timeline: view(); animation-range: entry 15% entry 85%; animation-delay: 0ms; }
+  .dash-col { animation: dash-growy linear both; animation-timeline: view(); animation-range: entry 10% entry 90%; animation-delay: 0ms; }
+  .dash-parallax { animation: dash-parallax linear both; animation-timeline: scroll(root); animation-range: 0 900px; }
+  .dash-hero-fade { animation: dash-hero-out linear both; animation-timeline: scroll(root); animation-range: 0 700px; }
+}
+
+
+
+/* ---- onboarding ---- */
+.ob-bg {
+  background:
+    radial-gradient(50% 60% at 100% 0%, rgba(255, 110, 190, 0.3), transparent 62%),
+    radial-gradient(55% 70% at 0% 100%, rgba(52, 232, 160, 0.3), transparent 62%),
+    radial-gradient(40% 50% at 70% 100%, rgba(255, 176, 71, 0.2), transparent 70%),
+    linear-gradient(135deg, #052e2c 0%, #0a4a43 40%, #22226b 100%);
+  background-attachment: fixed;
+}
+.ob-dots::before { content: ""; position: fixed; inset: 0; background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px); background-size: 24px 24px; mask-image: radial-gradient(90% 80% at 50% 0%, #000, transparent 80%); pointer-events: none; }
+.ob-card { background: #fff; border-radius: 32px; box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.5) inset; }
+.ob-step-in { animation: ob-in 520ms var(--ease) both; }
+.ob-rise { opacity: 0; animation: ob-rise 700ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 90ms + 150ms); }
+.ob-letter { display: inline-block; opacity: 0; animation: ob-letter 700ms var(--ease) forwards; animation-delay: calc(var(--i, 0) * 45ms + 200ms); }
+.ob-wave { display: inline-block; transform-origin: 70% 80%; animation: ob-wave 2.2s ease-in-out 1s infinite; }
+.ob-pop { animation: ob-pop 420ms var(--ease) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.ob-scan { position: absolute; left: 0; right: 0; height: 90px; background: linear-gradient(180deg, transparent, rgba(52, 232, 160, 0.28), transparent); animation: ob-scan 1.6s ease-in-out infinite; pointer-events: none; }
+.ob-float-icon { animation: dash-float 3.2s ease-in-out infinite; }
+.ob-line { transform-origin: top; transition: transform 700ms var(--ease); }
+.ob-confetti { position: fixed; top: -20px; width: 10px; height: 16px; border-radius: 2px; animation: ob-fall linear infinite; pointer-events: none; z-index: 60; }
+
+@keyframes ob-in { from { opacity: 0; transform: translateX(34px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes ob-rise { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+@keyframes ob-letter { from { opacity: 0; transform: translateY(0.7em) rotate(7deg); } to { opacity: 1; transform: none; } }
+@keyframes ob-wave { 0%, 60%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-8deg); } 30% { transform: rotate(16deg); } 40% { transform: rotate(-4deg); } 50% { transform: rotate(10deg); } }
+@keyframes ob-pop { from { opacity: 0; transform: scale(0.6) translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ob-scan { 0% { top: -90px; } 100% { top: 100%; } }
+@keyframes ob-fall { to { transform: translateY(110vh) rotate(720deg); } }
+
+
+

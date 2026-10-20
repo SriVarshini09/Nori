@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { DriverContext, FormField } from "@jobgraph/core";
 import { GreenhouseDriver } from "./greenhouse.js";
-import { classifyField, phoneCountryValue, pickDriver, WebDriver } from "./index.js";
+import { ashbyApplyUrl, classifyField, leverApplyUrl, phoneCountryValue, pickDriver, WebDriver } from "./index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_URL = pathToFileURL(path.resolve(here, "../fixtures/greenhouse-form.html")).toString();
@@ -169,6 +169,27 @@ describe("routing and classification", () => {
     expect(pickDriver("https://acme.com/careers/42")?.atsType).toBe("web");
     expect(pickDriver("mailto:jobs@acme.com")).toBeNull();
     expect(new WebDriver().supports("http://x.test")).toBe(true);
+  });
+
+  it("routes Lever, Ashby and SmartRecruiters postings to their own drivers", () => {
+    expect(pickDriver("https://jobs.lever.co/acme/5f1c2a3b-0000-4000-8000-123456789abc")?.atsType).toBe("lever");
+    expect(pickDriver("https://jobs.eu.lever.co/acme/5f1c2a3b-0000-4000-8000-123456789abc/apply")?.atsType).toBe("lever");
+    expect(pickDriver("https://jobs.lever.co/acme")?.atsType).toBe("web"); // a company index is not a posting
+    expect(pickDriver("https://jobs.ashbyhq.com/acme/5f1c2a3b-0000-4000-8000-123456789abc")?.atsType).toBe("ashby");
+    expect(pickDriver("https://jobs.ashbyhq.com/acme")?.atsType).toBe("web");
+    expect(pickDriver("https://jobs.smartrecruiters.com/Acme/743999-senior-engineer")?.atsType).toBe("smartrecruiters");
+    expect(pickDriver("https://evil.example/jobs.lever.co/acme/123")?.atsType).toBe("web"); // the host decides, not the path
+  });
+
+  it("opens the application step of a Lever or Ashby posting", () => {
+    const id = "5f1c2a3b-0000-4000-8000-123456789abc";
+    expect(leverApplyUrl(`https://jobs.lever.co/acme/${id}`)).toBe(`https://jobs.lever.co/acme/${id}/apply`);
+    expect(leverApplyUrl(`https://jobs.lever.co/acme/${id}/apply?lever-source=LinkedIn#x`)).toBe(`https://jobs.lever.co/acme/${id}/apply?lever-source=LinkedIn`);
+    expect(leverApplyUrl("https://jobs.lever.co/acme")).toBeNull();
+    expect(leverApplyUrl("not a url")).toBeNull();
+    expect(ashbyApplyUrl(`https://jobs.ashbyhq.com/acme/${id}`)).toBe(`https://jobs.ashbyhq.com/acme/${id}/application`);
+    expect(ashbyApplyUrl(`https://jobs.ashbyhq.com/acme/${id}/application`)).toBe(`https://jobs.ashbyhq.com/acme/${id}/application`);
+    expect(ashbyApplyUrl("https://example.com/acme/1")).toBeNull();
   });
 
   it("classifies labels", () => {

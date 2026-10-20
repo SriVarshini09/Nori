@@ -6,8 +6,9 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 
 export const metadata: Metadata = { title: "Set up" };
 
-export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ step?: string | string[] }> }) {
+export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ step?: string | string[]; welcome?: string | string[] }> }) {
   const sp = await searchParams;
+  const replay = (Array.isArray(sp.welcome) ? sp.welcome[0] : sp.welcome) === "1";
   const asked = (Array.isArray(sp.step) ? sp.step[0] : sp.step) as OnboardingStepId | undefined;
 
   const res = await api.onboarding().catch((e: unknown) => e);
@@ -21,12 +22,12 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     state = res as OnboardingState;
   }
   const integrations = await api.listIntegrations().catch(() => []);
-  const model = await api.modelSettings().catch(() => null);
+  const [model, presets] = await Promise.all([api.modelSettings().catch(() => null), api.modelPresets()]);
 
   // Resume where the user left off; a finished user (or ?step=) can revisit any step.
   const initial: OnboardingStepId = asked && ONBOARDING_STEPS.includes(asked)
     ? asked
     : state.step === "done" ? "resume" : state.step;
 
-  return <OnboardingWizard initialStep={initial} serverStep={state.step} profile={state.profile} integrations={integrations} model={model} />;
+  return <OnboardingWizard initialStep={initial} serverStep={state.step} profile={state.profile} integrations={integrations} model={model} presets={presets} replayWelcome={replay} />;
 }

@@ -3,18 +3,20 @@
  * (`npm run demo`, one process so the embedded database has one owner):
  *  - every 20 s: advance runnable applications (queued / tailoring / filling / submitting), one at a time,
  *    and auto-retry failed ones until MAX_ATTEMPTS
- *  - every 15 min: poll every tenant feed in the companies table, then score the new jobs for every user with a graph
+ *  - every 15 min: poll the tenant feeds in the companies table that are older than 3 h (the curated board registry is
+ *    seeded into that table at start), then score the new jobs for every user with a graph
  *  - every 5 min: sync the default user's inbox (when Composio is configured) and tell the user about replies
  *  - every AGENT_TICK_MINUTES (default 20): agentTick for every user with a graph (discover, score, gate, queue,
  *    advance, ask for reviews over chat)
+ *  - every hour: drop expired sessions and spent account links
  *  - every minute: morning brief at BRIEF_HOUR local (default 8) once a day, weekly summary on Mondays
  *  - channel router (Telegram long-poll, WhatsApp webhook adapter, Slack triggers) with the chat agent, plus the
  *    console channel (stdin/stdout) when CHANNEL_CONSOLE=1
  */
-import { and, eq, isNotNull, isNull, lt, lte } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import {
   applications, channels, companies, FEEDS, MAX_ATTEMPTS, STALE_MS, ensureDefaultUser, createAgent, computeMatchesForUser, usersWithGraph,
-  agentTick, announceInbox, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, retryApplication, runApplication, withUserLLM,
+  agentTick, announceInbox, seedBoardRegistry, pruneAuthTokens, pruneSessions, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, retryApplication, runApplication, withUserLLM,
   type AtsType, type Db, type OutboundMessage, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
@@ -108,8 +110,17 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
     }
   });
 
+  const seeded = await seedBoardRegistry(db);
+  if (seeded) log(`board registry: added ${seeded} companies to watch`);
+
+  // The curated registry carries tens of thousands of postings, so each board is re-read every few hours here.
+  // Boards a user follows or applied to are refreshed hourly by that user's agent tick.
+  const BOARD_REFRESH_MS = 3 * 3600_000;
   every("feeds", POLL_EVERY, async () => {
-    const rows = await db.select().from(companies).where(isNotNull(companies.atsToken));
+    const rows = await db.select().from(companies).where(and(
+      isNotNull(companies.atsToken),
+      or(isNull(companies.lastPolledAt), lt(companies.lastPolledAt, new Date(Date.now() - BOARD_REFRESH_MS))),
+    ));
     for (const c of rows) {
       if (stopping) return;
       if (!FEEDS[c.atsType as AtsType]) continue;
@@ -125,6 +136,11 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
         }
       } catch (e) { log(`feed ${c.atsType}/${c.atsToken} failed: ${errMsg(e)}`); }
     }
+  });
+
+  every("housekeeping", 60 * 60_000, async () => {
+    const [sessions, tokens] = [await pruneSessions(db), await pruneAuthTokens(db)];
+    if (sessions || tokens) log(`housekeeping: removed ${sessions} expired session(s) and ${tokens} spent account link(s)`);
   });
 
   every("inbox", INBOX_EVERY, async () => {

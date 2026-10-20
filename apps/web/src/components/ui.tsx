@@ -100,7 +100,7 @@ export function TextLink({ href, children, external, className }: { href: string
 }
 
 export const inputClass =
-  "w-full rounded-[var(--radius-input)] border border-line bg-paper px-3 py-[7px] text-body-sm text-ink placeholder:text-faint transition-colors duration-150 hover:border-line-strong focus:border-ink focus:outline-none disabled:border-transparent disabled:bg-stone/60 disabled:text-ink-2";
+  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2 text-body-sm text-ink placeholder:text-faint transition-[border-color,box-shadow] duration-150 hover:border-black/25 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/15 disabled:border-transparent disabled:bg-stone/60 disabled:text-ink-2";
 
 export function Field({ label, hint, children, className }: { label: ReactNode; hint?: string; children: ReactNode; className?: string }) {
   return (
@@ -138,7 +138,7 @@ export function EmptyState({ title, children, icon = Inbox }: { title: string; c
     <Frame surface="none" className="px-6 py-14 text-center">
       <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-line text-ink"><Icon icon={icon} /></span>
       <p className="mt-4 font-display text-title font-medium text-ink">{title}</p>
-      {children && <p className="mx-auto mt-1 max-w-md text-body-sm text-muted">{children}</p>}
+      {children && <div className="mx-auto mt-1 max-w-md text-body-sm text-muted">{children}</div>}
     </Frame>
   );
 }

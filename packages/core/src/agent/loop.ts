@@ -1,7 +1,7 @@
 import { and, count, desc, eq, gte, inArray, isNull, notExists, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import {
-  agentEvents, applications, companies, inboxMessages, jobs, matches, profiles, resumes,
+  agentEvents, applications, companies, graphNodes, inboxMessages, jobs, matches, profiles, resumes,
   type ApplicationStatus, type AtsType, type Preferences,
 } from "../db/schema.js";
 import type { DiscoverQuery, OutboundMessage } from "../contracts.js";
@@ -10,14 +10,15 @@ import { pollTenant } from "../feeds/normalize.js";
 import { parallelAvailable } from "../feeds/parallel.js";
 import { FEEDS } from "../feeds/registry.js";
 import { ensureRequirements } from "../feeds/requirements.js";
-import { getGraph } from "../graph/query.js";
+import { getGraph, retrieveEvidence } from "../graph/query.js";
+import { computeMatch } from "../match/score.js";
 import { computeMatchesForUser } from "../runner/jobs.js";
 import { ACTIVE_STATUSES, createApplication, runApplication, type Application, type RunnerDeps } from "../runner/runner.js";
 import { getProfile } from "../users.js";
 import { logAgentEvent } from "./events.js";
 import { checkDisqualifiers } from "./gate.js";
 import { morningBrief, needsUserNote, replyNote, reviewRequest, splitLong, submittedNote, weeklySummary, type BriefSummary, type WeeklyStats } from "./notify.js";
-import { effectiveLanes, laneFor } from "./lanes.js";
+import { effectiveLanes, jobFitsLane, laneFor } from "./lanes.js";
 import { withUserLLM } from "../llm/index.js";
 import { assignRefs, PENDING_STATUSES, type PendingRef } from "./pending.js";
 
@@ -34,6 +35,8 @@ export type AgentTickDeps = {
   maxAdvance?: number;
   /** Max open jobs scored per tick. Default 200. */
   scoreLimit?: number;
+  /** Max jobs per tick that the model re-reads (rules-only requirements -> model requirements) before queueing. Default 8. */
+  maxUpgrades?: number;
   webUrl?: string;
   now?: () => Date;
 };
@@ -52,11 +55,17 @@ export type TickSummary = {
   needsUser: number;
   announced: number;
   errors: string[];
+  /** Open jobs that fit an enabled lane (title and place), whatever their score. */
+  laneJobs: number;
+  /** One plain sentence on why nothing was queued, when that is the case. */
+  note?: string;
 };
 
 export const DISCOVER_EVERY_MS = 6 * 3600_000;
 const FOLLOW_POLL_EVERY_MS = 3600_000;
 
+/** Thrown inside a phase's try block to leave it quietly. */
+class SkipPhase extends Error {}
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const tickJob = (j: { id: string; title: string; companyName: string }): TickJob => ({ id: j.id, title: j.title, companyName: j.companyName });
 
@@ -128,16 +137,26 @@ function announceKey(app: Application): string {
  * One agent cycle for one user: discover, score, gate and queue, advance, announce. Each phase is
  * isolated, so a failing feed or driver never stops the rest; errors land in summary.errors.
  */
+const inflight = new Map<string, Promise<TickSummary>>();
+/** Is a cycle for this user running right now (scheduled or manual)? */
+export const tickRunning = (userId: string) => inflight.has(userId);
+
 export function agentTick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSummary> {
+  // One cycle per user at a time. A manual "Run now" while the scheduled tick is working joins it instead of starting a
+  // second one that would score and queue the same jobs again (and fight it for the model).
+  const running = inflight.get(userId);
+  if (running) return running;
   // Requirements extraction, tailoring and answers inside the tick use this user's models.
-  return withUserLLM(db, userId, () => tick(db, userId, deps));
+  const p = withUserLLM(db, userId, () => tick(db, userId, deps)).finally(() => { inflight.delete(userId); });
+  inflight.set(userId, p);
+  return p;
 }
 
 async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSummary> {
   const now = deps.now?.() ?? new Date();
   const s: TickSummary = {
     userId, at: now.toISOString(), discovered: 0, scored: 0, queued: 0, queuedJobs: [], skipped: [],
-    awaitingReview: 0, submitted: 0, needsUser: 0, announced: 0, errors: [],
+    awaitingReview: 0, submitted: 0, needsUser: 0, announced: 0, errors: [], laneJobs: 0,
   };
   const profile = await getProfile(db, userId);
   const prefs = (profile.preferences ?? {}) as Preferences;
@@ -164,21 +183,38 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
     if (s.discovered) await logAgentEvent(db, { userId, kind: "discovered", message: `Found ${s.discovered} new job(s)`, data: { count: s.discovered } });
   } catch (e) { s.errors.push(`discovery: ${errMsg(e)}`); }
 
+  // Without a career graph there is nothing to match against: scoring would burn a model call per job for no result.
+  const [{ n: graphSize }] = await db.select({ n: count() }).from(graphNodes).where(eq(graphNodes.userId, userId));
+  const hasGraph = Number(graphSize) > 0;
+
   // (b) scoring
   try {
-    const m = await computeMatchesForUser(db, userId, { limit: deps.scoreLimit ?? 200 });
+    if (!hasGraph) throw new SkipPhase();
+    // With auto-apply on, only jobs that fit an enabled lane can be queued, so only those are worth an LLM call.
+    const scoringLanes = profile.autoApplyDailyCap > 0 ? effectiveLanes(profile).filter((l) => l.enabled) : [];
+    const m = await computeMatchesForUser(db, userId, {
+      limit: deps.scoreLimit ?? 200,
+      ...(scoringLanes.length ? { fits: (j: { title: string; location: string | null; remote: boolean }) => scoringLanes.some((l) => jobFitsLane(j, l)) } : {}),
+    });
     s.scored = m.computed;
     if (m.computed) await logAgentEvent(db, { userId, kind: "scored", message: `Scored ${m.computed} job(s) against your graph`, data: { count: m.computed } });
-  } catch (e) { s.errors.push(`scoring: ${errMsg(e)}`); }
+  } catch (e) { if (!(e instanceof SkipPhase)) s.errors.push(`scoring: ${errMsg(e)}`); }
 
   // (c) gate and queue: every enabled lane, best match first, one shared daily cap
+  const why = { remaining: null as number | null, floor: 0, candidates: 0, dupes: 0 };
+  const lanes = effectiveLanes(profile).filter((l) => l.enabled);
   try {
-    const lanes = effectiveLanes(profile).filter((l) => l.enabled);
-    if (profile.autoApplyDailyCap > 0 && lanes.length) {
+    if (hasGraph && lanes.length) {
+      const open = await db.select({ title: jobs.title, location: jobs.location, remote: jobs.remote }).from(jobs).where(isNull(jobs.closedAt));
+      s.laneJobs = open.filter((j) => lanes.some((l) => jobFitsLane(j, l))).length;
+    }
+    if (hasGraph && profile.autoApplyDailyCap > 0 && lanes.length) {
       const [{ n }] = await db.select({ n: count() }).from(applications)
         .where(and(eq(applications.userId, userId), gte(applications.createdAt, startOfDay(now))));
       let remaining = profile.autoApplyDailyCap - Number(n);
+      why.remaining = remaining;
       const floor = Math.min(...lanes.map((l) => l.minScore));
+      why.floor = floor;
       const rows = await db.select({ job: jobs, score: matches.score }).from(matches)
         .innerJoin(jobs, eq(jobs.id, matches.jobId))
         .where(and(
@@ -193,10 +229,35 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
         const lane = laneFor(r.job, lanes, r.score);
         return lane ? [{ ...r, lane }] : [];
       });
+      why.candidates = candidates.length;
       const graph = candidates.length ? await getGraph(db, userId) : undefined;
-      for (const { job, score, lane } of candidates) {
-        const requirements = job.requirements ?? (await ensureRequirements(db, job.id));
-        const gate = checkDisqualifiers(job, requirements, profile, { graph, now });
+      // The same role is often posted once per city. One application per company and title is enough.
+      const roleKey = (company: string, title: string) => `${company.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
+      const taken = new Set((await db.select({ company: jobs.companyName, title: jobs.title }).from(applications)
+        .innerJoin(jobs, eq(jobs.id, applications.jobId)).where(eq(applications.userId, userId))).map((r) => roleKey(r.company, r.title)));
+      let upgrades = deps.maxUpgrades ?? 8;
+      for (const cand of candidates) {
+        const { job } = cand;
+        if (taken.has(roleKey(job.companyName, job.title))) { why.dupes++; continue; }
+        let { score, lane } = cand;
+        let requirements = job.requirements ?? (await ensureRequirements(db, job.id, { llm: false }));
+        let gate = checkDisqualifiers(job, requirements, profile, { graph, now });
+        // Scoring used the instant rules-only extraction. A job that passes the checks and could still take a daily-cap
+        // slot gets a closer read by the model (bounded per tick), then score, lane and checks are re-evaluated.
+        if (gate.ok && remaining > 0 && upgrades > 0 && requirements?.via === "heuristic") {
+          upgrades--;
+          try {
+            const better = await ensureRequirements(db, job.id, { upgrade: true });
+            if (better && better.via !== "heuristic") {
+              requirements = better;
+              score = (await computeMatch(db, userId, job.id, retrieveEvidence)).score;
+              const relane = laneFor(job, lanes, score);
+              if (!relane) continue; // the closer read dropped it below the lane's bar
+              lane = relane;
+              gate = checkDisqualifiers(job, requirements, profile, { graph, now });
+            }
+          } catch (e) { s.errors.push(`requirements ${job.id}: ${errMsg(e)}`); }
+        }
         const tj = tickJob(job);
         const laneData = { laneId: lane.id, laneName: lane.name };
         if (!gate.ok) {
@@ -210,6 +271,8 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
         if (remaining <= 0) continue; // passed the gate, but today's cap is used; reconsidered tomorrow
         const app = await createApplication(db, userId, job.id);
         remaining--;
+        why.remaining = remaining;
+        taken.add(roleKey(job.companyName, job.title));
         s.queued++;
         s.queuedJobs.push({ ...tj, applicationId: app.id, score, laneId: lane.id });
         await logAgentEvent(db, {
@@ -220,6 +283,20 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
       }
     }
   } catch (e) { s.errors.push(`queue: ${errMsg(e)}`); }
+
+  if (s.queued === 0) {
+    const bar = `${Math.round(why.floor * 100)}%`;
+    s.note =
+      !hasGraph ? "Your resume has not been read yet, so there is nothing to match jobs against."
+      : profile.autoApplyDailyCap <= 0 ? "Auto apply is off: the daily cap is 0. Raise it to let the agent start applications."
+      : !lanes.length ? "No lane is enabled. Turn one on or add a lane."
+      : why.remaining !== null && why.remaining <= 0 ? "Today's cap is already used. The agent continues tomorrow."
+      : s.laneJobs === 0 ? "No open job fits your lane titles and places yet. Widen a lane or wait for new postings."
+      : why.candidates === 0 ? `${s.laneJobs} open job${s.laneJobs === 1 ? " fits" : "s fit"} your lanes, but none scores ${bar} or more.`
+      : why.dupes === why.candidates ? "Every matching job repeats a role you already applied to."
+      : s.skipped.length ? `${why.candidates} job${why.candidates === 1 ? "" : "s"} fit your lanes, but the checks skipped them (see the reasons in the activity feed).`
+      : undefined;
+  }
 
   // (d) advance through the runner
   try {

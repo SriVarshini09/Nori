@@ -9,10 +9,13 @@ export const dynamic = "force-dynamic";
 export default async function CompanionPage() {
   const [status, activity] = await Promise.allSettled([api.agentStatus(), api.agentActivity(3)]);
   return (
+    <>
+    <h1 className="sr-only">Nori companion</h1>
     <CompanionView
       initialStatus={status.status === "fulfilled" ? status.value : null}
       initialActivity={activity.status === "fulfilled" ? activity.value : []}
       initialError={status.status === "rejected" ? (status.reason instanceof Error ? status.reason.message : "Agent status is unavailable.") : null}
     />
+    </>
   );
 }

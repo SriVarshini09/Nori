@@ -175,7 +175,8 @@ export function ScreeningStep({ profile, onSubmit, busy, onBack, submitLabel, st
     e.preventDefault();
     onSubmit({
       heardAbout,
-      salaryExpectation: { amount: amount ? Number(amount) : null, currency, period },
+      // Blank means "no preference": send null, never an amount of null.
+      salaryExpectation: amount && Number.isFinite(Number(amount)) ? { amount: Number(amount), currency, period } : null,
       earliestStartDate: orNull(start),
       noticePeriodWeeks: notice === "" ? null : Math.max(0, Number(notice)),
       over18,
