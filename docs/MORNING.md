@@ -40,7 +40,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 | Anthropic, Gemini and other providers | Same adapter, not run against the real services. |
 | Local models (Ollama) | Tried qwen3:4b and qwen3.5:9b: neither returned usable JSON for a whole-resume tailoring (timeout / invalid JSON), so Nori falls back to its rules. Per-role requests and JSON repair are planned. |
 | Hosted model, Composio (Gmail/Sheets/Calendar/Slack), Parallel, Telegram, WhatsApp, Resend email | **Blocked: needs keys.** Nothing ran against these. `npm run doctor` prints exactly which variable each one needs. |
-| Reset / confirm emails | Without (`RESEND_API_KEY` or `SMTP_URL`) + `EMAIL_FROM` the links are written to the API log, not emailed. In production that means users cannot recover accounts. |
+| Email through SMTP (Gmail) | **Verified for real (20 Oct 2026).** Gmail login accepted; a real confirmation email and a real password-reset email arrived in the inbox, both links worked, the reset signed out older sessions. Sender used for the test: a personal Gmail with an app password; use a domain address before a public launch (Gmail limits and spam risk). Resend: not run. |
+| Reset / confirm emails (setup note) | Without (`RESEND_API_KEY` or `SMTP_URL`) + `EMAIL_FROM` the links are written to the API log, not emailed. In production that means users cannot recover accounts. |
 | Privacy and Terms text | Drafted from what the code actually does. Have someone qualified review before launch. Set `NEXT_PUBLIC_CONTACT_EMAIL` so they show a real contact (otherwise they point to the GitHub issues page). |
 | Production Postgres | New migrations `0005_resume_docs` and `0006_auth_tokens` ran on PGlite only. Run them against a Neon copy first. |
 

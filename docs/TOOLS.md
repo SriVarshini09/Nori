@@ -41,7 +41,7 @@ Order is by value. Effort in agent-hours is rough.
 - [ ] C3. Tracker export: CSV download and an .ics file for interviews. (3h)
 
 ### D. Outbound mail and channels
-- [x] D1. SMTP sender next to Resend (`SMTP_URL`), reflected in `npm run doctor`. (2h)
+- [x] D1. (verified with real Gmail SMTP) SMTP sender next to Resend (`SMTP_URL`), reflected in `npm run doctor`. (2h)
 - [ ] D2. Telegram: verify the real bot flow end to end once a token exists. (2h)
 - [ ] D3. Decide on WhatsApp: remove from the default settings page until a verified business number exists. (1h)
 
