@@ -13,7 +13,7 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 | Lint (web) | no lint errors |
 | Web build, live mode | production build with `NEXT_PUBLIC_USE_MOCK=0` |
 | Crawl | 67 pages (visitor and signed-in, desktop and 390 px phone), every link, 0 console/network errors, 0 axe-core WCAG A/AA violations, no horizontal overflow |
-| Browser e2e | a real browser: signup, onboarding, resume studio, application review and edit, forgot password, email confirm, devices, password change |
+| Browser e2e (46 steps) | a real browser: signup, onboarding, resume studio, application review and edit, forgot password, email confirm, devices, password change, plus click-through of jobs (filters, drawer, apply), applications (answer then approve, skip), tracker, inbox and auto apply (cap, switches, lanes, run now, chat) |
 
 ## What changed, in the order you asked about
 
@@ -22,6 +22,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 **Resume.** A real system instead of a sample: library of resumes, section editor with live preview, 7 templates, font, accent, size, spacing, margins, Letter/A4, section reorder and hide, version history with restore, PDF / Word / text / JSON export, an ATS check that warns on two-column layouts, and editing of the tailored resume for a job before you approve it. Every template was rendered for four personas; no text is lost in the PDF and page limits hold.
 
 **Backend.** Password reset, email confirmation, change password, signed-in devices (list and sign out), rate limits, security headers and CSP, boot-time env validation, hourly clean-up of expired sessions. The answer-then-approve 409 is fixed (approve waits up to 25 s for the resumed run). Lever, Ashby and SmartRecruiters drivers added. The tailoring prompt shrinks in three steps for 4k-context local models.
+
+**Security.** A pasted job link can no longer make the server fetch internal addresses (loopback, private ranges, cloud metadata), including through redirects. An unreadable link now answers 422 with the reason instead of 500. One gap left: the model-test endpoint still calls a user-supplied base URL, because local Ollama needs that; restrict it before running a multi-tenant host.
 
 **Public side.** Landing page, Privacy, Terms, robots, sitemap, share image.
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { api } from "@/lib/api";
+import { CollapseOnPhone } from "@/components/CollapseOnPhone";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
 import { JobBoard, type BoardApp } from "@/components/JobBoard";
 import { JobDrawer } from "@/components/JobDrawer";
@@ -36,7 +37,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         subtitle={`${items.length} role${items.length === 1 ? "" : "s"} scored against your career graph${items.length ? `, best match ${Math.round(top * 100)}%` : ""}.`}
       />
 
-      <DiscoverPanel />
+      <CollapseOnPhone title="Find more roles"><DiscoverPanel /></CollapseOnPhone>
 
       <section className="mt-20 sm:mt-24">
         <SectionHeader index="02" label="Board" size="md" title={<>Best matches<br />first.</>} />
