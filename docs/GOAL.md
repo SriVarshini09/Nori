@@ -31,13 +31,13 @@ One step at a time. After each step: run the gate, commit with a message that sa
 
 ## Checklist
 
-- [ ] P0 Gate script, CI workflow, security headers, CORS, rate limits
-- [ ] P1 Crawler, fix every broken link or route, end-to-end suite
-- [ ] P2 Backend hardening that needs no keys (409 race, auth flows, sessions, feeds, scheduler, drivers)
-- [ ] P3 Resume system (library, editor, templates, theme, exports, history, better tailoring)
-- [ ] P4 Integrations: report state per service, wire everything that can be tested offline
-- [ ] P5 Frontend polish (mobile, accessibility, empty/error states, legal pages)
-- [ ] P6 Morning report (`docs/MORNING.md`): what was done, what is blocked and on which key, how to review, how to launch
+- [x] P0 Gate script, CI workflow, security headers, CORS, rate limits
+- [x] P1 Crawler, fix every broken link or route, end-to-end suite
+- [x] P2 Backend hardening that needs no keys (409 race, auth flows, sessions, feeds, scheduler, drivers)
+- [x] P3 Resume system (library, editor, templates, theme, exports, history, better tailoring)
+- [x] P4 Integrations: report state per service, wire everything that can be tested offline
+- [x] P5 Frontend polish (mobile, accessibility, empty/error states, legal pages)
+- [x] P6 Morning report (`docs/MORNING.md`): what was done, what is blocked and on which key, how to review, how to launch
 
 ## Keys the human provides (put in a gitignored `.env` at the main checkout root; copied into the worktree at run time)
 
@@ -59,8 +59,17 @@ EMAIL_FROM=
 
 ## Blocked
 
-(filled in during the run)
+- Live-site verification of the Lever, Ashby and SmartRecruiters drivers: they route and open the application step (tested offline), but a dry run against a real posting needs a human-chosen job. SmartRecruiters renders its form in web components, which the generic filler may not reach.
+- Anything needing a key: hosted model (HOSTED_LLM_API_KEY or ANTHROPIC_API_KEY), COMPOSIO_API_KEY, PARALLEL_API_KEY, TELEGRAM_BOT_TOKEN, WhatsApp trio, RESEND_API_KEY + EMAIL_FROM, MCP_TOKEN. `npm run doctor` prints the live list. Reported as blocked, never as working.
 
 ## Log
 
-(one line per completed step, newest last)
+- Resume engine: 7 templates, theme, fonts, library, versions, exports, tailored-resume editing (API + studio UI).
+- Gate (typecheck, tests, lint, live build, crawl, e2e) and CI workflow; security headers/CSP, rate limits, artifact ownership fix.
+- Crawler: every route and link, plus axe-core WCAG A/AA at desktop and 390 px; 0 issues. Contrast token and radiogroup semantics fixed.
+- Browser e2e journey (27 steps): signup, onboarding, studio, application review and edit, recovery, devices, password change.
+- Real bugs fixed on the way: onboarding Screening 400 on a blank salary; hydration error (div in p); approve-form 409 after answering.
+- Auth: password reset, email verification, change password, session list and revoke; hourly pruning of expired sessions and links.
+- Env validation at boot, honest integration report, `npm run doctor`.
+- Lever, Ashby, SmartRecruiters drivers; tailoring prompt shrinks for small-window models.
+- Landing page, Privacy, Terms, SEO.
