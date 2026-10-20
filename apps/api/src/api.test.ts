@@ -4,7 +4,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  jobs, openTestDb, users, renderHtml, atsChecks,
+  jobs, applications, openTestDb, users, renderHtml, atsChecks,
   type ApplyDriver, type DriverContext, type DriverResult, type Db, type RenderFn,
 } from "@jobgraph/core";
 import { createApp } from "./app.js";
@@ -174,6 +174,29 @@ describe("api", () => {
     expect(r.status).toBe(404);
     expect(r.json).toEqual({ error: "Application not found" });
     expect((await call("GET", "/api/nope")).json.error).toMatch(/No route/);
+  });
+
+  it("approve-form waits for a run that is still resuming after an answer instead of answering 409", async () => {
+    const [job] = await db.insert(jobs).values({
+      companyName: "Beta", atsType: "web", externalId: "beta-1", title: "Platform Engineer",
+      descriptionText: "Requirements:\n- TypeScript", applyUrl: "https://example.com/jobs/2",
+    }).returning();
+    const created = await call("POST", "/api/applications?wait=1", { jobId: job.id });
+    const id = created.json.id as string;
+    expect((await call("POST", `/api/applications/${id}/approve-resume?wait=1`)).json.status).toBe("form_review");
+
+    // The state a user hits right after answering: the run is back to filling and reaches the review a moment later.
+    await db.update(applications).set({ status: "filling" }).where(eq(applications.id, id));
+    setTimeout(() => { void Promise.resolve(db.update(applications).set({ status: "form_review" }).where(eq(applications.id, id))); }, 700); // drizzle builders run only when awaited
+    const started = Date.now();
+    const approved = await call("POST", `/api/applications/${id}/approve-form?wait=1`, { answers: { "First Name": "Jo" } });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(600);
+    expect(approved.status).toBe(200);
+    expect(approved.json.status).toBe("submitted");
+
+    // A finished application still answers 409 at once.
+    const again = await call("POST", `/api/applications/${id}/approve-form?wait=1`, {});
+    expect(again.status).toBe(409);
   });
 
   it("serves MCP tools over streamable HTTP", async () => {

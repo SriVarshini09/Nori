@@ -55,6 +55,8 @@ export type AppOptions = {
   notify?: (userId: string, msg: OutboundMessage) => Promise<unknown>;
   /** Rate limiting: true or unset = the default rules (off under test runners), false = off, or custom rules. */
   rateLimit?: boolean | RateRule[];
+  /** How long approve-form waits for a resumed run to reach the form review (default 25 s, under the web proxy timeout). */
+  approveWaitMs?: number;
 };
 
 export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
@@ -548,8 +550,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.post("/api/applications/:id/approve-form", async (c) => {
-    const a = await loadApp(c, c.req.param("id"));
+    let a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers.optional() }));
+    // Answering a question resumes the run in the background, so an approve that follows at once finds the
+    // application still filling the form. Wait for it to reach the review instead of rejecting a valid request.
+    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); (a.status === "filling" || a.status === "queued") && Date.now() < deadline;) {
+      await new Promise((r) => setTimeout(r, 400));
+      a = await loadApp(c, a.id);
+    }
     if (a.status !== "form_review") throw bad(`Application is ${a.status}, not form_review`, 409);
     await kick(c, () => approveForm(db, a.id, deps, answers));
     return c.json(await loadApp(c, a.id));
