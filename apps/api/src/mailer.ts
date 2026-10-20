@@ -1,22 +1,26 @@
+import nodemailer from "nodemailer";
+
 /**
  * Outgoing email for account links (verification, password reset).
  *
- * With RESEND_API_KEY set, mail goes through Resend. Without it nothing leaves the machine: the message is
+ * With RESEND_API_KEY set, mail goes through Resend; with SMTP_URL, through any SMTP server. Without either nothing leaves the machine: the message is
  * logged to the console so a developer can click the link. `mailerState()` reports which of the two applies,
  * so the app never claims email works when it only logs.
  */
 export type Mail = { to: string; subject: string; text: string; html?: string };
 export type Mailer = (mail: Mail) => Promise<void>;
 
-export type MailerState = { mode: "resend" | "console"; from: string | null; blockedBy: string | null };
+export type MailerState = { mode: "resend" | "smtp" | "console"; from: string | null; blockedBy: string | null };
 
-export function mailerState(): MailerState {
-  if (process.env.RESEND_API_KEY) return { mode: "resend", from: process.env.EMAIL_FROM ?? null, blockedBy: process.env.EMAIL_FROM ? null : "EMAIL_FROM" };
-  return { mode: "console", from: null, blockedBy: "RESEND_API_KEY" };
+/** Which sender is active. Resend wins when both are set; SMTP_URL (smtp://user:pass@host:587 or smtps://...) is the any-provider option. */
+export function mailerState(env: Record<string, string | undefined> = process.env): MailerState {
+  if (env.RESEND_API_KEY) return { mode: "resend", from: env.EMAIL_FROM ?? null, blockedBy: env.EMAIL_FROM ? null : "EMAIL_FROM" };
+  if (env.SMTP_URL) return { mode: "smtp", from: env.EMAIL_FROM ?? null, blockedBy: env.EMAIL_FROM ? null : "EMAIL_FROM" };
+  return { mode: "console", from: null, blockedBy: "RESEND_API_KEY or SMTP_URL" };
 }
 
 export const consoleMailer: Mailer = async (mail) => {
-  console.log(`[mail] (not sent: RESEND_API_KEY is not set) to=${mail.to} subject="${mail.subject}"\n${mail.text}`);
+  console.log(`[mail] (not sent: neither RESEND_API_KEY nor SMTP_URL is set) to=${mail.to} subject="${mail.subject}"\n${mail.text}`);
 };
 
 export function resendMailer(apiKey: string, from: string): Mailer {
@@ -31,10 +35,19 @@ export function resendMailer(apiKey: string, from: string): Mailer {
   };
 }
 
+/** Any SMTP server: Gmail with an app password, Fastmail, Postmark, SES, your own. The URL carries the login. */
+export function smtpMailer(url: string, from: string): Mailer {
+  const transport = nodemailer.createTransport(url);
+  return async (mail) => {
+    await transport.sendMail({ from, to: mail.to, subject: mail.subject, text: mail.text, ...(mail.html ? { html: mail.html } : {}) });
+  };
+}
+
 /** The mailer the environment calls for. */
 export function defaultMailer(): Mailer {
   const s = mailerState();
   if (s.mode === "resend" && s.from) return resendMailer(process.env.RESEND_API_KEY!, s.from);
+  if (s.mode === "smtp" && s.from) return smtpMailer(process.env.SMTP_URL!, s.from);
   return consoleMailer;
 }
 

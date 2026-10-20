@@ -25,7 +25,8 @@ export function checkEnv(env: Env = process.env): EnvCheck {
   if (env.WEB_URL) {
     try { new URL(env.WEB_URL); } catch { errors.push(`WEB_URL is not a valid URL: "${env.WEB_URL}".`); }
   }
-  if (env.RESEND_API_KEY && !env.EMAIL_FROM) warnings.push("RESEND_API_KEY is set but EMAIL_FROM is not, so account emails are only logged. Set EMAIL_FROM to a sender your Resend domain allows.");
+  if ((env.RESEND_API_KEY || env.SMTP_URL) && !env.EMAIL_FROM) warnings.push("An email provider is set but EMAIL_FROM is not, so account emails are only logged. Set EMAIL_FROM to a sender the provider allows.");
+  if (env.SMTP_URL && !/^smtps?:\/\//i.test(env.SMTP_URL)) errors.push("SMTP_URL must look like smtp://user:password@host:587 (or smtps:// for port 465).");
   if (env.ALLOW_REAL_SUBMIT === "true") warnings.push("ALLOW_REAL_SUBMIT=true: approved applications will be submitted for real.");
 
   if (prod) {
@@ -36,7 +37,7 @@ export function checkEnv(env: Env = process.env): EnvCheck {
     else if (!env.CREDENTIALS_KEY) warnings.push("CREDENTIALS_KEY is not set; the key-encryption key is derived from APP_SECRET. Prefer a dedicated CREDENTIALS_KEY.");
     if (env.DEFAULT_USER_EMAIL) errors.push("DEFAULT_USER_EMAIL must not be set in production: it would let anyone without a session act as that user.");
     if (!env.MCP_TOKEN) warnings.push("MCP_TOKEN is not set: the /mcp endpoint will refuse every request in production.");
-    if (!env.RESEND_API_KEY) warnings.push("RESEND_API_KEY is not set: password-reset and verification emails are only written to the log, so users cannot recover an account.");
+    if (!env.RESEND_API_KEY && !env.SMTP_URL) warnings.push("Neither RESEND_API_KEY nor SMTP_URL is set: password-reset and verification emails are only written to the log, so users cannot recover an account.");
     if (!env.ARTIFACTS_DIR) warnings.push("ARTIFACTS_DIR is not set: resume PDFs and screenshots go to the working directory and vanish with the container. Mount a volume and set it.");
   }
   return { errors, warnings };
@@ -72,7 +73,12 @@ export function integrationReport(env: Env = process.env): IntegrationState[] {
     row("parallel", "Job discovery and company research (Parallel)", ["PARALLEL_API_KEY"], "Discovery outside the public ATS feeds and company research are unavailable."),
     row("telegram", "Telegram channel", ["TELEGRAM_BOT_TOKEN"], "No Telegram chat; the web app and other channels still work."),
     row("whatsapp", "WhatsApp channel", ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN"], "No WhatsApp chat."),
-    row("email", "Account email (Resend)", ["RESEND_API_KEY", "EMAIL_FROM"], "Verification and password-reset links are written to the server log instead of being emailed."),
+    {
+      id: "email", name: "Account email (Resend or SMTP)",
+      state: (has("RESEND_API_KEY") || has("SMTP_URL")) && has("EMAIL_FROM") ? "configured" : "blocked",
+      needs: [...(has("RESEND_API_KEY") || has("SMTP_URL") ? [] : ["RESEND_API_KEY or SMTP_URL"]), ...(has("EMAIL_FROM") ? [] : ["EMAIL_FROM"])],
+      without: "Verification and password-reset links are written to the server log instead of being emailed.",
+    },
     row("mcp", "MCP endpoint token", ["MCP_TOKEN"], "In production /mcp refuses every request."),
   ];
 }
