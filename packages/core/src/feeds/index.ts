@@ -12,3 +12,8 @@ export type { JobRow } from "./discover.js";
 export { upsertJobs, pollTenant } from "./normalize.js";
 export { extractRequirements, ensureRequirements, heuristicRequirements, JobRequirementsSchema } from "./requirements.js";
 export { UnsafeUrlError, assertPublicUrl, isPrivateAddress, safeFetch } from "./ssrf.js";
+export { BOARD_REGISTRY, VERIFIED_AT, type BoardEntry } from "./board-registry.js";
+export { seedBoardRegistry } from "./registry-seed.js";
+export { detectBoard, findBoardsInHtml, type DetectedBoard } from "./detect.js";
+export { listCompanies, followCompany, unfollowCompany, type CompanyRow } from "./companies.js";
+export { prettifyToken } from "./http.js";

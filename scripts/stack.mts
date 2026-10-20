@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { jobs, openTestDb, type ApplyDriver, type DriverContext, type DriverResult, type Db } from "@jobgraph/core";
+import { jobs, openTestDb, seedBoardRegistry, type ApplyDriver, type DriverContext, type DriverResult, type Db } from "@jobgraph/core";
 import { createApp } from "../apps/api/src/app.js";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -115,6 +115,7 @@ export async function startStack(opts: { build?: boolean } = {}): Promise<Stack>
   process.env.OLLAMA_BASE_URL = "http://127.0.0.1:1/v1";
   delete process.env.ANTHROPIC_API_KEY; delete process.env.HOSTED_LLM_API_KEY; delete process.env.OPENAI_COMPAT_API_KEY;
   const db = await openTestDb();
+  await seedBoardRegistry(db); // the curated companies, as the worker does on start
   const artifactsRoot = await mkdtemp(path.join(os.tmpdir(), "nori-e2e-"));
   const outbox: Stack["outbox"] = [];
   const app = createApp(db, {

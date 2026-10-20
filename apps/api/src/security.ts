@@ -98,7 +98,7 @@ export function defaultRateRules(): RateRule[] {
     },
     {
       name: "heavy", windowMs: 60_000, max: 20,
-      match: (c) => c.req.method === "POST" && /^\/api\/(jobs\/(discover|url|poll)|profile\/resume(-file)?|applications)$/.test(c.req.path),
+      match: (c) => c.req.method === "POST" && /^\/api\/(jobs\/(discover|url|poll)|companies\/detect|profile\/resume(-file)?|applications)$/.test(c.req.path),
     },
     {
       name: "api", windowMs: 60_000, max: 900,

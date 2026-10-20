@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { api } from "@/lib/api";
 import { CollapseOnPhone } from "@/components/CollapseOnPhone";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
+import { TextLink } from "@/components/ui";
 import { JobBoard, type BoardApp } from "@/components/JobBoard";
 import { JobDrawer } from "@/components/JobDrawer";
 import { filtersToParams, parseFilters } from "@/components/jobMeta";
@@ -38,6 +39,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       />
 
       <CollapseOnPhone title="Find more roles"><DiscoverPanel /></CollapseOnPhone>
+      <p className="mt-4"><TextLink href="/companies">Browse and follow companies</TextLink></p>
 
       <section className="mt-20 sm:mt-24">
         <SectionHeader index="02" label="Board" size="md" title={<>Best matches<br />first.</>} />

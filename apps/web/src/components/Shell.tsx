@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ArrowRight, Briefcase, Ellipsis, FileText, Inbox, LayoutDashboard, Network, Send, Settings, SquareKanban, UserRound, X, Zap,
+  ArrowRight, Briefcase, Building2, Ellipsis, FileText, Inbox, LayoutDashboard, Network, Send, Settings, SquareKanban, UserRound, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cx } from "./cx";
@@ -31,6 +31,7 @@ const NAV: NavItem[][] = [
     { href: "/agent", label: "Auto apply", icon: Zap },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/jobs", label: "Jobs", icon: Briefcase },
+    { href: "/companies", label: "Companies", icon: Building2 },
     { href: "/applications", label: "Applications", icon: Send, count: (d) => d.applicationsCount },
     { href: "/inbox", label: "Inbox", icon: Inbox, count: (d) => d.unreadCount },
     { href: "/tracker", label: "Tracker", icon: SquareKanban },

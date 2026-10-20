@@ -15,7 +15,7 @@ import {
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
-  changePassword, consumeAuthToken, sha256, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -550,6 +550,42 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const { job, added } = await addJobFromUrl(db, url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
     const [ranked] = await matchJobs(db, c.get("user").id, [job.id]);
     return c.json({ job: ranked?.job ?? job, match: ranked?.match ?? null, added });
+  });
+
+  // ---------- companies: the boards Nori watches, and the ones a user follows ----------
+  app.get("/api/companies", async (c) => {
+    const n = (k: string, d: number, max: number) => Math.min(max, Math.max(0, Number.parseInt(c.req.query(k) ?? "", 10) || d));
+    return c.json(await listCompanies(db, c.get("user").id, {
+      q: c.req.query("q") ?? undefined, followedOnly: c.req.query("followed") === "1", limit: n("limit", 60, 200), offset: n("offset", 0, 100_000),
+    }));
+  });
+
+  const BoardRef = z.object({ atsType: z.enum(["greenhouse", "lever", "ashby", "smartrecruiters"]), token: z.string().min(1).max(200) });
+
+  app.post("/api/companies/follow", async (c) => {
+    const { atsType, token } = await body(c, BoardRef);
+    if (!(await followCompany(db, c.get("user").id, atsType, token))) throw bad("Nori is not watching that company yet", 404);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/api/companies/follow", async (c) => {
+    const { atsType, token } = await body(c, BoardRef);
+    await unfollowCompany(db, c.get("user").id, atsType, token);
+    return c.body(null, 204);
+  });
+
+  // Paste a company's careers page or a posting link: find its job board, read it, and follow the company.
+  app.post("/api/companies/detect", async (c) => {
+    const { url } = await body(c, z.object({ url: z.string().trim().url().max(2000) }));
+    const user = c.get("user");
+    const found = await detectBoard(url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
+    if (!found) throw bad("No supported job board (Greenhouse, Lever, Ashby or SmartRecruiters) was found on that page. Try pasting a link to one of its job postings.", 422);
+    const res = await pollTenant(db, found.atsType, found.token).catch(() => { throw bad(`Found the ${found.atsType} board "${found.token}", but its job feed did not answer. Check the link and try again.`, 422); });
+    if (res.total === 0) throw bad(`The ${found.atsType} board "${found.token}" has no open jobs right now.`, 422);
+    await db.update(companies).set({ name: found.name }).where(and(eq(companies.atsType, found.atsType), eq(companies.atsToken, found.token), sql`${companies.name} = ${prettifyToken(found.token)}`));
+    await followCompany(db, user.id, found.atsType, found.token);
+    await computeMatchesForUser(db, user.id, { jobIds: res.ids, limit: Math.max(1, res.ids.length) }).catch(() => undefined);
+    return c.json({ atsType: found.atsType, token: found.token, name: found.name, openJobs: res.total, added: res.added });
   });
 
   app.post("/api/jobs/poll", async (c) => {

@@ -8,7 +8,7 @@
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
   InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
-  Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
+  BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
 } from "./types";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
@@ -124,6 +124,13 @@ export const api = {
     if (USE_MOCK) return;
     await request("DELETE", "/api/auth/account", { confirm });
   },
+
+  // ---- companies
+  listCompanies: (p: { q?: string; followed?: boolean; limit?: number; offset?: number } = {}): Promise<CompanyList> =>
+    live("GET", `/api/companies${qs({ q: p.q, followed: p.followed ? 1 : undefined, limit: p.limit, offset: p.offset })}`),
+  followCompany: async (atsType: BoardAts, token: string): Promise<void> => { await live("POST", "/api/companies/follow", { atsType, token }); },
+  unfollowCompany: async (atsType: BoardAts, token: string): Promise<void> => { await live("DELETE", "/api/companies/follow", { atsType, token }); },
+  detectCompany: (url: string): Promise<DetectedCompany> => live("POST", "/api/companies/detect", { url }),
 
   // ---- onboarding
   onboarding: async (): Promise<OnboardingState> => (USE_MOCK ? (await mock()).onboarding : request("GET", "/api/onboarding")),

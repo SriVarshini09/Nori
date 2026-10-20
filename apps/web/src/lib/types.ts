@@ -415,3 +415,8 @@ export type AgentTickSummary = {
   laneJobs?: number;
   note?: string;
 };
+
+export type BoardAts = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export type WatchedCompany = { id: string; name: string; atsType: BoardAts; token: string; openJobs: number; followed: boolean };
+export type CompanyList = { companies: WatchedCompany[]; total: number };
+export type DetectedCompany = { atsType: BoardAts; token: string; name: string; openJobs: number; added: number };

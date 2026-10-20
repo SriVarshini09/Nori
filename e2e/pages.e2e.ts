@@ -223,6 +223,45 @@ describe("auto apply", () => {
   });
 });
 
+describe("companies", () => {
+  it("lists the watched companies with open-role counts", async () => {
+    await page.goto(`${WEB}/companies`);
+    const rows = page.getByRole("list", { name: "Companies" }).getByRole("listitem");
+    await expect(rows).toHaveCount(60);
+    await expect(page.getByRole("status").filter({ hasText: /companies/ })).toContainText(/1\d\d companies/);
+    await expect(rows.first()).toContainText(/open role/);
+  });
+
+  it("searches, follows, filters to followed ones and unfollows", async () => {
+    const rows = page.getByRole("list", { name: "Companies" }).getByRole("listitem");
+    await page.getByRole("searchbox", { name: "Search companies" }).fill("stripe");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("Stripe");
+    await page.getByRole("button", { name: "Follow Stripe" }).click();
+    await expect(page.getByRole("button", { name: "Unfollow Stripe" })).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(async () => (await api("/api/me")).json.profile.preferences.followCompanies).toEqual(["greenhouse:stripe"]);
+    await page.getByRole("searchbox", { name: "Search companies" }).fill("");
+    await page.getByRole("switch", { name: "Following only" }).click();
+    await expect(rows).toHaveCount(1);
+    await page.getByRole("button", { name: "Unfollow Stripe" }).click();
+    await expect(page.getByText("You are not following anyone yet")).toBeVisible();
+    await expect.poll(async () => (await api("/api/me")).json.profile.preferences.followCompanies).toEqual([]);
+  });
+
+  it("explains why a link cannot be used instead of failing", async () => {
+    await page.getByRole("switch", { name: "Following only" }).click();
+    await page.getByPlaceholder("https://example.com/careers").fill("http://169.254.169.254/latest");
+    await page.getByRole("button", { name: "Find and follow" }).click();
+    await expect(page.getByText(/not a public website/i)).toBeVisible({ timeout: 20_000 });
+  });
+
+  it("is reachable from the jobs page", async () => {
+    await page.goto(`${WEB}/jobs`);
+    await page.getByRole("link", { name: "Browse and follow companies" }).click();
+    await page.waitForURL(/\/companies$/);
+  });
+});
+
 describe("nothing broke along the way", () => {
   it("raised no page errors, console errors or server errors", () => {
     // Syncing a sheet or a mailbox without Composio answers 503 on purpose ("not configured"); the pages show it as a message.

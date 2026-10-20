@@ -25,6 +25,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 
 **Security.** A pasted job link can no longer make the server fetch internal addresses (loopback, private ranges, cloud metadata), including through redirects. An unreadable link now answers 422 with the reason instead of 500. One gap left: the model-test endpoint still calls a user-supplied base URL, because local Ollama needs that; restrict it before running a multi-tenant host.
 
+**Job supply.** Nori now watches a curated registry of 186 company boards (104 Greenhouse, 54 Ashby, 20 Lever, 8 SmartRecruiters), each checked against its live public feed on the day it was built (about 33,000 open roles). The worker seeds them at start and re-reads each every 3 hours; boards a user follows or applied to are refreshed hourly by that user's agent tick. A new Companies page lets people search, follow and unfollow, and add any company by pasting its careers or job link (Nori finds the board behind it). Re-verify the list with `npx tsx scripts/verify-boards.mts` (edit `scripts/board-candidates.txt` to add candidates). Not covered: Workday, LinkedIn, Indeed and company-built career sites.
+
 **Public side.** Landing page, Privacy, Terms, robots, sitemap, share image.
 
 ## What is NOT verified, and why
