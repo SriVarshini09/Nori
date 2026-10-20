@@ -27,6 +27,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 
 **Job supply.** Nori now watches a curated registry of 186 company boards (104 Greenhouse, 54 Ashby, 20 Lever, 8 SmartRecruiters), each checked against its live public feed on the day it was built (about 33,000 open roles). The worker seeds them at start and re-reads each every 3 hours; boards a user follows or applied to are refreshed hourly by that user's agent tick. A new Companies page lets people search, follow and unfollow, and add any company by pasting its careers or job link (Nori finds the board behind it). Re-verify the list with `npx tsx scripts/verify-boards.mts` (edit `scripts/board-candidates.txt` to add candidates). Not covered: Workday, LinkedIn, Indeed and company-built career sites.
 
+**Bring your own model.** Settings and onboarding now offer 12 providers (OpenAI, Anthropic, Gemini, OpenRouter, Groq, DeepSeek, Together, Mistral, Cline, Ollama, LM Studio, or any OpenAI-compatible endpoint). Paste a key, load the provider's own model list, test the connection; keys are stored encrypted and never shown again. In production a model URL must be a public address (so the model settings cannot be used to reach internal services); single-user hosts that want Ollama or LM Studio on the same machine set `ALLOW_PRIVATE_MODEL_URLS=1`. Account email can now go through Resend or any SMTP server (`SMTP_URL` + `EMAIL_FROM`); the SMTP path is tested against a stand-in SMTP server, not a real mail provider. Plan and checklist: `docs/TOOLS.md`.
+
 **Public side.** Landing page, Privacy, Terms, robots, sitemap, share image.
 
 ## What is NOT verified, and why
@@ -35,7 +37,7 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 |---|---|
 | Real applications on Lever / Ashby / SmartRecruiters | Drivers route and open the application step (tested offline). Never run against a live posting. SmartRecruiters uses web components that the generic filler may not reach. Do a dry run on a posting you pick. |
 | Hosted model, Composio (Gmail/Sheets/Calendar/Slack), Parallel, Telegram, WhatsApp, Resend email | **Blocked: needs keys.** Nothing ran against these. `npm run doctor` prints exactly which variable each one needs. |
-| Reset / confirm emails | Without `RESEND_API_KEY` + `EMAIL_FROM` the links are written to the API log, not emailed. In production that means users cannot recover accounts. |
+| Reset / confirm emails | Without (`RESEND_API_KEY` or `SMTP_URL`) + `EMAIL_FROM` the links are written to the API log, not emailed. In production that means users cannot recover accounts. |
 | Privacy and Terms text | Drafted from what the code actually does. Have someone qualified review before launch. Set `NEXT_PUBLIC_CONTACT_EMAIL` so they show a real contact (otherwise they point to the GitHub issues page). |
 | Production Postgres | New migrations `0005_resume_docs` and `0006_auth_tokens` ran on PGlite only. Run them against a Neon copy first. |
 
