@@ -199,6 +199,16 @@ describe("api", () => {
     expect(again.status).toBe(409);
   });
 
+  it("answers 422 with the reason for a pasted link that is not a readable public job page", async () => {
+    const internal = await call("POST", "/api/jobs/url", { url: "http://169.254.169.254/latest/meta-data/" });
+    expect(internal.status).toBe(422);
+    expect(internal.json.error).toMatch(/not a public website/);
+    const board = await call("POST", "/api/jobs/url", { url: "https://boards.greenhouse.io/acme" });
+    expect(board.status).toBe(422);
+    expect(board.json.error).toMatch(/job board, not a single posting/);
+    expect((await call("POST", "/api/jobs/url", { url: "nope" })).status).toBe(400);
+  });
+
   it("serves MCP tools over streamable HTTP", async () => {
     const res = await app.request("/mcp", {
       method: "POST",

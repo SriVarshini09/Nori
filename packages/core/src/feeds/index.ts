@@ -11,3 +11,4 @@ export { discoverJobs, addJobFromUrl, buildSearchQueries, ATS_DOMAINS } from "./
 export type { JobRow } from "./discover.js";
 export { upsertJobs, pollTenant } from "./normalize.js";
 export { extractRequirements, ensureRequirements, heuristicRequirements, JobRequirementsSchema } from "./requirements.js";
+export { UnsafeUrlError, assertPublicUrl, isPrivateAddress, safeFetch } from "./ssrf.js";

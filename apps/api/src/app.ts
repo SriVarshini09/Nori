@@ -546,7 +546,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.post("/api/jobs/url", async (c) => {
     const { url } = await body(c, z.object({ url: z.string().url() }));
-    const { job, added } = await addJobFromUrl(db, url);
+    // Whatever is wrong with the link is the person's to fix: answer 422 with the reason rather than a 500.
+    const { job, added } = await addJobFromUrl(db, url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
     const [ranked] = await matchJobs(db, c.get("user").id, [job.id]);
     return c.json({ job: ranked?.job ?? job, match: ranked?.match ?? null, added });
   });
