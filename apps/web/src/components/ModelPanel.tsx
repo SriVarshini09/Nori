@@ -117,11 +117,11 @@ export function ModelPanel({ initial, compact }: { initial: ModelSettings | null
         )}
       </div>
 
-      <ol role="radiogroup" aria-label="Model provider" className="mt-5 border-t border-line">
+      <div role="radiogroup" aria-label="Model provider" className="mt-5 border-t border-line">
         {PROVIDERS.map((d, n) => {
           const on = d.id === provider;
           return (
-            <li key={d.id} className="border-b border-line">
+            <div key={d.id} className="border-b border-line">
               <button
                 type="button"
                 role="radio"
@@ -142,10 +142,10 @@ export function ModelPanel({ initial, compact }: { initial: ModelSettings | null
                   {on && <span className="h-2 w-2 rounded-full bg-ink" />}
                 </span>
               </button>
-            </li>
+            </div>
           );
         })}
-      </ol>
+      </div>
 
       <div className={cx("mt-5 grid gap-x-5 gap-y-5", !compact && "sm:grid-cols-2")}>
         {p.needsKey && (

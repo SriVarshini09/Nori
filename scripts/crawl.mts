@@ -7,7 +7,7 @@
  *   npx tsx scripts/crawl.mts --build    rebuild the web app first
  *   npx tsx scripts/crawl.mts --no-external   skip checking external links
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { ROOT, WEB, seedUser, startStack } from "./stack.mjs";
@@ -18,6 +18,10 @@ const pagesVisited: { url: string; as: string; final: string; status: number; ti
 const linkChecked = new Map<string, string>();
 const args = process.argv.slice(2);
 const checkExternal = !args.includes("--no-external");
+const AXE_SOURCE = await readFile(path.join(ROOT, "node_modules/axe-core/axe.min.js"), "utf8");
+/** Impacts that fail the crawl; "minor" and "moderate" are listed in the report as notes only. */
+const AXE_FAIL = new Set(["serious", "critical"]);
+const notes: Issue[] = [];
 
 // SwiftShader (software GL in headless Chromium) warns about shader precision in three.js; not an app defect.
 const NOISE = [/Download the React DevTools/i, /THREE.WebGLProgram/i];
@@ -100,7 +104,21 @@ async function visit(ctx: BrowserContext, url: string, as: string, opts: { expec
   for (const i of facts.unlabeledInputs) issues.push({ page: label, kind: "a11y", detail: `form control without a label: ${i}` });
   for (const i of facts.brokenImgs) issues.push({ page: label, kind: "image", detail: i });
   for (const v of facts.csp) issues.push({ page: label, kind: "csp", detail: v });
-  if (facts.overflowX) issues.push({ page: label, kind: "layout", detail: "horizontal scroll at 1280px" });
+  const vw = page.viewportSize()?.width ?? 0;
+  if (facts.overflowX) issues.push({ page: label, kind: "layout", detail: `horizontal scroll at ${vw}px` });
+
+  // WCAG 2 A/AA rules from axe-core. Evaluated through CDP, so the page's CSP does not matter.
+  if (!opts.expect404) {
+    await page.evaluate(AXE_SOURCE);
+    const found = await page.evaluate(async () => {
+      const r = await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] }, resultTypes: ["violations"] });
+      return r.violations.map((v: any) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n: any) => `${n.target.join(" ")} :: ${(n.failureSummary || "").split(String.fromCharCode(10)).slice(1, 2).join("").trim()}`) }));
+    });
+    for (const v of found as { id: string; impact: string; help: string; nodes: string[] }[]) {
+      const list = AXE_FAIL.has(v.impact) ? issues : notes;
+      list.push({ page: label, kind: `axe.${v.id}`, detail: `${v.help} (${v.impact}) ${v.nodes.join(" | ")}`.slice(0, 420) });
+    }
+  }
 
   pagesVisited.push({ url, as, final: final.replace(WEB, ""), status, title: facts.title, links: facts.links.length, buttons: facts.buttons });
   const links = [...new Set(facts.links)];
@@ -158,6 +176,14 @@ try {
     const r = await visit(authed, WEB + p, "user", { expectFinal: p === "/" ? /^\/dashboard/ : /^\/(?!login)/ });
     if (r) for (const l of r.links) await checkLink(authed, l, r.label, true);
   }
+  // ---- phone: same pages at 390 px, checking layout and accessibility (links were verified above)
+  const phone = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
+  const anonPhone = await browser.newContext(phone);
+  const authedPhone = await browser.newContext(phone);
+  await authedPhone.addCookies([{ name: cookie[0], value: cookie.slice(1).join("="), url: WEB, httpOnly: true, sameSite: "Lax" }]);
+  for (const p of ["/login", "/signup", "/forgot-password", "/reset-password?token=x".replace("x", "x".repeat(24))]) await visit(anonPhone, WEB + p, "visitor@phone", { expected401: true });
+  for (const p of routes) await visit(authedPhone, WEB + p, "user@phone", { expectFinal: p === "/" ? /^\/dashboard/ : /^\/(?!login)/ });
+
   // an unknown application and an unknown job must fail gracefully, not crash
   await visit(authed, WEB + "/applications/00000000-0000-0000-0000-000000000000", "user", { expectFinal: /./, expect404: true });
   await visit(authed, WEB + "/applications/not-a-uuid", "user", { expectFinal: /./, expect404: true });
@@ -176,9 +202,13 @@ const grouped = new Map<string, Issue[]>();
 for (const i of issues) { const k = `${i.page} | ${i.kind} | ${i.detail}`; if (!grouped.has(k)) grouped.set(k, []); grouped.get(k)!.push(i); }
 const unique = [...grouped.values()].map((v) => v[0]);
 await writeFile(path.join(outDir, "report.json"), JSON.stringify({ pages: pagesVisited, links: Object.fromEntries(linkChecked), issues: unique }, null, 2));
+const noteGroups = new Map<string, Issue>();
+for (const n of notes) noteGroups.set(`${n.page}|${n.kind}`, n);
 const md = [
   "# Crawl report", "", `Pages visited: ${pagesVisited.length}. Links checked: ${linkChecked.size}. Issues: ${unique.length}.`, "",
   "| Page | Kind | Detail |", "|---|---|---|", ...unique.map((i) => `| ${i.page} | ${i.kind} | ${i.detail.replace(/\|/g, "\\|")} |`), "",
+  `## Accessibility notes (minor and moderate axe findings, not failing): ${noteGroups.size}`, "",
+  ...[...noteGroups.values()].map((i) => `- ${i.page}: ${i.detail}`), "",
 ].join("\n");
 await writeFile(path.join(outDir, "report.md"), md);
 console.log(`\ncrawl: ${pagesVisited.length} pages, ${linkChecked.size} links, ${unique.length} issue(s)`);

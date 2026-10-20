@@ -14,7 +14,7 @@
   --ink: #141311;         /* text, primary button, ticks */
   --ink-2: #3a3732;       /* secondary text on paper */
   --muted: #6f6a60;       /* muted text */
-  --faint: #9a9487;       /* index numbers, placeholders */
+  --faint: #726c5f;       /* index numbers, placeholders (4.5:1 on every paper tone) */
   --accent: #b8632b;      /* burnt amber: used sparingly */
   --accent-ink: #8f4a1f;  /* accent text on cream (AA) */
 
