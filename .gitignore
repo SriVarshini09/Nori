@@ -8,3 +8,6 @@ dist/
 playwright-report/
 test-results/
 .neon
+
+# resume test fixtures are PDFs on purpose; tests must run from a fresh clone
+!packages/core/src/resume/fixtures/*.pdf
