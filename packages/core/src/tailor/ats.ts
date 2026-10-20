@@ -1,7 +1,7 @@
 import type { AtsCheck, JobRequirements, ResumeContent } from "../db/schema.js";
 import { mentionsSkill, wordCount } from "../match/text.js";
 import { startsWithVerb } from "./verbs.js";
-import { SECTION_ORDER } from "./template.js";
+import { EXTRA_TITLES, SECTION_TITLES } from "../resume/theme.js";
 import { contentText } from "./rewrite.js";
 
 export type AtsReport = { score: number; checks: AtsCheck[] };
@@ -27,7 +27,7 @@ function short(s: string, n = 48) {
  * Weighted ATS-readiness checks. Score is the passed weight over the applicable weight, 0..100.
  * `pages` comes from the renderer; the one-page check is skipped when it is unknown.
  */
-export function atsChecks(content: ResumeContent, html: string, requirements?: JobRequirements | null, pages?: number): AtsReport {
+export function atsChecks(content: ResumeContent, html: string, requirements?: JobRequirements | null, pages?: number, maxPages = 1): AtsReport {
   const checks: AtsCheck[] = [];
   const add = (id: string, label: string, weight: number, pass: boolean, detail?: string) => checks.push({ id, label, weight, pass, ...(detail ? { detail } : {}) });
 
@@ -36,15 +36,13 @@ export function atsChecks(content: ResumeContent, html: string, requirements?: J
   const missingContact = [!content.name?.trim() && "name", !ct.email && "email", !(ct.phone || ct.linkedin) && "phone or LinkedIn"].filter(Boolean) as string[];
   add("contact", "Contact info present (name, email, phone or LinkedIn)", 10, missingContact.length === 0, missingContact.length ? `Missing ${missingContact.join(", ")}` : undefined);
 
-  // headings
+  // headings: standard words, the essentials present, a name. Order is the user's choice and parsers cope with it.
   const h2s = [...html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)].map((m) => m[1].replace(/<[^>]+>/g, "").trim());
-  const known = h2s.filter((h) => (SECTION_ORDER as readonly string[]).includes(h));
-  const idx = known.map((h) => (SECTION_ORDER as readonly string[]).indexOf(h));
-  const inOrder = idx.every((v, i) => i === 0 || v > idx[i - 1]);
+  const standard = new Set<string>([...Object.values(SECTION_TITLES), ...EXTRA_TITLES]);
   const required = ["Experience", "Education", "Skills"].filter((h) => !h2s.includes(h));
-  const unknown = h2s.filter((h) => !known.includes(h));
-  add("headings", "Standard section headings, in order", 10, required.length === 0 && inOrder && unknown.length === 0 && /<h1[\s>]/i.test(html),
-    [required.length ? `Missing ${required.join(", ")}` : "", !inOrder ? "Sections out of order" : "", unknown.length ? `Non-standard: ${unknown.join(", ")}` : ""].filter(Boolean).join("; ") || undefined);
+  const unknown = h2s.filter((h) => !standard.has(h));
+  add("headings", "Standard section headings", 10, required.length === 0 && unknown.length === 0 && /<h1[\s>]/i.test(html),
+    [required.length ? `Missing ${required.join(", ")}` : "", unknown.length ? `Non-standard: ${unknown.join(", ")}` : ""].filter(Boolean).join("; ") || undefined);
 
   // layout
   const layoutIssues = [
@@ -82,7 +80,7 @@ export function atsChecks(content: ResumeContent, html: string, requirements?: J
       `${present.length}/${reqSkills.length} (${Math.round(cov * 100)}%)${absent.length ? `; missing ${absent.slice(0, 5).join(", ")}` : ""}`);
   }
 
-  if (typeof pages === "number") add("one_page", "Fits on one page", 15, pages === 1, `${pages} page${pages === 1 ? "" : "s"}`);
+  if (typeof pages === "number") add("one_page", maxPages === 1 ? "Fits on one page" : `Fits within ${maxPages} pages`, 15, pages <= maxPages, `${pages} page${pages === 1 ? "" : "s"}`);
 
   const text = contentText(content);
   const pron = [content.summary ?? "", ...bs.map((b) => b.text)].find((t) => PRONOUNS.test(t.replace(/\bU\.?S\.?\b/g, "")));

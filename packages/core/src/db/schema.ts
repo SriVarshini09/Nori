@@ -305,11 +305,11 @@ export const resumes = pgTable("resumes", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export type ResumeBullet = { id: string; text: string; nodeIds: string[] };
+export type ResumeBullet = { id: string; text: string; nodeIds: string[]; /** Written or changed by the user rather than derived from the graph. */ edited?: boolean };
 export type ResumeChange = { bulletId: string; before: string; after: string; reason: string; nodeIds: string[] };
 export type ResumeContent = {
   name: string;
-  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string };
+  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string; github?: string };
   summary?: string;
   experience: {
     title: string; company: string; location?: string; start?: string; end?: string;
@@ -319,6 +319,10 @@ export type ResumeContent = {
   skills: { group: string; items: string[] }[];
   projects?: { name: string; bullets: ResumeBullet[] }[];
   certifications?: string[];
+  /** Extra sections such as Awards or Languages. Titles come from a fixed safe list so ATS parsers recognise them. */
+  extras?: { title: string; items: string[] }[];
+  /** Section order and visibility. Unset means the default order with every non-empty section shown. */
+  layout?: { sections?: string[]; hidden?: string[] };
 };
 export type AtsCheck = { id: string; label: string; pass: boolean; detail?: string; weight: number };
 

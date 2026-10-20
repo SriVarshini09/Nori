@@ -165,9 +165,11 @@ describe("template + ats", () => {
     expect(html).toMatch(/<h1>Jordan Rivera<\/h1>/);
     const heads = [...html.matchAll(/<h2>(.*?)<\/h2>/g)].map((m) => m[1]);
     expect(heads).toEqual(["Summary", "Experience", "Education", "Skills", "Certifications"]);
-    expect(html).toContain("@page { size: Letter; margin: 0.5in; }");
+    expect(html).toMatch(/@page \{ size: Letter; margin: [\d.]+in; \}/);
     expect(html).toContain("Apr 2021 – Present");
-    expect(renderHtml(sampleBaseline, "tight")).toContain("font-size: 10.5pt");
+    const bodySize = (h: string) => Number(/body \{[^}]*?font-size: ([\d.]+)pt/.exec(h)![1]);
+    expect(bodySize(renderHtml(sampleBaseline, "tight"))).toBeLessThan(bodySize(renderHtml(sampleBaseline, "compact")));
+    expect(bodySize(renderHtml(sampleBaseline, "compact"))).toBeLessThan(bodySize(html));
   });
 
   it("scores a clean tailored resume high and flags problems", async () => {
