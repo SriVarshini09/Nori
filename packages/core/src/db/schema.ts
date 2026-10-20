@@ -302,8 +302,41 @@ export const resumes = pgTable("resumes", {
   atsScore: integer("ats_score"),
   atsChecks: jsonb("ats_checks").$type<AtsCheck[]>().default([]).notNull(),
   keywordCoverage: real("keyword_coverage"),
+  /** Template and theme the PDF was rendered with. */
+  templateId: text("template_id").default("classic").notNull(),
+  theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
+  /** True when the user changed this version by hand after tailoring. */
+  edited: boolean("edited").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** The user's own resumes: a library of documents they edit, style and export. Tailored resumes (above) are generated from these. */
+export const resumeDocs = pgTable("resume_docs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  source: text("source").$type<"graph" | "upload" | "manual" | "copy" | "text">().default("manual").notNull(),
+  content: jsonb("content").$type<ResumeContent>().notNull(),
+  templateId: text("template_id").default("classic").notNull(),
+  theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
+  isDefault: boolean("is_default").default(false).notNull(),
+  version: integer("version").default(1).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("resume_docs_user_idx").on(t.userId, t.updatedAt)]);
+
+/** Snapshot of a resume document before each change, so any earlier state can be restored. */
+export const resumeDocVersions = pgTable("resume_doc_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  docId: uuid("doc_id").notNull().references(() => resumeDocs.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  name: text("name").notNull(),
+  content: jsonb("content").$type<ResumeContent>().notNull(),
+  templateId: text("template_id").default("classic").notNull(),
+  theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
+  label: text("label"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("resume_doc_versions_doc_idx").on(t.docId, t.version)]);
 
 export type ResumeBullet = { id: string; text: string; nodeIds: string[]; /** Written or changed by the user rather than derived from the graph. */ edited?: boolean };
 export type ResumeChange = { bulletId: string; before: string; after: string; reason: string; nodeIds: string[] };
@@ -414,5 +447,5 @@ export const userCredentials = pgTable("user_credentials", {
 
 export const schema = {
   users, sessions, profiles, graphNodes, graphEdges, companies, jobs, matches, applications,
-  resumes, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
+  resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
 };

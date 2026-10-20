@@ -212,4 +212,39 @@ CREATE TABLE IF NOT EXISTS user_credentials (
 )
 `,
   },
+  {
+    id: "0005_resume_docs",
+    sql: `
+CREATE TABLE IF NOT EXISTS resume_docs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  source text NOT NULL DEFAULT 'manual',
+  content jsonb NOT NULL,
+  template_id text NOT NULL DEFAULT 'classic',
+  theme jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_default boolean NOT NULL DEFAULT false,
+  version integer NOT NULL DEFAULT 1,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS resume_docs_user_idx ON resume_docs(user_id, updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS resume_docs_one_default ON resume_docs(user_id) WHERE is_default;
+CREATE TABLE IF NOT EXISTS resume_doc_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  doc_id uuid NOT NULL REFERENCES resume_docs(id) ON DELETE CASCADE,
+  version integer NOT NULL,
+  name text NOT NULL,
+  content jsonb NOT NULL,
+  template_id text NOT NULL DEFAULT 'classic',
+  theme jsonb NOT NULL DEFAULT '{}'::jsonb,
+  label text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS resume_doc_versions_doc_idx ON resume_doc_versions(doc_id, version);
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS template_id text NOT NULL DEFAULT 'classic';
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS theme jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE resumes ADD COLUMN IF NOT EXISTS edited boolean NOT NULL DEFAULT false
+`,
+  },
 ];
