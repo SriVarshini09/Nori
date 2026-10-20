@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * The quality gate. Every change must pass this before it is committed:
- *   node scripts/gate.mjs          typecheck, unit tests, lint, production web build
- *   node scripts/gate.mjs --fast   skip the web build
+ *   node scripts/gate.mjs          typecheck, unit tests, lint, production web build, crawl of every route and link
+ *   node scripts/gate.mjs --fast   skip the web build and the crawl
  *   node scripts/gate.mjs --only typecheck,tests
  * Exit code 0 only when every step passed.
  */
@@ -26,6 +26,7 @@ const STEPS = [
     id: "build", label: "Web production build (live mode)", cmd: npm, args: ["run", "build", "--workspace", "apps/web"], skipWhenFast: true,
     env: { NEXT_PUBLIC_USE_MOCK: "0", API_URL: "http://localhost:4200", NEXT_TELEMETRY_DISABLED: "1" },
   },
+  { id: "crawl", label: "Route, link and console crawl", cmd: npx, args: ["tsx", "scripts/crawl.mts"], skipWhenFast: true },
 ];
 
 const results = [];

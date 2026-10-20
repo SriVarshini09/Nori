@@ -23,7 +23,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "gate": "node scripts/gate.mjs",
-    "gate:fast": "node scripts/gate.mjs --fast"
+    "gate:fast": "node scripts/gate.mjs --fast",
+    "crawl": "tsx scripts/crawl.mts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
