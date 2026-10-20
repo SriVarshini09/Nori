@@ -8,7 +8,7 @@
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
   InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
-  Preferences, Profile, Resume, TrackerStats, User,
+  Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, TrackerStats, User,
 } from "./types";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
@@ -80,6 +80,17 @@ const qs = (params: Record<string, string | number | boolean | undefined | null>
   const s = sp.toString();
   return s ? `?${s}` : "";
 };
+
+/** Calls only the live API can answer. In mock mode they explain how to turn live mode on instead of faking a renderer. */
+async function live<T>(method: string, path: string, body?: unknown): Promise<T> {
+  if (USE_MOCK) throw new ApiError(0, "The resume studio needs the live API. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.", "The resume studio is not available in demo mode.");
+  return request<T>(method, path, body);
+}
+
+/** Download or inline-view URLs (same-origin, cookie authenticated). */
+export const resumeDocUrl = (id: string, format: ResumeFormat, inline = false) => `/api/resume-docs/${id}/download?format=${format}${inline ? "&inline=1" : ""}`;
+export const resumeUrl = (id: string, format: ResumeFormat, inline = false) => `/api/resumes/${id}/download?format=${format}${inline ? "&inline=1" : ""}`;
+export const templatePreviewUrl = (id: string) => `/api/resume-templates/${id}/preview`;
 
 export const api = {
   // ---- auth
@@ -226,6 +237,25 @@ export const api = {
   testModel: async (): Promise<ModelTestResult> => (USE_MOCK ? (await mock()).testModel() : request("POST", "/api/settings/model/test")),
   lanes: async (): Promise<Lane[]> => (USE_MOCK ? (await mock()).lanes() : request("GET", "/api/lanes")),
   saveLanes: async (lanes: Lane[]): Promise<Lane[]> => (USE_MOCK ? (await mock()).saveLanes(lanes) : request("PUT", "/api/lanes", lanes)),
+
+  // ---- resume studio (live API only)
+  resumeTemplates: async (): Promise<ResumeTemplates> => live("GET", "/api/resume-templates"),
+  resumeDocs: async (): Promise<ResumeDocSummary[]> => live("GET", "/api/resume-docs"),
+  resumeDoc: async (id: string): Promise<ResumeDoc> => live("GET", `/api/resume-docs/${id}`),
+  createResumeDoc: async (b: { from: "graph" | "blank" | "copy" | "content"; name?: string; copyOf?: string; content?: ResumeContent; templateId?: string; theme?: Partial<ResumeTheme>; makeDefault?: boolean }): Promise<ResumeDoc> =>
+    live("POST", "/api/resume-docs", b),
+  updateResumeDoc: async (id: string, b: { name?: string; content?: ResumeContent; templateId?: string; theme?: Partial<ResumeTheme>; expectedVersion?: number }): Promise<ResumeDoc> =>
+    live("PUT", `/api/resume-docs/${id}`, b),
+  deleteResumeDoc: async (id: string): Promise<void> => { await live("DELETE", `/api/resume-docs/${id}`); },
+  setDefaultResumeDoc: async (id: string): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/default`),
+  duplicateResumeDoc: async (id: string, name?: string): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/duplicate`, { name }),
+  refreshResumeDoc: async (id: string): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/refresh-from-graph`),
+  resumeDocVersions: async (id: string): Promise<ResumeVersion[]> => live("GET", `/api/resume-docs/${id}/versions`),
+  restoreResumeDocVersion: async (id: string, version: number): Promise<ResumeDoc> => live("POST", `/api/resume-docs/${id}/versions/${version}/restore`),
+  previewResume: async (content: ResumeContent, templateId: string, theme: Partial<ResumeTheme>): Promise<ResumePreview> =>
+    live("POST", "/api/resume/preview", { content, templateId, theme }),
+  editApplicationResume: async (applicationId: string, b: { content?: ResumeContent; templateId?: string; theme?: Partial<ResumeTheme> }): Promise<{ resume: Resume; application: Application }> =>
+    live("PUT", `/api/applications/${applicationId}/resume`, b),
 
   // ---- channels / integrations
   listChannels: async (): Promise<Channel[]> => (USE_MOCK ? (await mock()).channels : request("GET", "/api/channels")),

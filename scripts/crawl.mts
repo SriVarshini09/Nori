@@ -143,7 +143,7 @@ try {
     const r = await visit(anon, WEB + p, "visitor", { expectFinal: new RegExp(`^${p}$`), expected401: true });
     if (r) for (const l of r.links) await checkLink(anon, l, r.label, false);
   }
-  for (const p of ["/", "/dashboard", "/jobs", "/applications", "/agent", "/graph", "/inbox", "/tracker", "/profile", "/settings", "/onboarding", "/companion"]) {
+  for (const p of ["/", "/dashboard", "/jobs", "/applications", "/agent", "/graph", "/inbox", "/tracker", "/resume", "/profile", "/settings", "/onboarding", "/companion"]) {
     await visit(anon, WEB + p, "visitor", { expectFinal: /^\/login(\?.*)?$/, expected401: true });
   }
   await visit(anon, WEB + "/definitely-not-a-page", "visitor", { expectFinal: /./, expected401: true });
@@ -152,7 +152,7 @@ try {
   const routes = [
     "/", "/dashboard", "/agent", "/jobs", `/jobs?job=${seed.jobIds[0]}`, "/applications",
     `/applications/${seed.apps.resumeReview}`, `/applications/${seed.apps.needsAnswers}`, `/applications/${seed.apps.formReview}`,
-    "/graph", "/inbox", "/tracker", "/profile", "/settings", "/companion",
+    "/graph", "/inbox", "/tracker", "/resume", `/resume/${seed.docId}`, `/applications/${seed.apps.resumeReview}/resume`, "/profile", "/settings", "/companion",
   ];
   for (const p of routes) {
     const r = await visit(authed, WEB + p, "user", { expectFinal: p === "/" ? /^\/dashboard/ : /^\/(?!login)/ });
@@ -161,6 +161,8 @@ try {
   // an unknown application and an unknown job must fail gracefully, not crash
   await visit(authed, WEB + "/applications/00000000-0000-0000-0000-000000000000", "user", { expectFinal: /./, expect404: true });
   await visit(authed, WEB + "/applications/not-a-uuid", "user", { expectFinal: /./, expect404: true });
+  await visit(authed, WEB + "/resume/not-a-uuid", "user", { expectFinal: /./, expect404: true });
+  await visit(authed, WEB + "/resume/00000000-0000-0000-0000-000000000000", "user", { expectFinal: /./, expect404: true });
   await visit(authed, WEB + "/definitely-not-a-page", "user", { expectFinal: /./, expect404: true });
 } finally {
   await browser.close();

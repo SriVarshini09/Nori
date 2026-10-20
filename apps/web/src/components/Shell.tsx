@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ArrowRight, Briefcase, Ellipsis, Inbox, LayoutDashboard, Network, Send, Settings, SquareKanban, UserRound, X, Zap,
+  ArrowRight, Briefcase, Ellipsis, FileText, Inbox, LayoutDashboard, Network, Send, Settings, SquareKanban, UserRound, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cx } from "./cx";
@@ -37,6 +37,7 @@ const NAV: NavItem[][] = [
   ],
   [
     { href: "/graph", label: "Career graph", icon: Network },
+    { href: "/resume", label: "Resume", icon: FileText },
     { href: "/profile", label: "Profile", icon: UserRound },
     { href: "/settings", label: "Settings", icon: Settings },
   ],
@@ -48,6 +49,9 @@ const TABS = ["/agent", "/jobs", "/applications", "/inbox"];
 const TAB_ITEMS = TABS.map((h) => NAV.flat().find((n) => n.href === h)!);
 
 const CRUMB: Record<string, string> = Object.fromEntries(NAV.flat().map((n) => [n.href.slice(1), n.label]));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Readable label for a path segment: known pages by name, ids as "Details", an id's "resume" child as "Edit resume". */
+const crumb = (p: string, prev: string | undefined) => (UUID.test(p) ? (prev === "resume" ? "Studio" : "Details") : p === "resume" && prev && UUID.test(prev) ? "Edit resume" : CRUMB[p] ?? decodeURIComponent(p));
 
 function Wordmark() {
   return (
@@ -138,9 +142,9 @@ function Crumbs() {
             <li key={href} className="flex min-w-0 items-center gap-2">
               <span className="text-line-strong" aria-hidden="true">/</span>
               {last ? (
-                <span className="truncate font-medium text-ink" aria-current="page">{CRUMB[p] ?? decodeURIComponent(p)}</span>
+                <span className="truncate font-medium text-ink" aria-current="page">{crumb(p, parts[i - 1])}</span>
               ) : (
-                <Link href={href} className="truncate text-muted hover:text-ink">{CRUMB[p] ?? p}</Link>
+                <Link href={href} className="truncate text-muted hover:text-ink">{crumb(p, parts[i - 1])}</Link>
               )}
             </li>
           );

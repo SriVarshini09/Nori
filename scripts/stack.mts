@@ -5,7 +5,7 @@
  * Run scripts with `npx tsx scripts/<name>.ts`.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -87,6 +87,19 @@ async function waitFor(url: string, ms = 90_000) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
+/** True when the production build is missing or older than any web source file, so tests never run against stale code. */
+function buildIsStale(): boolean {
+  const marker = path.join(ROOT, "apps/web/.next/BUILD_ID");
+  if (!existsSync(marker)) return true;
+  const built = statSync(marker).mtimeMs;
+  const newest = (dir: string): number => readdirSync(dir, { withFileTypes: true }).reduce((m, e) => {
+    if (e.name === "node_modules" || e.name === ".next") return m;
+    const p = path.join(dir, e.name);
+    return Math.max(m, e.isDirectory() ? newest(p) : statSync(p).mtimeMs);
+  }, 0);
+  return Math.max(newest(path.join(ROOT, "apps/web/src")), statSync(path.join(ROOT, "apps/web/next.config.ts")).mtimeMs, statSync(path.join(ROOT, "apps/web/package.json")).mtimeMs) > built;
+}
+
 function buildWeb() {
   const r = spawnSync(process.execPath, [path.join(ROOT, "node_modules/next/dist/bin/next"), "build"], {
     cwd: path.join(ROOT, "apps/web"), stdio: "inherit",
@@ -108,7 +121,7 @@ export async function startStack(opts: { build?: boolean } = {}): Promise<Stack>
   const server = serve({ fetch: app.fetch, port: API_PORT });
   await waitFor(`http://localhost:${API_PORT}/api/health`);
 
-  if (opts.build || !existsSync(path.join(ROOT, "apps/web/.next/BUILD_ID"))) buildWeb();
+  if (opts.build || buildIsStale()) buildWeb();
   const web: ChildProcess = spawn(process.execPath, [path.join(ROOT, "node_modules/next/dist/bin/next"), "start", "-p", String(WEB_PORT)], {
     cwd: path.join(ROOT, "apps/web"), stdio: "ignore",
     env: { ...process.env, NEXT_PUBLIC_USE_MOCK: "0", API_URL: `http://localhost:${API_PORT}`, NEXT_TELEMETRY_DISABLED: "1" },
@@ -141,6 +154,7 @@ export class Client {
 export type Seed = {
   email: string; password: string; cookie: string;
   jobIds: string[];
+  docId: string;
   apps: { resumeReview: string; needsAnswers: string; formReview: string };
 };
 
@@ -161,6 +175,9 @@ export async function seedUser(stack: Stack, email = "maya.chen@example.com", pa
   await ok(c.call("PUT", "/api/onboarding", { step: "preferences", data: { titles: ["Senior Frontend Engineer"], locations: ["San Francisco"], remote: "ok", autoApplyDailyCap: 5 } }), "preferences");
   await ok(c.call("PUT", "/api/onboarding", { step: "integrations" }), "integrations");
 
+  const docs = await ok(c.call("GET", "/api/resume-docs"), "resume docs");
+  const docId = docs[0].id as string;
+
   const rows = await stack.db.insert(jobs).values([
     { companyName: "Acme", atsType: "web", externalId: "acme-1", title: "Senior Frontend Engineer", location: "San Francisco, CA", remote: true,
       descriptionText: "Requirements:\n- React and TypeScript\n- Node.js\n- Testing with Playwright\nNice to have:\n- GraphQL", applyUrl: "https://example.com/?job=acme-1" },
@@ -180,5 +197,5 @@ export async function seedUser(stack: Stack, email = "maya.chen@example.com", pa
   const formReview = await mk(globex.id);
   await ok(c.call("POST", `/api/applications/${needsAnswers}/approve-resume?wait=1`), "approve resume (needs answers)");
   await ok(c.call("POST", `/api/applications/${formReview}/approve-resume?wait=1`), "approve resume (form review)");
-  return { email, password, cookie: c.cookie, jobIds: rows.map((r) => r.id), apps: { resumeReview, needsAnswers, formReview } };
+  return { email, password, cookie: c.cookie, jobIds: rows.map((r) => r.id), docId, apps: { resumeReview, needsAnswers, formReview } };
 }

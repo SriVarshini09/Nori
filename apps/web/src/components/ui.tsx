@@ -138,7 +138,7 @@ export function EmptyState({ title, children, icon = Inbox }: { title: string; c
     <Frame surface="none" className="px-6 py-14 text-center">
       <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-line text-ink"><Icon icon={icon} /></span>
       <p className="mt-4 font-display text-title font-medium text-ink">{title}</p>
-      {children && <p className="mx-auto mt-1 max-w-md text-body-sm text-muted">{children}</p>}
+      {children && <div className="mx-auto mt-1 max-w-md text-body-sm text-muted">{children}</div>}
     </Frame>
   );
 }

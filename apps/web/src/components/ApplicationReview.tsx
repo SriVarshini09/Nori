@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeft, ArrowUpRight, Check, CircleCheck, CircleX, ExternalLink, LoaderCircle, RotateCcw, Send, SkipForward,
+  ArrowLeft, ArrowUpRight, Check, CircleCheck, CircleX, ExternalLink, LoaderCircle, Pencil, RotateCcw, Send, SkipForward,
 } from "lucide-react";
 import { api, artifactUrl, USE_MOCK } from "@/lib/api";
 import { NEEDS_YOU, STATUS_LABEL } from "@/lib/format";
@@ -19,7 +19,7 @@ import { PIPELINE, Stepper } from "./Stepper";
 import { StatusPill } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
 import {
-  Accordion, Button, Frame, Icon, IndexLabel, Notice, Pill, Tag, cx, idx, inputClass,
+  Accordion, Button, Frame, Icon, IndexLabel, LinkButton, Notice, Pill, Tag, cx, idx, inputClass,
 } from "./ui";
 
 type NodeLabels = Record<string, { label: string; type: string }>;
@@ -208,8 +208,9 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
               <div className="mt-3 font-display text-[88px] font-medium leading-[0.85] tracking-[-0.05em] text-ink tnum">
                 {resume.atsScore ?? "–"}
               </div>
+              {resume.edited && <p className="mt-2"><Pill mark="accent">Edited by you</Pill></p>}
               <p className="mt-3 text-meta text-muted tnum">
-                {resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}
+                {resume.templateId ? <>{resume.templateId[0].toUpperCase() + resume.templateId.slice(1)} template &middot; </> : null}{resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}
                 {resume.keywordCoverage != null && <> &middot; keywords {Math.round(resume.keywordCoverage * 100)}%</>}
                 {failing.length > 0 && <> &middot; <span title={failing.map((c) => c.label).join("\n")} className="cursor-help underline decoration-line-strong decoration-dotted underline-offset-4">{failing.length} check{failing.length === 1 ? "" : "s"} to fix</span></>}
               </p>
@@ -220,6 +221,9 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
                   <Button variant="primary" icon={CircleCheck} onClick={approveResume} disabled={busy !== null || app.status !== "resume_review"}>
                     {busy === "resume" ? "Approving..." : "Approve resume"}
                   </Button>
+                )}
+                {!USE_MOCK && app.status === "resume_review" && (
+                  <LinkButton href={`/applications/${app.id}/resume`} variant="secondary" icon={Pencil}>Edit resume</LinkButton>
                 )}
                 {!USE_MOCK && (
                   <a href={api.resumePdfUrl(resume.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
