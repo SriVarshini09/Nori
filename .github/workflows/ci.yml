@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "launch/**", "fix/**"]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Gate (typecheck, tests, lint, production build)
+        run: node scripts/gate.mjs

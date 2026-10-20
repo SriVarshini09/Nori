@@ -29,6 +29,7 @@ import {
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
+import { defaultRateRules, rateLimit, securityHeaders, type RateRule } from "./security.js";
 import { MAX_RESUME_BYTES, extractResumeFile, resumeKind } from "./extract.js";
 import { SCANNED_PDF_ERROR, type ExtractedLink, type ExtractedResume } from "@jobgraph/core";
 import { ProfileBody, STEP_SCHEMAS, buildProfilePatch } from "./profile-fields.js";
@@ -50,6 +51,8 @@ export type AppOptions = {
   defaultUserEmail?: string | null;
   /** Push agent notifications (tick results, background chat work). Defaults to channels' sendToUser. */
   notify?: (userId: string, msg: OutboundMessage) => Promise<unknown>;
+  /** Rate limiting: true or unset = the default rules (off under test runners), false = off, or custom rules. */
+  rateLimit?: boolean | RateRule[];
 };
 
 export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
@@ -205,6 +208,11 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     exposeHeaders: ["mcp-session-id"],
     credentials: true,
   }));
+
+  app.use("*", securityHeaders({ hsts: secure }));
+  // Off under test runners (they hammer signup and login), on everywhere else unless explicitly disabled.
+  const limits = opts.rateLimit ?? !(process.env.VITEST || process.env.NODE_ENV === "test");
+  if (limits) app.use("/api/*", rateLimit(Array.isArray(limits) ? limits : defaultRateRules()));
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
