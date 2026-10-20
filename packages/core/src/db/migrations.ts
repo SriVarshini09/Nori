@@ -247,4 +247,20 @@ ALTER TABLE resumes ADD COLUMN IF NOT EXISTS theme jsonb NOT NULL DEFAULT '{}'::
 ALTER TABLE resumes ADD COLUMN IF NOT EXISTS edited boolean NOT NULL DEFAULT false
 `,
   },
+  {
+    id: "0006_auth_tokens",
+    sql: `
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind text NOT NULL,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens(user_id, kind)
+`,
+  },
 ];

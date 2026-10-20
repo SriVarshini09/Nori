@@ -4,6 +4,7 @@ import { AnswersEditor } from "@/components/AnswersEditor";
 import { Channels, DangerZone, Integrations, SettingsForm } from "@/components/SettingsForm";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ModelPanel } from "@/components/ModelPanel";
+import { SecurityPanel } from "@/components/SecurityPanel";
 import { Frame, PageHeader, SectionHeader } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -54,6 +55,10 @@ export default async function SettingsPage() {
         <section>
           <SectionHeader index="06" label="Channels" size="md" title={<>Where it<br />reaches you.</>} />
           <div className="mt-8 grid grid-cols-12"><div className={body}><Channels channels={channels} /></div></div>
+        </section>
+        <section>
+          <SectionHeader index="07" label="Security" size="md" title={<>Password and<br />devices.</>} />
+          <div className="mt-8 grid grid-cols-12"><div className={body}><SecurityPanel user={user} /></div></div>
         </section>
         <section>
           <SectionHeader index="09" label="Danger zone" size="md" title={<>Delete<br />everything.</>} />

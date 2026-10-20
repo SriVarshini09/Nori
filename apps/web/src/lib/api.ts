@@ -8,7 +8,7 @@
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
   InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
-  Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, TrackerStats, User,
+  Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
 } from "./types";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
@@ -107,6 +107,18 @@ export const api = {
     if (USE_MOCK) { mockSession(false); return; }
     await request("POST", "/api/auth/logout");
   },
+  /** Always resolves (the server answers the same for every address). */
+  forgotPassword: async (email: string): Promise<void> => {
+    if (USE_MOCK) return;
+    await request("POST", "/api/auth/forgot-password", { email });
+  },
+  resetPassword: (token: string, password: string): Promise<{ ok: true }> => live("POST", "/api/auth/reset-password", { token, password }),
+  changePassword: (current: string, next: string): Promise<{ ok: true }> => live("POST", "/api/auth/change-password", { current, next }),
+  verifyEmail: (token: string): Promise<{ ok: true }> => live("POST", "/api/auth/verify-email", { token }),
+  resendVerification: (): Promise<{ ok: true; verified: boolean }> => live("POST", "/api/auth/resend-verification", {}),
+  sessions: (): Promise<SessionInfo[]> => live("GET", "/api/auth/sessions"),
+  revokeSession: async (id: string): Promise<void> => { await live("DELETE", `/api/auth/sessions/${id}`); },
+  revokeOtherSessions: (): Promise<{ revoked: number }> => live("POST", "/api/auth/sessions/revoke-others", {}),
   /** Permanently deletes the signed-in account and all its data. `confirm` must equal the account email. Mock mode is a no-op. */
   deleteAccount: async (confirm: string): Promise<void> => {
     if (USE_MOCK) return;

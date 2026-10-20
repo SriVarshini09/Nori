@@ -144,6 +144,12 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
             </button>
           </Row>
 
+          {!signup && (
+            <p className="-mt-1 text-right text-meta">
+              <Link href="/forgot-password" className="font-medium text-emerald-700 underline decoration-emerald-600/30 underline-offset-4 transition-colors hover:decoration-emerald-600">Forgot password?</Link>
+            </p>
+          )}
+
           <p role="alert" aria-live="polite" className="min-h-6">
             {error && (
               <span className="ob-pop inline-flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-meta font-medium text-rose-700 ring-1 ring-inset ring-rose-600/15">

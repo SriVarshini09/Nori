@@ -15,6 +15,7 @@ import {
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
+  changePassword, consumeAuthToken, sha256, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -29,8 +30,9 @@ import {
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
+import { defaultMailer, resetEmail, verifyEmail, type Mailer } from "./mailer.js";
 import { defaultRateRules, rateLimit, securityHeaders, type RateRule } from "./security.js";
-import { bad, body, uuidOk } from "./http.js";
+import { bad, body, describeDevice, uuidOk } from "./http.js";
 import { mountFontRoute, mountResumeRoutes } from "./resume-routes.js";
 import { MAX_RESUME_BYTES, extractResumeFile, resumeKind } from "./extract.js";
 import { SCANNED_PDF_ERROR, type ExtractedLink, type ExtractedResume } from "@jobgraph/core";
@@ -57,6 +59,8 @@ export type AppOptions = {
   rateLimit?: boolean | RateRule[];
   /** How long approve-form waits for a resumed run to reach the form review (default 25 s, under the web proxy timeout). */
   approveWaitMs?: number;
+  /** Sends verification and password-reset email. Defaults to Resend when RESEND_API_KEY is set, else logs to the console. */
+  mailer?: Mailer;
 };
 
 export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
@@ -129,6 +133,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   const secure = process.env.NODE_ENV === "production";
   const cookieDomain = secure ? process.env.COOKIE_DOMAIN?.trim() || undefined : undefined;
   const cookieScope = { path: "/", secure, ...(cookieDomain ? { domain: cookieDomain } : {}) };
+  const mailer = opts.mailer ?? defaultMailer();
+  const linkTo = (route: string, token: string) => `${webUrl.replace(/\/$/, "")}/${route}?token=${encodeURIComponent(token)}`;
+  /** Email is best effort: a mail failure is logged, never shown to the person (and never reveals whether an account exists). */
+  const sendMail = (to: string, mail: ReturnType<typeof verifyEmail>) =>
+    mailer({ to, ...mail }).catch((err) => console.warn(`[api] email to ${to} failed:`, (err as Error).message));
+  const sendVerification = async (user: SessionUser) => {
+    await sendMail(user.email, verifyEmail(linkTo("verify-email", await issueAuthToken(db, user.id, "verify"))));
+  };
   const setSession = (c: Context, token: string) => setCookie(c, SESSION_COOKIE, token, {
     ...cookieScope, httpOnly: true, sameSite: cookieDomain ? "None" : "Lax", maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
@@ -234,6 +246,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const user = await createPasswordUser(db, b);
     if (!user) throw bad("An account with that email already exists", 409);
     setSession(c, await createSession(db, user.id, c.req.header("user-agent")));
+    void sendVerification(user).catch(() => undefined);
     return c.json({ user: publicUser(user) }, 201);
   });
 
@@ -262,6 +275,77 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const counts = await deleteUserAccount(db, r.user.id, { artifactsRoot });
     console.log(`[api] deleted account ${r.user.id}: ${JSON.stringify(counts)}`);
     clearSession(c);
+    return c.body(null, 204);
+  });
+
+  // The signed-in person behind this request's own session cookie (not the dev fallback user).
+  const ownSession = async (c: Context) => {
+    const token = getCookie(c, SESSION_COOKIE);
+    const user = await getSessionUser(db, token);
+    if (!user || !token) throw bad("Not signed in", 401);
+    return { user, token };
+  };
+  const NewPassword = z.string().min(8, "Password must be at least 8 characters").max(200);
+
+  // Always the same answer, so the form cannot be used to find out which addresses have an account.
+  app.post("/api/auth/forgot-password", async (c) => {
+    const { email } = await body(c, z.object({ email: z.string().trim().email("Enter a valid email").max(320) }));
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    if (user?.passwordHash) void sendMail(user.email, resetEmail(linkTo("reset-password", await issueAuthToken(db, user.id, "reset"))));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/reset-password", async (c) => {
+    const b = await body(c, z.object({ token: z.string().min(10).max(200), password: NewPassword }));
+    const done = await resetPassword(db, b.token, b.password);
+    if (!done) throw bad("This reset link is invalid or has expired. Ask for a new one.", 400);
+    clearSession(c);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/change-password", async (c) => {
+    const { user, token } = await ownSession(c);
+    const b = await body(c, z.object({ current: z.string().max(200), next: NewPassword }));
+    if (b.current === b.next) throw bad("Choose a password different from the current one", 400);
+    const r = await changePassword(db, user.id, b.current, b.next, sha256(token));
+    if (r === "no_password") throw bad("This account has no password to change", 400);
+    if (r === "wrong_password") throw bad("Your current password is not right", 400);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/resend-verification", async (c) => {
+    const { user } = await ownSession(c);
+    if (!user.emailVerifiedAt) await sendVerification(user);
+    return c.json({ ok: true, verified: Boolean(user.emailVerifiedAt) });
+  });
+
+  // Opened from the email link, before or without a session.
+  app.post("/api/auth/verify-email", async (c) => {
+    const { token } = await body(c, z.object({ token: z.string().min(10).max(200) }));
+    const userId = await consumeAuthToken(db, token, "verify");
+    if (!userId || !(await markEmailVerified(db, userId))) throw bad("This confirmation link is invalid or has expired. Request a new one from Settings.", 400);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/auth/sessions", async (c) => {
+    const { user, token } = await ownSession(c);
+    return c.json((await listSessions(db, user.id, token)).map((s) => ({
+      id: s.id, current: s.current, device: describeDevice(s.userAgent), createdAt: s.createdAt, expiresAt: s.expiresAt,
+    })));
+  });
+
+  app.post("/api/auth/sessions/revoke-others", async (c) => {
+    const { user, token } = await ownSession(c);
+    return c.json({ revoked: await revokeOtherSessions(db, user.id, token) });
+  });
+
+  app.delete("/api/auth/sessions/:id", async (c) => {
+    const { user, token } = await ownSession(c);
+    const id = c.req.param("id");
+    if (!uuidOk(id)) throw bad("Session not found", 404);
+    const own = (await listSessions(db, user.id, token)).find((s) => s.id === id);
+    if (own?.current) throw bad("This is the session you are using. Use Log out instead.", 400);
+    if (!(await revokeSessionById(db, user.id, id))) throw bad("Session not found", 404);
     return c.body(null, 204);
   });
 

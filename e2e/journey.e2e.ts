@@ -309,7 +309,115 @@ describe("3. tailored resume for an application", () => {
   });
 });
 
-describe("4. nothing broke along the way", () => {
+describe("4. recovery and account security", () => {
+  const link = (to: string, subject: RegExp) => {
+    const mail = stack.outbox.filter((m) => m.to === to && subject.test(m.subject)).at(-1);
+    if (!mail) throw new Error(`no ${subject} mail for ${to}`);
+    return mail.text.match(/https?:\/\/\S+/)![0];
+  };
+  const waitMail = (to: string, subject: RegExp) => expect.poll(() => stack.outbox.some((m) => m.to === to && subject.test(m.subject)), { timeout: 10_000 }).toBe(true);
+
+  it("recovers a forgotten password from the login page, end to end", async () => {
+    const other = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await other.newPage();
+    const who = "forgetful@example.com";
+    await p.request.post(`${WEB}/api/auth/signup`, { data: { email: who, password: "old-password-2026", name: "Fay Forgetful" } });
+    await p.context().clearCookies();
+
+    await p.goto(`${WEB}/login`);
+    await p.getByRole("link", { name: "Forgot password?" }).click();
+    await p.waitForURL(/\/forgot-password/);
+    await p.locator("input[type=email]").fill(who);
+    await p.getByRole("button", { name: "Send reset link" }).click();
+    await expect(p.getByText(/If an account exists/)).toBeVisible();
+    await waitMail(who, /Reset/);
+
+    await p.goto(link(who, /Reset/));
+    await expect(p.getByRole("heading", { level: 1 })).toContainText(/new password/i);
+    const boxes = p.locator("input[type=password]");
+    await boxes.nth(0).fill("new-password-2026");
+    await boxes.nth(1).fill("different-password");
+    await p.getByRole("button", { name: "Set new password" }).click();
+    await expect(p.locator("main").getByRole("alert")).toContainText(/do not match/i);
+    await boxes.nth(1).fill("new-password-2026");
+    await p.getByRole("button", { name: "Set new password" }).click();
+    await expect(p.getByText(/Your password is updated/)).toBeVisible({ timeout: 15_000 });
+    await p.waitForURL(/\/login/, { timeout: 15_000 });
+
+    await p.locator("input[type=email]").fill(who);
+    await p.locator("input[type=password]").fill("old-password-2026");
+    await p.getByRole("button", { name: /sign in/i }).click();
+    await expect(p.getByText(/do not match/i)).toBeVisible({ timeout: 15_000 });
+    await p.locator("input[type=password]").fill("new-password-2026");
+    await p.getByRole("button", { name: /sign in/i }).click();
+    await p.waitForURL(/\/(onboarding|dashboard)/, { timeout: 30_000 });
+
+    // the same link cannot be used twice
+    await p.goto(link(who, /Reset/));
+    await p.locator("input[type=password]").nth(0).fill("third-password-2026");
+    await p.locator("input[type=password]").nth(1).fill("third-password-2026");
+    await p.getByRole("button", { name: "Set new password" }).click();
+    await expect(p.locator("main").getByRole("alert")).toContainText(/invalid or has expired/i);
+    await other.close();
+  });
+
+  it("confirms an email address from the link in the signup email", async () => {
+    const other = await browser.newContext();
+    const p = await other.newPage();
+    const who = "confirm.me@example.com";
+    await p.request.post(`${WEB}/api/auth/signup`, { data: { email: who, password: "some-password-2026", name: "Con Firm" } });
+    await waitMail(who, /Confirm/);
+    await p.goto(link(who, /Confirm/));
+    await expect(p.getByText("Your email address is confirmed.")).toBeVisible({ timeout: 15_000 });
+    await other.close();
+  });
+
+  it("shows the signed-in devices in Settings, and signs another one out", async () => {
+    const other = await browser.newContext();
+    const login = await other.request.post(`${WEB}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } });
+    expect(login.status()).toBe(200);
+
+    await page.goto(`${WEB}/settings`);
+    const devices = page.getByRole("list", { name: "Signed-in devices" });
+    await expect(devices.getByRole("listitem")).toHaveCount(2);
+    await expect(devices.getByRole("listitem").filter({ hasText: "This device" })).toHaveCount(1);
+    await shot("11-settings-security");
+    await devices.getByRole("button", { name: /^Sign out/ }).click();
+    await expect(devices.getByRole("listitem")).toHaveCount(1);
+    expect((await other.request.get(`${WEB}/api/auth/session`)).status()).toBe(401);
+    await other.close();
+  });
+
+  it("sends a confirmation link on request", async () => {
+    await page.goto(`${WEB}/settings`);
+    const before = stack.outbox.length;
+    await page.getByRole("button", { name: "Send confirmation link" }).click();
+    await expect(page.getByText(`We sent a new link to ${EMAIL}.`)).toBeVisible();
+    expect(stack.outbox.length).toBe(before + 1);
+  });
+
+  it("changes the password from Settings and the new one works", async () => {
+    await page.goto(`${WEB}/settings`);
+    await page.getByLabel("Current password").fill("wrong-password");
+    await page.getByLabel(/^New password/).fill("journey-pass-2027");
+    await page.getByLabel("Repeat the new password").fill("journey-pass-2027");
+    await page.getByRole("button", { name: "Change password" }).click();
+    await expect(page.getByText("Your current password is not right")).toBeVisible();
+
+    await page.getByLabel("Current password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Change password" }).click();
+    await expect(page.getByText("Password changed. Your other devices were signed out.")).toBeVisible();
+
+    const other = await browser.newContext();
+    expect((await other.request.post(`${WEB}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })).status()).toBe(401);
+    expect((await other.request.post(`${WEB}/api/auth/login`, { data: { email: EMAIL, password: "journey-pass-2027" } })).status()).toBe(200);
+    await other.close();
+    await page.goto(`${WEB}/dashboard`);
+    await expect(page).toHaveURL(/\/dashboard/); // this device stayed signed in
+  });
+});
+
+describe("5. nothing broke along the way", () => {
   it("raised no page errors, console errors or server errors", () => {
     expect(errors).toEqual([]);
   });

@@ -28,8 +28,21 @@ export const users = pgTable("users", {
   name: text("name"),
   /** scrypt$N$r$p$salt$hash (base64); null for users created by DEFAULT_USER_EMAIL or channels. */
   passwordHash: text("password_hash"),
+  /** Set when the user proves they own the address (verification link). Null = not verified yet. */
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** One-time links for password reset and email verification. Only the sha256 of the token is stored. */
+export const authTokens = pgTable("auth_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"reset" | "verify">().notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("auth_tokens_user_idx").on(t.userId, t.kind)]);
 
 /** Login sessions. The cookie carries a random token; only its sha256 is stored. */
 export const sessions = pgTable("sessions", {

@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * The cookie is only checked for presence here; the API validates it, and the (app) layout sends a
  * rejected session back to /login and an unfinished onboarding to /onboarding.
  */
-const PUBLIC = ["/login", "/signup"];
+const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email"];
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

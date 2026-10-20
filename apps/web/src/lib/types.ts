@@ -13,7 +13,9 @@ export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type InboxKind =
   | "verification_code" | "recruiter_reply" | "interview" | "rejection" | "offer" | "confirmation" | "other";
 
-export type User = { id: string; email: string; name: string | null; createdAt: string };
+export type User = { id: string; email: string; name: string | null; emailVerifiedAt?: string | null; createdAt: string };
+
+export type SessionInfo = { id: string; current: boolean; device: string; createdAt: string; expiresAt: string };
 
 export type Preferences = {
   titles?: string[];

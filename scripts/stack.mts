@@ -73,6 +73,8 @@ class FakeDriver implements ApplyDriver {
 
 export type Stack = {
   db: Db;
+  /** Every email the API "sent" (verification, password reset), newest last. Nothing leaves the machine. */
+  outbox: { to: string; subject: string; text: string }[];
   webUrl: string;
   apiUrl: string;
   stop: () => Promise<void>;
@@ -114,7 +116,9 @@ export async function startStack(opts: { build?: boolean } = {}): Promise<Stack>
   delete process.env.ANTHROPIC_API_KEY; delete process.env.HOSTED_LLM_API_KEY; delete process.env.OPENAI_COMPAT_API_KEY;
   const db = await openTestDb();
   const artifactsRoot = await mkdtemp(path.join(os.tmpdir(), "nori-e2e-"));
+  const outbox: Stack["outbox"] = [];
   const app = createApp(db, {
+    mailer: async (m) => { outbox.push({ to: m.to, subject: m.subject, text: m.text }); },
     runnerDeps: { pickDriver: () => new FakeDriver(), artifactsRoot, allowRealSubmit: false },
     mcp: true, defaultUserEmail: null, rateLimit: false, webUrl: WEB,
   });
@@ -128,7 +132,7 @@ export async function startStack(opts: { build?: boolean } = {}): Promise<Stack>
   });
   await waitFor(`${WEB}/login`);
   return {
-    db, webUrl: WEB, apiUrl: `http://localhost:${API_PORT}`,
+    db, outbox, webUrl: WEB, apiUrl: `http://localhost:${API_PORT}`,
     stop: async () => { web.kill(); await new Promise<void>((r) => server.close(() => r())); },
   };
 }

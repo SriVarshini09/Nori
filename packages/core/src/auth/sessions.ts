@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, ne } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { sessions, users } from "../db/schema.js";
 import { sha256 } from "./password.js";
@@ -41,4 +41,26 @@ export async function revokeSession(db: Db, token: string | null | undefined): P
 export async function pruneSessions(db: Db): Promise<number> {
   const rows = await db.delete(sessions).where(lt(sessions.expiresAt, new Date())).returning();
   return rows.length;
+}
+
+export type SessionInfo = { id: string; userAgent: string | null; createdAt: Date; expiresAt: Date; current: boolean };
+
+/** A user's live sessions, newest first. `currentToken` marks the one the request came from. */
+export async function listSessions(db: Db, userId: string, currentToken?: string | null): Promise<SessionInfo[]> {
+  const rows = await db.select().from(sessions).where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, new Date())));
+  const cur = currentToken ? sha256(currentToken) : null;
+  return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map((r) => ({ id: r.id, userAgent: r.userAgent, createdAt: r.createdAt, expiresAt: r.expiresAt, current: r.tokenHash === cur }));
+}
+
+/** Revoke one of the user's own sessions by id. False when it is not theirs or is already gone. */
+export async function revokeSessionById(db: Db, userId: string, sessionId: string): Promise<boolean> {
+  const rows = await db.delete(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId))).returning();
+  return rows.length > 0;
+}
+
+/** Sign out everywhere except the session making the request. Returns how many were revoked. */
+export async function revokeOtherSessions(db: Db, userId: string, currentToken: string | null | undefined): Promise<number> {
+  const cond = currentToken ? and(eq(sessions.userId, userId), ne(sessions.tokenHash, sha256(currentToken))) : eq(sessions.userId, userId);
+  return (await db.delete(sessions).where(cond).returning()).length;
 }
