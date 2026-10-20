@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, gt, isNull, ne } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, ne, or } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { authTokens, sessions, users } from "../db/schema.js";
 import { hashPassword, sha256, verifyPassword } from "./password.js";
@@ -62,4 +62,11 @@ export async function changePassword(
     ? and(eq(sessions.userId, userId), ne(sessions.tokenHash, keepSessionTokenHash))
     : eq(sessions.userId, userId));
   return "ok";
+}
+
+/** Housekeeping: drop links that expired or were spent more than a week ago. Returns how many. */
+export async function pruneAuthTokens(db: Db): Promise<number> {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60_000);
+  const rows = await db.delete(authTokens).where(or(lt(authTokens.expiresAt, cutoff), lt(authTokens.usedAt, cutoff))).returning();
+  return rows.length;
 }

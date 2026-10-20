@@ -200,7 +200,7 @@ describe("template + ats", () => {
     const sizes: number[] = [];
     // The first two sizes do not fit this window; the third does.
     const small: LLM = {
-      provider: "ollama", model: "tiny-4k", available: true,
+      provider: "openai-compatible", model: "tiny-4k", available: true,
       async text() { return ""; },
       async json<T>(call: { prompt: string }): Promise<T> {
         sizes.push(call.prompt.length);
@@ -226,7 +226,7 @@ describe("template + ats", () => {
 
   it("does not hide a failure that has nothing to do with the window", async () => {
     let calls = 0;
-    setLLM({ provider: "ollama", model: "x", available: true, async text() { return ""; }, async json() { calls++; throw new Error("LLM 500: boom"); } });
+    setLLM({ provider: "openai-compatible", model: "x", available: true, async text() { return ""; }, async json() { calls++; throw new Error("LLM 500: boom"); } });
     try {
       const r = await tailorResume(input);
       expect(calls).toBe(1);

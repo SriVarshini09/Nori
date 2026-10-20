@@ -7,6 +7,7 @@
  *  - every 5 min: sync the default user's inbox (when Composio is configured) and tell the user about replies
  *  - every AGENT_TICK_MINUTES (default 20): agentTick for every user with a graph (discover, score, gate, queue,
  *    advance, ask for reviews over chat)
+ *  - every hour: drop expired sessions and spent account links
  *  - every minute: morning brief at BRIEF_HOUR local (default 8) once a day, weekly summary on Mondays
  *  - channel router (Telegram long-poll, WhatsApp webhook adapter, Slack triggers) with the chat agent, plus the
  *    console channel (stdin/stdout) when CHANNEL_CONSOLE=1
@@ -14,7 +15,7 @@
 import { and, eq, isNotNull, isNull, lt, lte } from "drizzle-orm";
 import {
   applications, channels, companies, FEEDS, MAX_ATTEMPTS, STALE_MS, ensureDefaultUser, createAgent, computeMatchesForUser, usersWithGraph,
-  agentTick, announceInbox, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, retryApplication, runApplication, withUserLLM,
+  agentTick, announceInbox, pruneAuthTokens, pruneSessions, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, retryApplication, runApplication, withUserLLM,
   type AtsType, type Db, type OutboundMessage, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
@@ -125,6 +126,11 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
         }
       } catch (e) { log(`feed ${c.atsType}/${c.atsToken} failed: ${errMsg(e)}`); }
     }
+  });
+
+  every("housekeeping", 60 * 60_000, async () => {
+    const [sessions, tokens] = [await pruneSessions(db), await pruneAuthTokens(db)];
+    if (sessions || tokens) log(`housekeeping: removed ${sessions} expired session(s) and ${tokens} spent account link(s)`);
   });
 
   every("inbox", INBOX_EVERY, async () => {

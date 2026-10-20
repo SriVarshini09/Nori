@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { openTestDb, issueAuthToken, type Db } from "@jobgraph/core";
+import { openTestDb, issueAuthToken, pruneAuthTokens, pruneSessions, type Db } from "@jobgraph/core";
 import { eq } from "drizzle-orm";
 import { authTokens } from "@jobgraph/core";
 import { createApp } from "./app.js";
@@ -172,6 +172,20 @@ describe("change password and sessions", () => {
     const theirId = (await call("GET", "/api/auth/sessions", undefined, theirs.cookie!)).json[0].id as string;
     expect((await call("DELETE", `/api/auth/sessions/${theirId}`, undefined, mine.cookie!)).status).toBe(404);
     expect((await call("GET", "/api/auth/session", undefined, theirs.cookie!)).status).toBe(200);
+  });
+});
+
+describe("housekeeping", () => {
+  it("drops old links and expired sessions but keeps live ones", async () => {
+    const live = await call("POST", "/api/auth/signup", { email: "keeper@example.com", password: "old-password-1" });
+    const id = live.json.user.id as string;
+    const old = await issueAuthToken(db, id, "reset");
+    await db.update(authTokens).set({ expiresAt: new Date(Date.now() - 8 * 24 * 3600_000) }).where(eq(authTokens.userId, id));
+    const fresh = await issueAuthToken(db, id, "reset"); // retires `old`; stays valid
+    expect(old).not.toBe(fresh);
+    expect(await pruneAuthTokens(db)).toBeGreaterThanOrEqual(1);
+    expect((await call("POST", "/api/auth/reset-password", { token: fresh, password: "another-password-1" })).status).toBe(200);
+    expect(await pruneSessions(db)).toBeGreaterThanOrEqual(0);
   });
 });
 
