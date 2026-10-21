@@ -17,7 +17,7 @@ export function LogoutButton({ className }: { className?: string }) {
     router.refresh();
   }
   return (
-    <button type="button" onClick={logout} disabled={busy} className={cx("inline-flex items-center gap-2 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink disabled:opacity-50", className)}>
+    <button type="button" onClick={logout} disabled={busy} className={cx("inline-flex min-h-6 items-center gap-2 py-1 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink disabled:opacity-50", className)}>
       <Icon icon={LogOut} />
       {busy ? "Signing out..." : "Log out"}
     </button>

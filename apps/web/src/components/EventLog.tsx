@@ -33,7 +33,7 @@ export function EventLog({ events, mode, collapsedTo = 3 }: {
           Log &middot; {modeLabel}
         </span>
         {(hidden > 0 || all) && events.length > collapsedTo && (
-          <button type="button" onClick={() => setAll((a) => !a)} className="inline-flex items-center gap-1 text-[12px] font-medium text-ink-2 hover:text-ink">
+          <button type="button" onClick={() => setAll((a) => !a)} className="inline-flex min-h-6 items-center gap-1 py-1 text-[12px] font-medium text-ink-2 hover:text-ink">
             {all ? "Show less" : `Show all ${events.length}`}
             <Icon icon={all ? ChevronUp : ChevronDown} />
           </button>

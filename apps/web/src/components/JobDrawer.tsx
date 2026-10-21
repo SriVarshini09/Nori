@@ -5,6 +5,7 @@ import type { ApplicationStatus, JobDetail } from "@/lib/types";
 import { Accordion } from "./Accordion";
 import { ApplyButton } from "./ApplyButton";
 import { cx, idx } from "./cx";
+import { DrawerKeys } from "./DrawerKeys";
 import { Frame } from "./Frame";
 import { Icon } from "./Icon";
 import { IndexLabel, Square } from "./IndexLabel";
@@ -56,7 +57,8 @@ export function JobDrawer({ detail, closeHref, application }: {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`${job.title} at ${job.companyName}`}>
-      <Link href={closeHref} aria-label="Close" className="absolute inset-0 bg-ink/25" scroll={false} />
+      <DrawerKeys closeHref={closeHref} focusId="job-drawer-close" />
+      <Link href={closeHref} aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-ink/25" scroll={false} />
       <aside className="relative flex h-full w-full max-w-[640px] flex-col overflow-y-auto border-l border-line bg-canvas">
         <header className="sticky top-0 z-10 border-b border-line bg-canvas px-5 pb-5 pt-4 sm:px-8">
           <div className="flex items-center gap-3">
@@ -65,7 +67,7 @@ export function JobDrawer({ detail, closeHref, application }: {
               {job.companyName}
               <span className="ml-2 font-normal text-faint">Posted <TimeAgo iso={postedIso(job)} /></span>
             </span>
-            <Link href={closeHref} scroll={false} aria-label="Close drawer" className="inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-line px-3 text-[12px] font-medium uppercase tracking-[0.09em] text-ink transition-colors duration-150 hover:border-ink">
+            <Link id="job-drawer-close" href={closeHref} scroll={false} aria-label="Close drawer" className="inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-line px-3 text-[12px] font-medium uppercase tracking-[0.09em] text-ink transition-colors duration-150 hover:border-ink">
               <Icon icon={X} /> Close
             </Link>
           </div>

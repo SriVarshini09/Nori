@@ -32,9 +32,9 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={cx("relative h-[18px] w-8 shrink-0 rounded-full border transition-colors duration-150", checked ? "border-ink bg-ink" : "border-line-strong bg-transparent")}
+        className={cx("relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f9a72]", checked ? "border-[#0f9a72] bg-[#0f9a72]" : "border-line-strong bg-transparent")}
       >
-        <span className={cx("absolute top-[2px] h-[12px] w-[12px] rounded-full transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[16px] bg-paper" : "left-[2px] bg-faint")} />
+        <span className={cx("absolute top-[3px] h-4 w-4 rounded-full shadow-sm transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[23px] bg-white" : "left-[3px] bg-faint")} />
       </button>
     </div>
   );

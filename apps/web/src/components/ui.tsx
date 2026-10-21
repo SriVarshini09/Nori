@@ -125,9 +125,9 @@ export function Toggle({ checked, onChange, label, hint }: { checked: boolean; o
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={cx("relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors duration-150", checked ? "border-ink bg-ink" : "border-line-strong bg-transparent")}
+        className={cx("relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f9a72]", checked ? "border-[#0f9a72] bg-[#0f9a72]" : "border-line-strong bg-transparent")}
       >
-        <span className={cx("absolute top-[3px] h-3 w-3 rounded-full transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[19px] bg-paper" : "left-[3px] bg-faint")} />
+        <span className={cx("absolute top-[3px] h-4 w-4 rounded-full shadow-sm transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[23px] bg-white" : "left-[3px] bg-faint")} />
       </button>
     </div>
   );

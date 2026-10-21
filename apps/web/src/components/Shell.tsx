@@ -120,7 +120,7 @@ function SearchBox({ onDone }: { onDone?: () => void }) {
             aria-label="Search jobs"
             className="h-8 w-full bg-transparent text-meta text-ink placeholder:text-faint focus:outline-none"
           />
-          <button type="submit" aria-label="Search" className="pl-2 text-muted hover:text-ink"><Icon icon={ArrowRight} /></button>
+          <button type="submit" aria-label="Search" className="-my-1 inline-flex min-h-6 items-center pl-2 pr-1 text-muted hover:text-ink"><Icon icon={ArrowRight} /></button>
         </span>
       </label>
     </form>
