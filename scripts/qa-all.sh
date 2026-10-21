@@ -9,7 +9,7 @@ mkdir -p test-results/qa
 free
 stage clicks-desktop npx tsx scripts/qa-clicks.mts
 stage clicks-mobile  npx tsx scripts/qa-clicks.mts --mobile
-stage resume         env E2E_API_PORT=4302 E2E_WEB_PORT=3302 npx tsx scripts/qa-resume.mts
+stage resume         npx tsx scripts/qa-resume.mts
 stage stress         npx tsx scripts/qa-stress.mts
 free
 (npx tsx scripts/serve.mts > /tmp/serve-qa.log 2>&1 &)

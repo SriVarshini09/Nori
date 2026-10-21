@@ -261,3 +261,8 @@ body {
     var(--canvas);
   background-attachment: fixed;
 }
+
+/* meadow landing: Nori bobs gently */
+@keyframes mdw-bob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-8px) rotate(-1deg); } }
+.mdw-bob { animation: mdw-bob 4.6s ease-in-out infinite; transform-origin: 270px 440px; }
+@media (prefers-reduced-motion: reduce) { .mdw-bob { animation: none; } }

@@ -5,7 +5,7 @@
  *  - nothing is made up: skills, employers, titles and dates on the tailored resume all come from the candidate's own history
  *  - the resume changes with the job (summary, skills, bullets), and a different field is not dressed up as a fit
  *  - the file is real: one page, contact details present, PDF and HTML download, ATS score
- *   E2E_API_PORT=4302 E2E_WEB_PORT=3302 npx tsx scripts/qa-resume.mts
+ *   E2E_API_PORT=4300 E2E_WEB_PORT=3300 npx tsx scripts/qa-resume.mts
  */
 import { jobs } from "@jobgraph/core";
 import { Client, seedUser, startStack } from "./stack.mjs";
