@@ -51,7 +51,8 @@ const preferenceKeys = {
   salaryMin: z.number().optional(), stages: z.array(z.string()).optional(), excludeCompanies: z.array(z.string()).optional(),
 };
 // Known keys are typed; extra keys are kept, never stripped.
-const preferences = z.object({ ...preferenceKeys, country: z.string().optional(), github: z.string().optional() })
+// agent (bookkeeping) and lanes are kept by the server; a client echoing them back, as the wizard does, must not be refused.
+const preferences = z.object({ ...preferenceKeys, country: z.string().optional(), github: z.string().optional(), agent: z.unknown().optional(), lanes: z.unknown().optional() })
   .catchall(z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]));
 
 /** PUT /api/profile: every profile column plus nested preferences and settings. */
@@ -92,7 +93,8 @@ export function buildProfilePatch(current: ProfileRow, data: Record<string, unkn
   if (d.eeo) set.eeo = { ...current.eeo, ...compact(d.eeo as Record<string, unknown>) };
   const flatPrefs = Object.fromEntries(Object.keys(preferenceKeys).filter((k) => d[k] !== undefined).map((k) => [k, d[k]]));
   if (d.preferences || Object.keys(flatPrefs).length) {
-    set.preferences = { ...current.preferences, ...((d.preferences as object | undefined) ?? {}), ...flatPrefs };
+    const { agent: _agent, lanes: _lanes, ...incoming } = (d.preferences as Record<string, unknown> | undefined) ?? {}; // server-owned: never taken from the client
+    set.preferences = { ...current.preferences, ...incoming, ...flatPrefs };
   }
   // City/state/country from the wizard keep the free-text location (used by older heuristics) in sync.
   if (d.location === undefined && (d.city !== undefined || d.state !== undefined || d.country !== undefined)) {

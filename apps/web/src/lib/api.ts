@@ -28,6 +28,14 @@ export class ApiError extends Error {
   }
 }
 
+/** A server message that names an environment variable or a vendor is for the operator, not the person using Nori. */
+export function friendly(msg: string): string {
+  if (/COMPOSIO|through Composio/i.test(msg)) return "Connections (Gmail, Sheets, Slack, Calendar) are not switched on for this Nori yet. Everything else works without them.";
+  if (/PARALLEL_API_KEY|Parallel search/i.test(msg)) return "Live company research is not switched on for this Nori yet.";
+  if (/[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+.*(?:is not set|not configured|missing)|(?:is not set|not configured).*[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/.test(msg)) return "This feature is not set up on this Nori yet.";
+  return msg;
+}
+
 /** Base URL + headers for the current runtime: relative in the browser, absolute with forwarded cookies on the server. */
 async function target(): Promise<{ base: string; headers: Record<string, string> }> {
   if (typeof window !== "undefined") return { base: "", headers: {} };
@@ -67,7 +75,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       const j = (await res.json()) as { error?: string; message?: string };
       msg = j.error ?? j.message ?? msg;
     } catch { /* not json */ }
-    const err = new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, msg);
+    const err = new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, friendly(msg));
     if (typeof window === "undefined" && res.status >= 500) console.warn(`[web] ${err.technical}`);
     throw err;
   }

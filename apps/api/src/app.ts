@@ -573,7 +573,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/jobs/discover", async (c) => {
     const q = await body(c, DiscoverBody);
     const res = await findAndRank(db, c.get("user").id, q);
-    return c.json({ added: res.added, jobs: res.jobs.map((r) => ({ job: slimJob(r.job), match: r.match })) });
+    return c.json({ added: res.added, heldOnly: res.heldOnly ?? false, jobs: res.jobs.map((r) => ({ job: slimJob(r.job), match: r.match })) });
   });
 
   app.post("/api/jobs/url", async (c) => {
@@ -863,7 +863,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.get("/api/integrations", async (c) => {
-    if (!composioAvailable()) return c.json(TOOLKITS.map((toolkit) => ({ toolkit, connected: false })));
+    if (!composioAvailable()) return c.json(TOOLKITS.map((toolkit) => ({ toolkit, connected: false, available: false })));
     try {
       return c.json(await listConnections(c.get("user").id));
     } catch (err) {

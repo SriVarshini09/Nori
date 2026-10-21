@@ -345,7 +345,8 @@ export type Channel = {
   createdAt: string;
 };
 
-export type Integration = { toolkit: string; connected: boolean; error?: string };
+/** `available: false` means this server has no connection provider configured, so Connect cannot work yet. */
+export type Integration = { toolkit: string; connected: boolean; error?: string; available?: boolean };
 
 // ---- agent (GET /api/agent/activity, /api/agent/status, POST /api/agent/tick, /api/agent/chat)
 export type AgentActivityKind =

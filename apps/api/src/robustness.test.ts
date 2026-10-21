@@ -69,3 +69,23 @@ describe("text input", () => {
     expect(Date.now() - t).toBeLessThan(10_000);
   });
 });
+
+describe("preferences that the server also writes to", () => {
+  // Found by scripts/qa-clicks.mts: once the agent had run, the wizard sent preferences.agent back and PUT /api/onboarding answered 400.
+  it("accepts the whole preferences object echoed back, and keeps the server's own bookkeeping", async () => {
+    const lane = { id: "l1", name: "Frontend", titles: ["Frontend Engineer"], locations: [], remote: "ok", minScore: 0.7 };
+    const first = await call("PUT", "/api/profile", { preferences: { titles: ["Engineer"] } });
+    expect(first.status).toBe(200);
+    // simulate the agent having run
+    const { profiles } = await import("@jobgraph/core");
+    const [row] = await db.select().from(profiles);
+    await db.update(profiles).set({ preferences: { ...(row.preferences as object), agent: { lastTickAt: "2026-01-01T00:00:00.000Z" }, lanes: [lane] } as never });
+    const echoed = await call("PUT", "/api/onboarding", { step: "preferences", data: { preferences: { titles: ["Staff Engineer"], remote: "ok", agent: { lastTickAt: "forged" }, lanes: [] }, autoApplyDailyCap: 2 } });
+    expect(echoed.status, echoed.text).toBe(200);
+    const [after] = await db.select().from(profiles);
+    const prefs = after.preferences as { titles: string[]; agent: { lastTickAt: string }; lanes: unknown[] };
+    expect(prefs.titles).toEqual(["Staff Engineer"]);
+    expect(prefs.agent.lastTickAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(prefs.lanes).toHaveLength(1);
+  });
+});

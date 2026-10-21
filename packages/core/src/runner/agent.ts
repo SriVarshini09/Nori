@@ -355,12 +355,13 @@ export function createAgent(db: Db, deps: AgentDeps) {
     for (const a of actions) {
       switch (a.tool) {
         case "find_jobs": {
-          const { jobs: ranked } = await findAndRank(db, userId, { objective: a.query, maxResults: 10 }, deps.discover);
+          const { jobs: ranked, heldOnly } = await findAndRank(db, userId, { objective: a.query, maxResults: 10 }, deps.discover);
           if (!ranked.length) { out.push(N.noJobsNote(a.query)); break; }
           const top = ranked.slice(0, 10);
           shortlist.splice(0, shortlist.length, ...top.map((r) => r.job.id));
           await saveShortlist(db, userId, msg, shortlist);
           out.push(N.shortlistMessage(top.map((r) => ({ job: r.job, score: r.match?.score ?? null }))));
+          if (heldOnly) out.push({ text: "Live web search is not switched on, so these come from the jobs Nori already has. Add companies on the Companies page to widen it." });
           break;
         }
         case "apply": {
