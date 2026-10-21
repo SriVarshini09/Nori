@@ -22,6 +22,8 @@ async function call(method: string, path: string, opts: { cookie?: string; body?
   let json: any = null; try { json = JSON.parse(text); } catch { /* not json */ }
   return { status: res.status, text, json, headers: res.headers };
 }
+/** 5xx is a bug, except a 503 that says a service is deliberately not configured (no key set). */
+const serverError = (r: R) => r.status >= 500 && !(r.status === 503 && /not set|not configured|not enabled|connect .* first/i.test(r.text));
 const cookieOf = (r: R) => (r.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
 
 // ---- accounts
@@ -47,7 +49,7 @@ const REAL: Record<string, string> = { id: appId, toolkit: "gmail", file: "x.wof
 // ---- the route table, straight from the source
 const src = (await readFile("apps/api/src/app.ts", "utf8")) + (await readFile("apps/api/src/resume-routes.ts", "utf8"));
 const routes = [...src.matchAll(/app\.(get|post|put|patch|delete)\(\s*"([^"]+)"/g)].map((m) => ({ method: m[1].toUpperCase(), path: m[2] }));
-const PUBLIC = /^\/api\/(auth\/(signup|login|logout|forgot-password|reset-password|verify-email)|health|webhooks\/|auth\/session$)/;
+const PUBLIC = /^\/api\/(auth\/(signup|login|logout|forgot-password|reset-password|verify-email)|health|webhooks\/|auth\/session$|resume-fonts\/)/;
 // never replay these against the demo account while probing: they end the session or remove the account
 const SKIP_WRITE = /^(DELETE \/api\/auth\/account|POST \/api\/auth\/logout|POST \/api\/auth\/sessions\/revoke-others|DELETE \/api\/settings\/model|POST \/api\/auth\/change-password)$/;
 const fill = (p: string, id: string) => p.replace(/:(\w+)/g, (_, k) => (k === "id" ? id : REAL[k] ?? id)).replace("/*", "/x");
@@ -58,7 +60,7 @@ console.log(`${routes.length} routes found`);
 for (const r of routes) {
   if (PUBLIC.test(r.path) || r.path.startsWith("/mcp")) continue;
   const res = await call(r.method, fill(r.path, UUID0), { body: r.method === "GET" || r.method === "DELETE" ? undefined : {} });
-  if (res.status >= 500) bug(`A signed out ${r.method} ${r.path} -> ${res.status} ${res.text.slice(0, 80)}`);
+  if (serverError(res)) bug(`A signed out ${r.method} ${r.path} -> ${res.status} ${res.text.slice(0, 80)}`);
   else if (res.status !== 401) bug(`A signed out ${r.method} ${r.path} -> ${res.status} (expected 401)`);
 }
 
@@ -69,12 +71,12 @@ for (const r of routes.filter((x) => x.method === "GET" && !x.path.startsWith("/
   for (const t of tries) {
     if (t.endsWith("/events")) continue; // server-sent stream, would hang
     const res = await call("GET", t, { cookie: ca });
-    if (res.status >= 500) bug(`B GET ${t.slice(0, 90)} -> ${res.status} ${res.text.slice(0, 100)}`);
+    if (serverError(res)) bug(`B GET ${t.slice(0, 90)} -> ${res.status} ${res.text.slice(0, 100)}`);
   }
 }
 for (const q of ["/api/jobs?limit=-1", "/api/jobs?limit=abc", "/api/jobs?limit=99999999", "/api/jobs?minScore=zzz", "/api/jobs?status=%00", "/api/jobs?q=" + "x".repeat(5000), "/api/applications?status=bogus", "/api/agent/activity?limit=-5", "/api/agent/activity?limit=NaN", "/api/companies?q=%27%22%3C", "/api/inbox?limit=-1"]) {
   const res = await call("GET", q, { cookie: ca });
-  if (res.status >= 500) bug(`B GET ${q.slice(0, 80)} -> ${res.status} ${res.text.slice(0, 100)}`);
+  if (serverError(res)) bug(`B GET ${q.slice(0, 80)} -> ${res.status} ${res.text.slice(0, 100)}`);
 }
 
 // ---- C. signed in writes with garbage bodies
@@ -95,7 +97,7 @@ for (const r of routes) {
     for (const [label, g] of GARBAGE) {
       if (label === "huge text" && t !== targets[0]) continue;
       const res = await call(r.method, t, { cookie: ca, ...g });
-      if (res.status >= 500) bug(`C ${r.method} ${t.slice(0, 70)} with ${label} -> ${res.status} ${res.text.slice(0, 90)}`);
+      if (serverError(res)) bug(`C ${r.method} ${t.slice(0, 70)} with ${label} -> ${res.status} ${res.text.slice(0, 90)}`);
     }
   }
 }

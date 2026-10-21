@@ -197,6 +197,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     else p.catch((err) => console.warn("[api] background run failed:", (err as Error).message));
   };
   const loadApp = async (c: Context<AppEnv>, id: string) => {
+    if (!uuidOk(id)) throw bad("Application not found", 404);
     const user = c.get("user");
     const [row] = await db.select().from(applications).where(and(eq(applications.id, id), eq(applications.userId, user.id))).limit(1);
     if (!row) throw bad("Application not found", 404);
@@ -531,7 +532,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.post("/api/graph/facts", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(1) }));
+    const { text } = await body(c, z.object({ text: z.string().min(1, "Write the fact first").max(4000, "Keep a fact under 4000 characters") }));
     const result = await addFact(db, c.get("user").id, text);
     await rescore(c, c.get("user").id);
     return c.json(result);
