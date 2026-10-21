@@ -86,6 +86,8 @@ export const profiles = pgTable("profiles", {
   rawResumeText: text("raw_resume_text"),
   resumeAutoApprove: boolean("resume_auto_approve").default(false).notNull(),
   reviewBeforeSubmit: boolean("review_before_submit").default(true).notNull(),
+  /** off: every form waits for the person. safe: Nori approves a filled form itself only when every Autopilot check passes. written: the same, and short free-text answers Nori wrote are allowed. */
+  autopilot: text("autopilot").$type<"off" | "safe" | "written">().default("off").notNull(),
   /** Daily cap for auto-apply mode. 0 disables auto apply. */
   autoApplyDailyCap: integer("auto_apply_daily_cap").default(0).notNull(),
   autoApplyMinScore: real("auto_apply_min_score").default(0.7).notNull(),
@@ -276,6 +278,8 @@ export const applications = pgTable("applications", {
   /** Set by the user (or auto-approve settings) to let the runner pass a review gate. */
   resumeApprovedAt: timestamp("resume_approved_at", { withTimezone: true }),
   formApprovedAt: timestamp("form_approved_at", { withTimezone: true }),
+  /** True when Autopilot (not the person) approved the filled form. */
+  autopilot: boolean("autopilot").default(false).notNull(),
   submittedAt: timestamp("submitted_at", { withTimezone: true }),
   /** Row number in the user's Google Sheet tracker, if synced through Composio. */
   sheetRow: integer("sheet_row"),

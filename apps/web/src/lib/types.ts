@@ -56,6 +56,8 @@ export type Profile = {
   rawResumeText?: string | null;
   resumeAutoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  /** off: you approve every form. safe: Nori sends by itself only when every check passes. written: the same, and short answers Nori wrote are allowed. */
+  autopilot?: "off" | "safe" | "written";
   autoApplyDailyCap: number;
   autoApplyMinScore: number;
   updatedAt: string;
@@ -211,6 +213,8 @@ export type Application = {
   attempts: number;
   resumeApprovedAt: string | null;
   formApprovedAt: string | null;
+  /** True when Autopilot, not the person, approved the filled form. */
+  autopilot?: boolean;
   submittedAt: string | null;
   sheetRow?: number | null;
   createdAt: string;
@@ -360,6 +364,9 @@ export type AgentStatus = {
   minScore: number;
   autoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  autopilot?: "off" | "safe" | "written";
+  /** How many applications you approved yourself, and how many Autopilot needs before it sends any. */
+  autopilotTrust?: { approved: number; needed: number };
   /** False: the server runs in dry-run mode, forms are filled but never sent. Absent on older APIs. */
   liveSubmit?: boolean;
   channels: { kind: string; address: string }[];

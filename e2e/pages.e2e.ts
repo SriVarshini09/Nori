@@ -224,6 +224,29 @@ describe("auto apply", () => {
     await expect(page.getByRole("button", { name: "Edit Platform, remote" })).toHaveCount(0);
   });
 
+  it("turns Autopilot on after a warning, shows how much trust is still needed, and turns it off", async () => {
+    await page.goto(`${WEB}/agent`);
+    const group = page.getByRole("radiogroup", { name: "Autopilot" });
+    await expect(group.getByRole("radio", { name: /^Off/ })).toHaveAttribute("aria-checked", "true");
+
+    let warned = "";
+    page.once("dialog", (d) => { warned = d.message(); void d.accept(); });
+    await group.getByRole("radio", { name: /^Safe Nori sends by itself/ }).click();
+    await expect(group.getByRole("radio", { name: /^Safe Nori sends by itself/ })).toHaveAttribute("aria-checked", "true");
+    expect(warned).toMatch(/send an application by itself, without asking/);
+    await expect(page.getByText(/Starts after you approve 3 yourself \(\d so far\)/)).toBeVisible(); // earlier steps approved one by hand
+    await expect.poll(async () => (await api("/api/me")).json.profile).toMatchObject({ autopilot: "safe", reviewBeforeSubmit: true });
+
+    await page.getByText("What Autopilot checks before it sends").click();
+    await expect(page.getByText("Greenhouse, Lever or Ashby")).toBeVisible();
+    await expect(page.getByText("You have not applied to the same company in the last 30 days.")).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("radiogroup", { name: "Autopilot" }).getByRole("radio", { name: /^Safe Nori sends by itself/ })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radiogroup", { name: "Autopilot" }).getByRole("radio", { name: /^Off/ }).click(); // turning off needs no warning
+    await expect.poll(async () => (await api("/api/me")).json.profile.autopilot).toBe("off");
+  });
+
   it("runs the agent now and reports what it did", async () => {
     await page.goto(`${WEB}/agent`);
     await page.getByRole("button", { name: "Run now" }).click();

@@ -227,3 +227,20 @@ export function checkDisqualifiers(job: GateJob, requirements: JobRequirements |
 
   return { ok: reasons.length === 0, reasons };
 }
+
+/**
+ * What the posting states that the profile gives no answer to. checkDisqualifiers lets an unknown profile field pass
+ * (never reject on a guess); anything that sends an application without asking must not, so Autopilot treats each of
+ * these as "cannot prove eligibility" and leaves the form for the person.
+ */
+export function unprovenConstraints(job: GateJob, requirements: JobRequirements | null | undefined, profile: GateProfile): string[] {
+  const wa = (profile.workAuth ?? {}) as WorkAuth;
+  const text = [job.descriptionText ?? "", ...(requirements?.mustHaves ?? []), ...(requirements?.disqualifiers ?? [])].join("\n");
+  const out: string[] = [];
+  if (CITIZEN_RE.test(text) && !wa.status) out.push("The posting requires US citizenship and your profile does not say your status");
+  if ((CLEARANCE_RE.test(text) || OBTAIN_CLEARANCE_RE.test(text)) && !wa.status && !hasClearance(profile.securityClearance)) {
+    out.push("The posting mentions a security clearance and your profile does not say whether you hold or can get one");
+  }
+  if (NO_SPONSOR_RE.test(text) && wa.needsSponsorship === undefined) out.push("The posting offers no visa sponsorship and your profile does not say whether you need it");
+  return out;
+}

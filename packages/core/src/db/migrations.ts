@@ -263,4 +263,11 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens(user_id, kind)
 `,
   },
+  {
+    id: "0007_autopilot",
+    sql: `
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS autopilot text NOT NULL DEFAULT 'off';
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS autopilot boolean NOT NULL DEFAULT false
+`,
+  },
 ];

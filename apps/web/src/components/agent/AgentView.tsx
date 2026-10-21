@@ -1,5 +1,6 @@
 "use client";
 
+import { AutopilotRow } from "./AutopilotRow";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Play } from "lucide-react";
@@ -116,6 +117,7 @@ function StatusStrip({ status, now, onStatus, onTick }: { status: AgentStatus; n
           </div>
         </div>
       </div>
+      <AutopilotRow status={status} onStatus={onStatus} onError={setError} />
       {(summary || error) && (
         <p className={cx("border-t border-line px-4 py-3 text-body-sm sm:px-5", error ? "text-accent-ink" : "text-ink")} role="status">{error ?? summary}</p>
       )}

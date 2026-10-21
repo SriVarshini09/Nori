@@ -1,5 +1,5 @@
 import path from "node:path";
-import { and, count, desc, eq, gte, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, ne, notExists, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import {
   applications, companies, jobs, matches, profiles, resumes, runEvents, users,
@@ -16,6 +16,8 @@ import { renderPdf } from "../tailor/pdf.js";
 import { getProfile } from "../users.js";
 import { baselineFromDoc, getDefaultResumeDoc } from "../resume/docs.js";
 import { emit } from "./events.js";
+import { checkDisqualifiers, unprovenConstraints } from "../agent/gate.js";
+import { AUTOPILOT_COMPANY_COOLDOWN_DAYS, autopilotVerdict, describeVerdict, type AutopilotMode } from "./autopilot.js";
 import { withUserLLM } from "../llm/index.js";
 import { LIKELY_QUESTIONS, isProfileField, makeAnswerQuestion, toApplicantProfile, type ComposedAnswer } from "./answers.js";
 
@@ -38,6 +40,8 @@ export type RunnerDeps = {
   tailor?: (input: TailorInput) => Promise<TailorOutcome>;
   /** Root for artifacts; default data/artifacts (or ARTIFACTS_DIR). Files land under <root>/<applicationId>/. */
   artifactsRoot?: string;
+  /** How many hand-approved applications Autopilot needs before it sends any; default AUTOPILOT_MIN_HUMAN_APPROVALS (tests lower it). */
+  autopilotMinApprovals?: number;
   /** Defaults to process.env.ALLOW_REAL_SUBMIT === "true". The driver enforces its own check too. */
   allowRealSubmit?: boolean;
   /** Verification code wait; default 3 minutes. */
@@ -192,6 +196,8 @@ type DriveSetup = {
   ctx: Omit<DriverContext, "dryRun" | "waitForCode">; driver: ApplyDriver; reviewBeforeSubmit: boolean;
   /** Free-text answers the composer wrote during this run, with their sources. */
   composed: Record<string, ComposedAnswer>;
+  /** What Autopilot needs to judge the filled form. */
+  job: typeof jobs.$inferSelect; requirements: JobRequirements | null; profileRow: typeof profiles.$inferSelect;
 };
 
 async function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
@@ -249,6 +255,7 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
   return {
     driver,
     composed,
+    job, requirements, profileRow,
     reviewBeforeSubmit: profileRow.reviewBeforeSubmit,
     ctx: {
       applyUrl: job.applyUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
@@ -351,9 +358,50 @@ async function finishSubmitted(db: Db, app: Application, receipt: Receipt): Prom
     receipt.confirmationText ? `Submitted: ${receipt.confirmationText.slice(0, 200)}` : "Submitted");
 }
 
+/** Applications the person approved themselves (not Autopilot) that went out: the trust Autopilot is built on. */
+export async function countHumanApprovals(db: Db, userId: string): Promise<number> {
+  const sent = ["submitted", "viewed", "replied", "interview", "offer", "rejected"] as ApplicationStatus[];
+  const [{ n }] = await db.select({ n: count() }).from(applications).where(and(
+    eq(applications.userId, userId), eq(applications.autopilot, false), inArray(applications.status, sent), sql`${applications.formApprovedAt} is not null`));
+  return Number(n);
+}
+
+/** Autopilot's decision for a freshly filled form. Records the checks on the timeline and returns whether it may approve. */
+async function judgeByAutopilot(db: Db, app: Application, deps: RunnerDeps, setup: DriveSetup, writtenLabels: string[]): Promise<boolean> {
+  const { job, requirements, profileRow } = setup;
+  const [m] = await db.select({ score: matches.score }).from(matches).where(and(eq(matches.userId, app.userId), eq(matches.jobId, job.id))).limit(1);
+  const [resume] = app.resumeId ? await db.select({ atsScore: resumes.atsScore }).from(resumes).where(eq(resumes.id, app.resumeId)).limit(1) : [];
+  const graph = await getGraph(db, app.userId);
+  const humanApprovals = await countHumanApprovals(db, app.userId);
+  const since = new Date(Date.now() - AUTOPILOT_COMPANY_COOLDOWN_DAYS * 86_400_000);
+  const [{ n: recent }] = await db.select({ n: count() }).from(applications).innerJoin(jobs, eq(jobs.id, applications.jobId)).where(and(
+    eq(applications.userId, app.userId), ne(applications.id, app.id), gte(applications.createdAt, since),
+    notInArray(applications.status, ["failed", "skipped"] as ApplicationStatus[]),
+    sql`lower(${jobs.companyName}) = ${job.companyName.trim().toLowerCase()}`));
+  const verdict = autopilotVerdict({
+    mode: profileRow.autopilot as AutopilotMode,
+    atsType: setup.driver.atsType,
+    submitLockOpen: deps.allowRealSubmit ?? process.env.ALLOW_REAL_SUBMIT === "true",
+    score: m?.score ?? null,
+    minScore: profileRow.autoApplyMinScore,
+    gate: checkDisqualifiers(job, requirements, profileRow, { graph }),
+    unproven: unprovenConstraints(job, requirements, profileRow),
+    filled: true,
+    pendingQuestions: 0,
+    writtenAnswers: writtenLabels,
+    atsScore: resume?.atsScore ?? null,
+    humanApprovals,
+    minHumanApprovals: deps.autopilotMinApprovals,
+    recentSameCompany: Number(recent),
+  });
+  await emit(db, app.id, "autopilot", describeVerdict(verdict), { allowed: verdict.allow, checks: verdict.checks }, verdict.allow ? "info" : "warn");
+  return verdict.allow;
+}
+
 async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<ApplicationStatus> {
   const root = artifactsRootOf(deps);
-  const { ctx, driver, reviewBeforeSubmit, composed } = await setupDrive(db, app, deps, { research: true });
+  const setup = await setupDrive(db, app, deps, { research: true });
+  const { ctx, driver, reviewBeforeSubmit, composed } = setup;
   const user = { ...app.answers };
 
   // Pre-answer the questions most forms ask, fresh from the current profile and evidence on every run.
@@ -379,6 +427,15 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
     case "filled": {
       const receipt = stored(res.receipt);
       if (reviewBeforeSubmit) {
+        // Autopilot may approve the form itself, but only when every check passes (see autopilot.ts); otherwise it waits as always.
+        // Nori pre-writes answers to questions most forms ask, whether or not this form does: only the ones it used count.
+        const used = new Set(receipt.fields.map((f) => f.label.trim().toLowerCase()));
+        const written = Object.keys(composed).filter((label) => used.has(label.trim().toLowerCase()));
+        const approved = setup.profileRow.autopilot !== "off" ? await judgeByAutopilot(db, app, deps, setup, written) : false;
+        if (approved) {
+          return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null, formApprovedAt: new Date(), autopilot: true },
+            `Form filled (${receipt.fields.length} fields); approved by Autopilot`);
+        }
         return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null }, `Form filled (${receipt.fields.length} fields); waiting for review`);
       }
       return transition(db, app, "submitting", { receipt, pendingQuestions: [], error: null }, "Form filled; submitting (review before submit is off)");

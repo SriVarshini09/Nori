@@ -29,6 +29,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 
 **Bring your own model.** Settings and onboarding now offer 12 providers (OpenAI, Anthropic, Gemini, OpenRouter, Groq, DeepSeek, Together, Mistral, Cline, Ollama, LM Studio, or any OpenAI-compatible endpoint). Paste a key, load the provider's own model list, test the connection; keys are stored encrypted and never shown again. In production a model URL must be a public address (so the model settings cannot be used to reach internal services); single-user hosts that want Ollama or LM Studio on the same machine set `ALLOW_PRIVATE_MODEL_URLS=1`. Account email can now go through Resend or any SMTP server (`SMTP_URL` + `EMAIL_FROM`); the SMTP path is tested against a stand-in SMTP server, not a real mail provider. Plan and checklist: `docs/TOOLS.md`.
 
+**Autopilot (hands-free applying, guarded).** New setting on Auto apply: Nori can send an application without asking, but only when 11 checks all pass (account-free platform, match above your bar, no eligibility conflict, nothing unprovable from your profile, every answer from your profile, readable resume, you approved 3 yourself first, no recent application to the same company, server allowed to send). Anything else waits for you with the reason shown. Off by default. Details and limits: `docs/AUTOPILOT.md`. Real submission has still never run on a live site.
+
 **Public side.** Landing page, Privacy, Terms, robots, sitemap, share image.
 
 ## What is NOT verified, and why

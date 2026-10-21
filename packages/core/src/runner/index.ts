@@ -5,3 +5,4 @@ export * from "./jobs.js";
 export * from "./agent.js";
 export * from "../compose/index.js";
 export * from "./resume-edit.js";
+export * from "./autopilot.js";

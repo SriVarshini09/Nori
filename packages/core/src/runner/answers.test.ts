@@ -31,7 +31,7 @@ describe("geography inference", () => {
     eeo: { gender: "decline", race: "decline", veteran: "decline", disability: "decline" },
     securityClearance: null, over18: null, onboarding: { step: "resume" },
     preferences: { github: "https://github.com/jr" } as never, rawResumeText: null, resumeAutoApprove: false,
-    reviewBeforeSubmit: true, autoApplyDailyCap: 0, autoApplyMinScore: 0.7, updatedAt: new Date(),
+    reviewBeforeSubmit: true, autopilot: "off", autoApplyDailyCap: 0, autoApplyMinScore: 0.7, updatedAt: new Date(),
   };
 
   it("builds country and github on the ApplicantProfile (legacy preferences keys)", () => {

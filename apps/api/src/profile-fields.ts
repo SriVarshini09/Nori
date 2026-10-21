@@ -41,6 +41,7 @@ const screening = {
 const settings = {
   resumeAutoApprove: z.boolean().optional(),
   reviewBeforeSubmit: z.boolean().optional(),
+  autopilot: z.enum(["off", "safe", "written"]).optional(),
   autoApplyDailyCap: z.number().int().min(0).max(100).optional(),
   autoApplyMinScore: z.number().min(0).max(1).optional(),
 };
@@ -75,7 +76,7 @@ export const STEP_SCHEMAS: Record<OnboardingStep, z.ZodType<Record<string, unkno
 const COLUMNS = [
   "fullName", "email", "phone", "location", "city", "state", "country", "linkedin", "github", "website", "pronouns",
   "willingToRelocate", "remotePreference", "heardAbout", "salaryExpectation", "earliestStartDate", "noticePeriodWeeks",
-  "securityClearance", "over18", "resumeAutoApprove", "reviewBeforeSubmit", "autoApplyDailyCap", "autoApplyMinScore",
+  "securityClearance", "over18", "resumeAutoApprove", "reviewBeforeSubmit", "autopilot", "autoApplyDailyCap", "autoApplyMinScore",
 ] as const;
 
 const compact = <T extends Record<string, unknown>>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
@@ -85,6 +86,8 @@ export function buildProfilePatch(current: ProfileRow, data: Record<string, unkn
   const d = { ...data, ...((data.settings as Record<string, unknown> | undefined) ?? {}) };
   const set: Record<string, unknown> = {};
   for (const k of COLUMNS) if (d[k] !== undefined) set[k] = d[k];
+  // Autopilot stands in for "ask every time", so it needs that review step to exist: turning it on turns review back on.
+  if (set.autopilot && set.autopilot !== "off") set.reviewBeforeSubmit = true;
   if (d.workAuth) set.workAuth = compact({ ...current.workAuth, ...(d.workAuth as Record<string, unknown>) });
   if (d.eeo) set.eeo = { ...current.eeo, ...compact(d.eeo as Record<string, unknown>) };
   const flatPrefs = Object.fromEntries(Object.keys(preferenceKeys).filter((k) => d[k] !== undefined).map((k) => [k, d[k]]));

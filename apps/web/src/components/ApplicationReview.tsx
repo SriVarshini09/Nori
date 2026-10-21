@@ -163,6 +163,9 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
       await api.approveForm(app.id, { ...answers, ...filled });
     }, { status: "submitting", formApprovedAt: now(), pendingQuestions: [], answers: { ...answers, ...pending } });
 
+  // What Autopilot decided about this form, in its own words (see runner/autopilot.ts).
+  const autopilotEvent = [...events].reverse().find((e) => e.step === "autopilot");
+  const autopilotNote = autopilotEvent ? { sent: app.autopilot === true, text: autopilotEvent.message.replace(/^Autopilot /, "").replace(/^./, (c) => c.toUpperCase()) } : null;
   const lastStep = [...events].reverse().map((e) => e.step).find((s) => (PIPELINE as string[]).includes(s));
   const formEditable = app.status === "form_review" || app.status === "needs_user";
   const showForm = formEditable || app.status === "awaiting_code" || (Object.keys(answers).length > 0 && !app.receipt);
@@ -397,9 +400,10 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
         <Stepper status={app.status} lastStep={lastStep} />
       </Frame>
 
-      {(error || app.error || NEEDS_YOU.includes(app.status)) && (
+      {(error || app.error || NEEDS_YOU.includes(app.status) || autopilotNote) && (
         <div className="mt-6 space-y-3">
           {error && <Notice tone="red">{error}</Notice>}
+          {autopilotNote && <Notice tone={autopilotNote.sent ? "green" : "amber"} label="Autopilot">{autopilotNote.text}</Notice>}
           {app.error && <Notice tone="red" label="Run error">{app.error}</Notice>}
           {NEEDS_YOU.includes(app.status) && (
             <Notice tone="amber" label="Your turn">
