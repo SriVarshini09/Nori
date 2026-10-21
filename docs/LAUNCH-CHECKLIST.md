@@ -23,7 +23,11 @@ I cannot merge into `main` or push; that stays yours.
 
 Check what is read: `npm run doctor` prints "configured" or "BLOCKED" per area. "Configured" means the key is present; I then run the real call and report the result.
 
-## 3. Four job links (2 minutes)
+## 3. Four job links: DONE without you (see docs/LIVE-DRYRUN.md)
+
+Nori picked one public posting per platform from the live feeds and dry-ran them; no links needed from you. The section below is kept for reference if you want to try a specific posting (`npm run dryrun:live <url>`).
+
+### Original instructions
 
 Paste one **public job posting URL** for each board, ideally a role you would never apply to:
 

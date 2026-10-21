@@ -22,9 +22,26 @@ export const PREFERRED_FORM_SELECTORS = ["#application_form", "form#application-
 
 const clean = (s: string) => s.replace(/\s+/g, " ").trim();
 
+/**
+ * A field label without the page's decoration. Some forms glue the required marker and helper text onto the label
+ * ("Resume/CV ✱ATTACH RESUME/CVCouldn't auto-read resume..."), which would make labels unreadable on a receipt and
+ * impossible to match against answers the person saved. Cut at the marker; drop a trailing "*".
+ */
+export function cleanLabel(raw: string, options: string[] = []): string {
+  let s = clean(raw);
+  // A radio or checkbox group's label can arrive with its options' text glued on ("RaceHispanic or Latino..."): cut there.
+  const cuts = options.map((o) => clean(o)).filter((o) => o.length >= 4).map((o) => s.indexOf(o)).filter((i) => i > 0);
+  if (cuts.length) s = s.slice(0, Math.min(...cuts));
+  const mark = s.search(/[✱＊]/);
+  if (mark > 0) s = s.slice(0, mark);
+  s = s.replace(/\s*\*+\s*$/, "").trim();
+  return s || clean(raw);
+}
+
 /** Find every input/textarea/select in the main application form. Tags the chosen form with data-jobgraph-form. */
 export async function discoverFields(page: Page, preferred: string[] = PREFERRED_FORM_SELECTORS): Promise<FormField[]> {
   const fields = await runScript<DiscoveredField[]>(page, DISCOVER_SCRIPT, preferred);
+  for (const f of fields) f.label = cleanLabel(f.label, f.options);
   for (const f of fields) {
     if (!f.combobox) continue;
     // react-select style: the listbox only renders while open, so open it, read the options, close it.
@@ -408,7 +425,33 @@ export async function fillForm(page: Page, ctx: DriverContext, fields: FormField
       if (field.required) pending.push({ label: field.label, type: field.kind, required: true, ...(field.options ? { options: field.options } : {}) });
     }
   }
+  await verifyFilled(page, ctx, fields, filled, pending);
   return { filled, pending, files };
+}
+
+const TEXT_KINDS = new Set<FormField["kind"]>(["text", "email", "tel", "textarea"]);
+
+/**
+ * Re-read every text field once the whole form is filled. A page's own scripts can reject or clear a value after we set it
+ * (an autocomplete that "found no location", a field that re-renders), and a receipt must show what the form really holds:
+ * what is in the box now replaces what we typed, and a field that ended up empty is not reported as filled.
+ */
+async function verifyFilled(page: Page, ctx: DriverContext, fields: FormField[], filled: Receipt["fields"], pending: PendingQuestion[]): Promise<void> {
+  await page.waitForTimeout(250);
+  for (const entry of [...filled]) {
+    const field = fields.find((f) => f.label === entry.label && TEXT_KINDS.has(f.kind));
+    if (!field) continue;
+    const now = await page.locator(field.selector).first().inputValue().catch(() => null);
+    if (now === null || now === entry.value) continue;
+    if (now.trim() === "") {
+      filled.splice(filled.indexOf(entry), 1);
+      ctx.onEvent("field_warn", `"${field.label}" is empty after filling: the form did not keep the value`, { label: field.label, wanted: entry.value });
+      if (field.required) pending.push({ label: field.label, type: field.kind, required: true });
+    } else {
+      ctx.onEvent("field_warn", `"${field.label}" holds "${now.slice(0, 60)}" rather than what was typed`, { label: field.label, wanted: entry.value, actual: now });
+      entry.value = now;
+    }
+  }
 }
 
 /** Locate the submit control (button text first, then type=submit in the form). Never clicks it. */

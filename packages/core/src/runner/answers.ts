@@ -269,6 +269,30 @@ export function heuristicAnswer(field: FormField, profile: ApplicantProfile | Ap
   // EEO self-identification: the user's choice from onboarding, decline by default.
   if (EEO_RE.test(l) && !/sponsor|authori[sz]/.test(l)) return out(eeoAnswer(field, l, full.eeo));
 
+  // Preferred name: the first name, never something the person did not give.
+  if (/\b(preferred|nick|chosen|goes by|what (should|do) we call)\b.{0,20}\bname\b|\bnickname\b/.test(l) && !/\b(last|family|sur|middle|legal|company|employer)\b/.test(l)) {
+    return full.firstName ? out(full.firstName) : null;
+  }
+
+  // Pronouns: only what the person told us. A guess here would be wrong about a person.
+  if (/\bpronouns?\b/.test(l)) {
+    if (!full.pronouns) return null;
+    if (!opts.length) return full.pronouns;
+    const want = full.pronouns.toLowerCase().replace(/\s+/g, "");
+    return out(opts.find((o) => o.toLowerCase().replace(/\s+/g, "") === want)
+      ?? opts.find((o) => o.toLowerCase().replace(/\s+/g, "").includes(want) || want.includes(o.toLowerCase().replace(/\s+/g, "")) && o.length > 3));
+  }
+
+  // "Which U.S. state or Canadian province do you live in?": the state on the profile (or inferred from the location).
+  if (/\b(state|province|region)\b/.test(l) && /\b(reside|live|living|located|based|home)\b/.test(l) && !/(one of|any of|following|these|listed)/.test(l)) {
+    const st = full.state ? inferState(full.state) ?? { abbr: full.state.toUpperCase(), name: full.state } : inferState(profile.location);
+    if (!st) return null;
+    if (!opts.length) return st.name;
+    return out(opts.find((o) => o.trim().toLowerCase() === st.name.toLowerCase())
+      ?? opts.find((o) => hasWord(o, st.name))
+      ?? opts.find((o) => o.trim().toUpperCase() === st.abbr || new RegExp(`(^|[^A-Za-z])${st.abbr}([^A-Za-z]|$)`).test(o)));
+  }
+
   // Salary: the expected amount, or blank when the user gave none.
   if (SALARY_RE.test(l)) return out(salaryAnswer(field, l, full.salaryExpectation));
 

@@ -40,7 +40,7 @@ All must pass. Code: `packages/core/src/runner/autopilot.ts`, tests `autopilot.t
 
 ## What it does not do
 
-It never creates accounts, solves CAPTCHAs, takes assessments or runs on sites that need them. Those applications stay assisted: Nori prepares everything and you finish. It does not bypass the server's submit lock. Real submission has not yet been exercised on a live site: do the dry runs listed in `docs/LAUNCH-CHECKLIST.md` first.
+It never creates accounts, solves CAPTCHAs, takes assessments or runs on sites that need them. Those applications stay assisted: Nori prepares everything and you finish. It does not bypass the server's submit lock. Live dry runs (`docs/LIVE-DRYRUN.md`) showed that in practice only **Greenhouse** forms are free of a CAPTCHA: Lever and Ashby showed one, and SmartRecruiters blocks automated browsers. Those applications always wait for you. Real submission has still never been exercised on a live site.
 
 ## Tuning
 

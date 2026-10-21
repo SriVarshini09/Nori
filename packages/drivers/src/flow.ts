@@ -25,6 +25,8 @@ export type FlowOptions = {
 
 const NAV_TIMEOUT = 30_000;
 const CONFIRM_RE = /thank you|thanks for applying|application (has been |was )?(submitted|received)/i;
+/** A page that turns automation away (bot detection, "verify you are human" walls). Nori hands these to the person and never tries to get around them. */
+const BLOCKED_RE = /access is temporarily restricted|unusual activity from your (device|network)|automated \(bot\) activity|verify you are (a )?human|are you a robot|checking if the site connection is secure/i;
 const VERIFY_RE = /verification code|enter the code|security code|code (was|has been) sent/i;
 
 /** The one and only place the submit gate is decided. */
@@ -165,6 +167,14 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     fields = await discoverFields(page, preferred);
     ctx.onEvent("discovered", `Found ${fields.length} fields`, { fields: fields.map((f) => ({ label: f.label, kind: f.kind, required: f.required })) });
     if (!fields.length) {
+      if (BLOCKED_RE.test(await bodyText(page))) {
+        const shot = await screenshot(page, ctx, opts.name, "blocked");
+        ctx.onEvent("needs_user", "The site turned automated access away; Nori does not try to get around that");
+        return {
+          outcome: "needs_user", receipt: receipt({ fields: [], files: [], screenshotPath: shot }),
+          pending: [{ label: "This site blocks automated applications: open the posting and apply yourself", type: "blocked", required: true }],
+        };
+      }
       const shot = await screenshot(page, ctx, opts.name, "no-form");
       return { outcome: "failed", error: "No application form fields found", screenshotPath: shot };
     }

@@ -15,7 +15,7 @@ const OPTIONS: { id: Mode; label: string; line: string }[] = [
 ];
 
 const CHECKS = [
-  "The form is on a site that needs no account: Greenhouse, Lever or Ashby.",
+  "The form is on a site that needs no account: Greenhouse, Lever or Ashby. Lever and Ashby usually add a CAPTCHA, which always hands the form to you.",
   "The match is at or above your minimum score.",
   "The posting does not need a citizenship, clearance, sponsorship, location, experience or pay you do not meet.",
   "Nothing in the posting depends on a profile answer you have not given.",

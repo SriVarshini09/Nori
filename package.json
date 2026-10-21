@@ -28,6 +28,7 @@
     "doctor": "tsx scripts/doctor.mts",
     "live:model": "tsx scripts/live-model-check.mts",
     "live:flow": "tsx scripts/live-flow.mts",
+    "dryrun:live": "tsx scripts/dry-run-live.mts",
     "crawl": "tsx scripts/crawl.mts",
     "e2e": "vitest run --config vitest.e2e.config.ts"
   },

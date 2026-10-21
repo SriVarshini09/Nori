@@ -235,3 +235,33 @@ describe("educationAnswer (graph education nodes and the job title)", () => {
     expect(await answer(sel("Please confirm which term (Winter 2027 vs. Summer 2027)", ["Winter 2027", "Summer 2027"]), "")).toBe("Winter 2027");
   });
 });
+
+describe("preferred name, pronouns and state", () => {
+  const full = (p: Partial<ApplicantProfileFull>, f: FormField) => heuristicAnswer(f, { ...base, ...p, workAuth: base.workAuth } as ApplicantProfileFull);
+  const text = (label: string): FormField => ({ label, kind: "text", required: true, selector: "#x" });
+
+  it("answers preferred name with the first name, and not other kinds of name", () => {
+    expect(full({}, text("Preferred Name"))).toBe("Jordan");
+    expect(full({}, text("What name do you go by? (nickname)"))).toBe("Jordan");
+    expect(full({}, text("Preferred first name"))).toBe("Jordan");
+    expect(full({}, text("Legal last name"))).not.toBe("Jordan");
+    expect(full({ firstName: "" }, text("Preferred Name"))).toBeNull();
+  });
+
+  it("answers pronouns only from the profile, matching the form's options", () => {
+    expect(full({ pronouns: "they/them" }, text("Pronouns"))).toBe("they/them");
+    expect(full({ pronouns: "they/them" }, sel("Pronouns", ["He/Him", "She/Her", "They/Them", "Prefer not to say"]))).toBe("They/Them");
+    expect(full({}, sel("Pronouns", ["He/Him", "She/Her", "They/Them"]))).toBeNull(); // never guessed
+    expect(full({ pronouns: "xe/xem" }, sel("Pronouns", ["He/Him", "She/Her", "They/Them"]))).toBeNull();
+  });
+
+  it("answers which state or province you live in from the profile or the location", () => {
+    const provinces = ["Alabama", "California", "Texas", "Ontario", "British Columbia"];
+    expect(full({}, sel("Which U.S. State or Canadian Province do you reside in?", provinces))).toBe("California");
+    expect(full({ state: "TX" }, sel("Which U.S. State or Canadian Province do you reside in?", provinces))).toBe("Texas");
+    expect(full({}, text("State you currently live in"))).toBe("California");
+    expect(full({ location: "London, UK" }, sel("Which state do you live in?", provinces))).toBeNull();
+    // the older "one of these states" yes/no phrasing is untouched
+    expect(full({}, sel("Do you live in one of the following states: CA, NY?", ["Yes", "No"]))).toBe("Yes");
+  });
+});
