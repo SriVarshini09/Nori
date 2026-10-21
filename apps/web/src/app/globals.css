@@ -248,3 +248,7 @@ summary::-webkit-details-marker { display: none; }
 
 
 
+
+/* Marketing sections paint their own backdrop; fixed attachment makes tall bands render cut off in some browsers. */
+.ob-bg-scroll { background-attachment: scroll; }
+.ob-bg-scroll.ob-dots::before { position: absolute; }
