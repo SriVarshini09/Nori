@@ -15,9 +15,15 @@ export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
 /** Server-side base URL of apps/api. The browser never uses it. */
 const SERVER_API_URL = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
 
+/**
+ * `message` is what a person should read ("Cannot reach the server. Try again in a moment."), so every component that shows
+ * `error.message` is already safe. The technical text (method, path, status, internal address) lives in `technical`, for logs.
+ */
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public detail: string = message) {
-    super(message);
+  technical: string;
+  constructor(public status: number, technical: string, public detail: string = technical) {
+    super(detail);
+    this.technical = technical;
     this.name = "ApiError";
   }
 }
@@ -51,7 +57,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       credentials: "include",
     });
   } catch (e) {
-    throw new ApiError(0, `Cannot reach the jobgraph API${base ? ` at ${base}` : ""}. Start apps/api or set NEXT_PUBLIC_USE_MOCK=1. (${(e as Error).message})`, "Cannot reach the server. Try again in a moment.");
+    const err = new ApiError(0, `Cannot reach the jobgraph API${base ? ` at ${base}` : ""}. Start apps/api or set NEXT_PUBLIC_USE_MOCK=1. (${(e as Error).message})`, "Cannot reach the server. Try again in a moment.");
+    if (typeof window === "undefined") console.warn(`[web] ${err.technical}`);
+    throw err;
   }
   if (!res.ok) {
     let msg = res.statusText;
@@ -59,7 +67,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       const j = (await res.json()) as { error?: string; message?: string };
       msg = j.error ?? j.message ?? msg;
     } catch { /* not json */ }
-    throw new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, msg);
+    const err = new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, msg);
+    if (typeof window === "undefined" && res.status >= 500) console.warn(`[web] ${err.technical}`);
+    throw err;
   }
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get("content-type") ?? "";

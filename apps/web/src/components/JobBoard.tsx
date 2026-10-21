@@ -7,6 +7,7 @@ import type { ApplicationStatus, JobWithMatch } from "@/lib/types";
 import { STATUS_LABEL } from "@/lib/format";
 import { ApplyButton } from "./ApplyButton";
 import { cx, idx } from "./cx";
+import { Monogram } from "./Monogram";
 import { Frame } from "./Frame";
 import { Square } from "./IndexLabel";
 import { MatchRing } from "./MatchRing";
@@ -14,7 +15,7 @@ import { STATUS_MARK } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
 import { EmptyState, inputClass } from "./ui";
 import {
-  DEFAULT_FILTERS, SENIORITY_ORDER, activeFilterCount, filtersToParams, monogram, placeName, postedIso,
+  DEFAULT_FILTERS, SENIORITY_ORDER, activeFilterCount, filtersToParams, placeName, postedIso,
   seniorityKey, seniorityLabel, skillChips, sourceLabel, workMode, type BoardFilters,
 } from "./jobMeta";
 
@@ -39,8 +40,8 @@ function CheckRow({ checked, onChange, label, count }: { checked: boolean; onCha
   return (
     <label className="group flex cursor-pointer items-center gap-2.5 py-1 text-body-sm text-ink">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
-      <span aria-hidden="true" className={cx("flex h-3 w-3 shrink-0 items-center justify-center border transition-colors duration-150 peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink", checked ? "border-ink bg-ink" : "border-line-strong group-hover:border-ink")}>
-        {checked && <span className="h-1 w-1 bg-paper" />}
+      <span aria-hidden="true" className={cx("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors duration-150 peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink", checked ? "border-emerald-600 bg-emerald-600" : "border-line-strong group-hover:border-emerald-600")}>
+        {checked && <span className="h-1 w-1 rounded-full bg-white" />}
       </span>
       <span className="flex-1">{label}</span>
       {count !== undefined && <span className="text-[12px] text-faint tnum">{count}</span>}
@@ -52,7 +53,7 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   return (
     <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 py-1 text-left text-body-sm text-ink">
       {label}
-      <span className={cx("relative h-[18px] w-8 shrink-0 rounded-full border transition-colors duration-150", checked ? "border-ink bg-ink" : "border-line-strong")}>
+      <span className={cx("relative h-[18px] w-8 shrink-0 rounded-full border transition-colors duration-150", checked ? "border-emerald-600 bg-emerald-600" : "border-line-strong")}>
         <span className={cx("absolute top-[3px] h-2.5 w-2.5 rounded-full transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[17px] bg-paper" : "left-[3px] bg-faint")} />
       </span>
     </button>
@@ -75,9 +76,7 @@ export function BoardCard({ item, app, href }: { item: JobWithMatch; app?: Board
   return (
     <Frame as="article" className="flex h-full flex-col p-5 transition-colors duration-150 ease-[var(--ease)] hover:border-line-strong">
       <div className="flex items-center gap-3">
-        <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center bg-ink font-display text-[12px] font-medium tracking-[0.04em] text-paper">
-          {monogram(job.companyName)}
-        </span>
+        <Monogram name={job.companyName} size={34} />
         <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">{job.companyName}</span>
         <TimeAgo iso={postedIso(job)} className="shrink-0 text-[12px] text-faint" />
       </div>

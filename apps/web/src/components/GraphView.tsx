@@ -22,17 +22,17 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 type NodeLook = { fill: string | null; stroke: string | null; lw: number };
 type Palette = Record<"ink" | "ink2" | "paper" | "stone" | "stone2" | "line" | "lineStrong" | "muted" | "faint" | "accent", string>;
 
-/** Roles ink, companies hollow ink, skills amber, metrics stone, projects warm grey, education outlined stone. */
+/** One hue per kind of fact, so the graph reads at a glance: roles jade, skills violet, results amber, projects coral, education sky. */
 function look(type: string, c: Palette): NodeLook {
   switch (type) {
-    case "role": return { fill: c.ink, stroke: null, lw: 0 };
-    case "company": return { fill: c.paper, stroke: c.ink, lw: 1.5 };
-    case "skill": return { fill: c.accent, stroke: null, lw: 0 };
-    case "tool": return { fill: c.paper, stroke: c.accent, lw: 1.5 };
-    case "metric": return { fill: c.stone2, stroke: c.lineStrong, lw: 1 };
-    case "project": return { fill: c.faint, stroke: null, lw: 0 };
-    case "education":
-    case "certification": return { fill: c.stone, stroke: c.muted, lw: 1.25 };
+    case "role": return { fill: "#0f9a72", stroke: null, lw: 0 };
+    case "company": return { fill: c.paper, stroke: "#0f9a72", lw: 1.75 };
+    case "skill": return { fill: "#8b7cff", stroke: null, lw: 0 };
+    case "tool": return { fill: c.paper, stroke: "#8b7cff", lw: 1.75 };
+    case "metric": return { fill: "#ffb347", stroke: null, lw: 0 };
+    case "project": return { fill: "#ff7a8a", stroke: null, lw: 0 };
+    case "education": return { fill: "#5ec2ff", stroke: null, lw: 0 };
+    case "certification": return { fill: c.paper, stroke: "#5ec2ff", lw: 1.75 };
     default: return { fill: c.lineStrong, stroke: null, lw: 0 };
   }
 }
