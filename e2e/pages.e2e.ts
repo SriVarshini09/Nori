@@ -145,7 +145,10 @@ describe("applications and the review gates", () => {
     await page.locator("main select").first().selectOption({ label: "No" });
     await expect(approve).toBeEnabled({ timeout: 15_000 });
     await approve.click();
-    await expect.poll(async () => (await api(`/api/applications/${seed.apps.needsAnswers}`)).json.application.status, { timeout: 90_000 }).toMatch(/submitting|submitted|awaiting_code/);
+    // Assert the lasting fact, not a transient status: the form was approved (this stack's submit lock is off, so the run
+    // goes on to submitting and then back to review, and a poll for "submitting" can miss it).
+    const steps = async () => ((await api(`/api/applications/${seed.apps.needsAnswers}`)).json.events as { step: string }[]).map((e) => e.step);
+    await expect.poll(steps, { timeout: 90_000 }).toEqual(expect.arrayContaining(["answer", "approve_form"]));
     expect(errors.filter((e) => /409/.test(e))).toEqual([]);
   });
 
@@ -225,6 +228,7 @@ describe("auto apply", () => {
 
   it("adds, edits and deletes a lane", async () => {
     await page.goto(`${WEB}/agent`);
+    page.on("response", async (r) => { const m = r.request().method(); if (m !== "GET" || /api.lanes/.test(r.url())) if (/api\/(lanes|profile|agent|settings|me)/.test(r.url())) console.log("DBG", m, r.url().replace(WEB, ""), r.status(), m === "GET" ? (await r.text().catch(() => "")).slice(0, 90) : ""); });
     await page.getByRole("button", { name: "Add lane" }).click();
     await page.getByPlaceholder("Frontend, remote").fill("Platform, remote");
     await page.getByRole("button", { name: "Save lane" }).click();

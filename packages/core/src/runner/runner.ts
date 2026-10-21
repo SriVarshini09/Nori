@@ -564,15 +564,25 @@ export async function approveForm(db: Db, id: string, deps: RunnerDeps, answers?
   return runApplication(db, id, deps);
 }
 
-/** Answer pending questions, then resume from where the run stopped. */
-export async function answerPending(db: Db, id: string, deps: RunnerDeps, answers: Record<string, string>): Promise<ApplicationStatus> {
+/**
+ * Save answers to pending questions and, when the application was waiting on them, move it on to where the run stopped.
+ * Only quick database writes: the caller replies as soon as this returns, so the person's very next request (usually
+ * "approve") sees the answers saved and the application already moving. `resume` says whether the run should now continue.
+ */
+export async function acceptAnswers(db: Db, id: string, answers: Record<string, string>): Promise<{ status: ApplicationStatus; resume: boolean }> {
   const app = await load(db, id);
   const still: PendingQuestion[] = app.pendingQuestions.filter((q) => !(q.label in answers));
   const updated = await patch(db, id, { answers: { ...app.answers, ...answers }, pendingQuestions: still });
   await emit(db, id, "answer", `Answered ${Object.keys(answers).length} question(s)`, { labels: Object.keys(answers) });
-  if (app.status !== "needs_user") return app.status;
+  if (app.status !== "needs_user") return { status: app.status, resume: false };
   await condTransition(db, updated, resumePoint(updated), { error: null }, "Resuming with your answers");
-  return runApplication(db, id, deps);
+  return { status: resumePoint(updated), resume: true };
+}
+
+/** Answer pending questions, then resume from where the run stopped. */
+export async function answerPending(db: Db, id: string, deps: RunnerDeps, answers: Record<string, string>): Promise<ApplicationStatus> {
+  const r = await acceptAnswers(db, id, answers);
+  return r.resume ? runApplication(db, id, deps) : r.status;
 }
 
 export async function skipApplication(db: Db, id: string): Promise<ApplicationStatus> {

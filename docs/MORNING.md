@@ -33,6 +33,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 
 **Resume tailoring, designed as a recruiter reads.** The tailoring now writes a job-specific, level-aware summary with real results (no stock sentence, no filler), leaves out older bullets that say nothing about the job (each recorded, your original untouched), and rejects the model's filler and any skill it cannot prove. A new **Recruiter's view** on every application shows a score, each skill the job asks for (shown in your experience / only in the skills list / not on your resume), what a recruiter would question and how to fix it. Two silent defects found and fixed: every model summary was being discarded because it contained the real years, and omitted bullets were reported as untruthful. Design and measurements: `docs/RESUME-TAILORING.md`.
 
+**Real PostgreSQL in the gate.** Everything used to be tested only on an embedded stand-in. The suite now also runs on real PostgreSQL 17, which found three real problems: (1) answering a question and approving straight away could be refused with a 409, because the answer was saved after the reply; fixed by saving first and only backgrounding the run; (2) the production database pool had no connection timeout (a busy pool would hang requests) and no error handler (Neon closes idle connections, which could crash the server); both added, `DB_POOL_MAX` sets the size; (3) two browser tests asserted transient states and are fixed to assert lasting facts.
+
 **Public side.** Landing page, Privacy, Terms, robots, sitemap, share image.
 
 ## What is NOT verified, and why
@@ -48,7 +50,7 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 | Email through SMTP (Gmail) | **Verified for real (20 Oct 2026).** Gmail login accepted; a real confirmation email and a real password-reset email arrived in the inbox, both links worked, the reset signed out older sessions. Sender used for the test: a personal Gmail with an app password; use a domain address before a public launch (Gmail limits and spam risk). Resend: not run. |
 | Reset / confirm emails (setup note) | Without (`RESEND_API_KEY` or `SMTP_URL`) + `EMAIL_FROM` the links are written to the API log, not emailed. In production that means users cannot recover accounts. |
 | Privacy and Terms text | Drafted from what the code actually does. Have someone qualified review before launch. Set `NEXT_PUBLIC_CONTACT_EMAIL` so they show a real contact (otherwise they point to the GitHub issues page). |
-| Production Postgres | New migrations `0005_resume_docs` and `0006_auth_tokens` ran on PGlite only. Run them against a Neon copy first. |
+| Production Postgres | **Verified on a real PostgreSQL 17 server** (20 Oct 2026): every migration on an empty database and again (idempotent), all 487 unit/API tests and all 54 browser steps, real concurrent connections (10 racing sign-ups create one account; a single-use link works once), the `DATABASE_URL` start-up path. `npm run test:pg` (add `-- --e2e` for the browser journey) runs it with no Docker and no account; it is part of the gate. **Not yet verified on Neon itself:** SSL (`sslmode=require`), connection limits and a pooled URL. Run the same suite against a scratch Neon branch before launch. |
 
 ## Things to know
 

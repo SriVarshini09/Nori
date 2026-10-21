@@ -211,6 +211,31 @@ describe("api", () => {
     expect((await call("POST", "/api/jobs/url", { url: "nope" })).status).toBe(400);
   });
 
+  it("approve-form also waits through the gap right after an answer, when the status is still needs_user but no question is left", async () => {
+    const [job] = await db.insert(jobs).values({
+      companyName: "Gap", atsType: "web", externalId: "gap-1", title: "Backend Engineer",
+      descriptionText: "Requirements:\n- TypeScript", applyUrl: "https://example.com/jobs/3",
+    }).returning();
+    const created = await call("POST", "/api/applications?wait=1", { jobId: job.id });
+    const id = created.json.id as string;
+    expect((await call("POST", `/api/applications/${id}/approve-resume?wait=1`)).json.status).toBe("form_review");
+
+    // The moment after an answer on a real database: answers saved, questions cleared, the run not yet moved on.
+    await db.update(applications).set({ status: "needs_user", pendingQuestions: [] }).where(eq(applications.id, id));
+    setTimeout(() => { void Promise.resolve(db.update(applications).set({ status: "form_review" }).where(eq(applications.id, id))); }, 600);
+    const approved = await call("POST", `/api/applications/${id}/approve-form?wait=1`, {});
+    expect(approved.status).toBe(200);
+    expect(approved.json.status).toBe("submitted");
+
+    // With a question still open, "needs you" is a real refusal and answers at once.
+    const [job2] = await db.insert(jobs).values({ companyName: "Open", atsType: "web", externalId: "open-1", title: "Engineer", descriptionText: "Requirements:\n- TypeScript", applyUrl: "https://example.com/jobs/4" }).returning();
+    const second = (await call("POST", "/api/applications?wait=1", { jobId: job2.id })).json.id as string;
+    await db.update(applications).set({ status: "needs_user", pendingQuestions: [{ label: "Visa?", type: "select", required: true }] }).where(eq(applications.id, second));
+    const started = Date.now();
+    expect((await call("POST", `/api/applications/${second}/approve-form?wait=1`, {})).status).toBe(409);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it("serves MCP tools over streamable HTTP", async () => {
     const res = await app.request("/mcp", {
       method: "POST",

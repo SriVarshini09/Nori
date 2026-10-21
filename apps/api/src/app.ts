@@ -15,7 +15,7 @@ import {
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
-  countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -707,10 +707,12 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/applications/:id/approve-form", async (c) => {
     let a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers.optional() }));
-    // Answering a question resumes the run in the background, so an approve that follows at once finds the
-    // application still filling the form. Wait for it to reach the review instead of rejecting a valid request.
-    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); (a.status === "filling" || a.status === "queued") && Date.now() < deadline;) {
-      await new Promise((r) => setTimeout(r, 400));
+    // Answering a question resumes the run in the background, so an approve that follows at once can find the application
+    // in the gap before it moves on: still "needs you" with no question left, then queued or filling the form. Wait for it
+    // to reach the review instead of refusing a valid request. (A "needs you" with questions still open is a real refusal.)
+    const resuming = (x: typeof a) => x.status === "filling" || x.status === "queued" || (x.status === "needs_user" && x.pendingQuestions.length === 0);
+    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); resuming(a) && Date.now() < deadline;) {
+      await new Promise((r) => setTimeout(r, 250));
       a = await loadApp(c, a.id);
     }
     if (a.status !== "form_review") throw bad(`Application is ${a.status}, not form_review`, 409);
@@ -721,7 +723,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/applications/:id/answer", async (c) => {
     const a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers }));
-    await kick(c, () => answerPending(db, a.id, deps, answers));
+    // Save the answers and move the application on before replying (quick writes), then run the rest in the background.
+    // Replying first and saving later left a window where the very next request still saw the question open.
+    const { resume } = await acceptAnswers(db, a.id, answers);
+    if (resume) await kick(c, () => runApplication(db, a.id, deps));
     return c.json(await loadApp(c, a.id));
   });
 

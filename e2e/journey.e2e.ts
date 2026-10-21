@@ -304,6 +304,8 @@ describe("3. tailored resume for an application", () => {
   it("approving the resume ends editing", async () => {
     await page.getByRole("button", { name: "Approve resume" }).click();
     await expect(page.getByText("Approved").first()).toBeVisible({ timeout: 60_000 });
+    // The approval moves the application on in the background; wait for that before asking whether editing is still allowed.
+    await expect.poll(async () => (await api(`/api/applications/${appId}`)).json.application.status, { timeout: 60_000 }).not.toBe("resume_review");
     await page.goto(`${WEB}/applications/${appId}/resume`);
     await expect(page.getByText(/can no longer be edited/i)).toBeVisible();
   });
