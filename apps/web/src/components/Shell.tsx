@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
+import { NoriLogo } from "./Logo";
 import { Square } from "./IndexLabel";
 import { LogoutButton } from "./LogoutButton";
 
@@ -51,11 +52,8 @@ const CRUMB: Record<string, string> = Object.fromEntries(NAV.flat().map((n) => [
 
 function Wordmark() {
   return (
-    <Link href="/dashboard" className="inline-flex items-center gap-2" aria-label="Nori home">
-      <span aria-hidden="true" className="relative flex h-7 w-7 items-center justify-center rounded-[10px] bg-gradient-to-br from-[#0f2a21] to-[#1f5a45] shadow-[0_6px_14px_-6px_rgba(15,42,33,0.7)]">
-        <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-[#6ef0b3] to-[#ffb347]" />
-      </span>
-      <span className="font-display text-[19px] font-semibold tracking-[-0.04em] text-ink">Nori</span>
+    <Link href="/dashboard" className="inline-flex items-center" aria-label="Nori home">
+      <NoriLogo size={34} />
     </Link>
   );
 }

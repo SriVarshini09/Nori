@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Nori">
+  <defs>
+    <radialGradient id="bg" cx=".3" cy=".15" r="1.1"><stop offset="0" stop-color="#14503f"/><stop offset=".6" stop-color="#0a2a22"/><stop offset="1" stop-color="#1b1b58"/></radialGradient>
+    <linearGradient id="rice" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffefa"/><stop offset="1" stop-color="#f0e7d0"/></linearGradient>
+    <linearGradient id="nori" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1fa37c"/><stop offset="1" stop-color="#0a4a3a"/></linearGradient>
+    <linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#22c58b"/><stop offset="1" stop-color="#c4f26a"/></linearGradient>
+    <clipPath id="body"><path d="M32 12C27 12 22.5 15.5 17 27C12 37 7 43 7 50C7 57.5 13 60.5 20 60.5H44C51 60.5 57 57.5 57 50C57 43 52 37 47 27C41.5 15.5 37 12 32 12Z"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <g transform="translate(6.4 7) scale(.8)">
+    <path d="M32 12C27 12 22.5 15.5 17 27C12 37 7 43 7 50C7 57.5 13 60.5 20 60.5H44C51 60.5 57 57.5 57 50C57 43 52 37 47 27C41.5 15.5 37 12 32 12Z" fill="url(#rice)"/>
+    <g clip-path="url(#body)"><path d="M0 45C20 39.5 44 39.5 64 45V64H0Z" fill="url(#nori)"/><ellipse cx="22" cy="22" rx="5" ry="9" transform="rotate(24 22 22)" fill="#fff" opacity=".5"/></g>
+    <path d="M32 12V7" stroke="#18a874" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M32 7C27 1 20 2 18.5 5.5C23 9.5 29.5 9.5 32 7Z" fill="url(#leaf)"/>
+    <path d="M32 7C37 0 44 1 45.5 4.5C41 8.5 34.5 9 32 7Z" fill="url(#leaf)"/>
+    <circle cx="26" cy="31" r="2.7" fill="#10100f"/><circle cx="38" cy="31" r="2.7" fill="#10100f"/>
+    <circle cx="26.9" cy="30" r=".9" fill="#fff"/><circle cx="38.9" cy="30" r=".9" fill="#fff"/>
+    <ellipse cx="20.5" cy="35.5" rx="3.2" ry="2.1" fill="#ff7f9f" opacity=".65"/><ellipse cx="43.5" cy="35.5" rx="3.2" ry="2.1" fill="#ff7f9f" opacity=".65"/>
+    <path d="M29.4 35.2Q32 38 34.6 35.2" fill="none" stroke="#3b1f1c" stroke-width="1.7" stroke-linecap="round"/>
+  </g>
+</svg>
