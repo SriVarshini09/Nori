@@ -149,6 +149,17 @@ describe("applications and the review gates", () => {
     expect(errors.filter((e) => /409/.test(e))).toEqual([]);
   });
 
+  it("shows a recruiter's view of the tailored resume, with what the job asks for and what to fix", async () => {
+    await page.goto(`${WEB}/applications/${seed.apps.formReview}`);
+    const view = page.getByRole("region", { name: /Strong|Good|Needs work/ });
+    await expect(view).toBeVisible();
+    await expect(view).toContainText("Recruiter's view");
+    await expect(view).toContainText(/out of 100/);
+    const asked = view.getByRole("list", { name: "Skills the job asks for" });
+    await expect(asked.getByRole("listitem").first()).toBeVisible();
+    await expect(view).toContainText(/shown in your experience|only in the skills list|not on your resume/);
+  });
+
   it("skips an application and shows it as skipped", async () => {
     await page.goto(`${WEB}/applications/${seed.apps.resumeReview}`);
     await page.getByRole("button", { name: /^Skip/ }).first().click();

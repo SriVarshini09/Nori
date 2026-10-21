@@ -134,7 +134,9 @@ describe("api", () => {
     expect(created.json.status).toBe("resume_review");
 
     let d = await call("GET", `/api/applications/${id}`);
-    expect(Object.keys(d.json).sort()).toEqual(["application", "company", "events", "job", "match", "resume"]);
+    expect(Object.keys(d.json).sort()).toEqual(["application", "company", "events", "job", "match", "recruiter", "resume"]);
+    expect(d.json.recruiter).toMatchObject({ verdict: expect.stringMatching(/strong|good|needs_work/), stats: { bullets: expect.any(Number) } });
+    expect(d.json.recruiter.score).toBeGreaterThan(0);
     expect(d.json.resume.pdfPath).toMatch(/resume-v1\.pdf$/);
     expect(d.json.events[0]).toMatchObject({ applicationId: id, step: "created" });
     expect(typeof d.json.events[0].ts).toBe("string");

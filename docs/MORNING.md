@@ -31,6 +31,8 @@ Branch `launch/overnight` (worktree `.claude/worktrees/launch`). Nothing is push
 
 **Autopilot (hands-free applying, guarded).** New setting on Auto apply: Nori can send an application without asking, but only when 11 checks all pass (account-free platform, match above your bar, no eligibility conflict, nothing unprovable from your profile, every answer from your profile, readable resume, you approved 3 yourself first, no recent application to the same company, server allowed to send). Anything else waits for you with the reason shown. Off by default. Details and limits: `docs/AUTOPILOT.md`. Real submission has still never run on a live site.
 
+**Resume tailoring, designed as a recruiter reads.** The tailoring now writes a job-specific, level-aware summary with real results (no stock sentence, no filler), leaves out older bullets that say nothing about the job (each recorded, your original untouched), and rejects the model's filler and any skill it cannot prove. A new **Recruiter's view** on every application shows a score, each skill the job asks for (shown in your experience / only in the skills list / not on your resume), what a recruiter would question and how to fix it. Two silent defects found and fixed: every model summary was being discarded because it contained the real years, and omitted bullets were reported as untruthful. Design and measurements: `docs/RESUME-TAILORING.md`.
+
 **Public side.** Landing page, Privacy, Terms, robots, sitemap, share image.
 
 ## What is NOT verified, and why

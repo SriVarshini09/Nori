@@ -16,3 +16,4 @@ export async function tailorAndRender(input: TailorInput, outPath: string): Prom
   const render = await renderPdf(tailor.content, outPath, { requirements: input.requirements });
   return { tailor, render };
 }
+export * from "./recruiter.js";

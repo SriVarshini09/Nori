@@ -15,7 +15,7 @@ import {
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
-  countHumanApprovals, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -691,7 +691,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const d = await jobDetail(c, application.jobId);
     const resume = application.resumeId ? (await db.select().from(resumes).where(eq(resumes.id, application.resumeId)).limit(1))[0] ?? null : null;
     const events = (await db.select().from(runEvents).where(eq(runEvents.applicationId, id)).orderBy(asc(runEvents.ts))).map(toRunEvent);
-    return c.json({ application, job: d.job, resume, events, company: d.company, match: d.match });
+    // What a recruiter would see on this resume for this job (pure and cheap, so it is computed fresh after every edit).
+    const [req] = await db.select({ requirements: jobs.requirements }).from(jobs).where(eq(jobs.id, application.jobId)).limit(1);
+    const recruiter = resume ? recruiterReview(resume.content, req?.requirements ?? null, { jobTitle: d.job.title, pages: resume.pages }) : null;
+    return c.json({ application, job: d.job, resume, events, company: d.company, match: d.match, recruiter });
   });
 
   app.post("/api/applications/:id/approve-resume", async (c) => {

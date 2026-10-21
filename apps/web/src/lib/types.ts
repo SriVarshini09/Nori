@@ -294,10 +294,24 @@ export type RunEvent = {
 
 export type ApplicationListItem = { application: Application; job: Job; resume?: Resume | null };
 
+export type ReviewFinding = { id: string; severity: "high" | "medium" | "low"; title: string; detail: string; fix?: string };
+export type MustHave = { skill: string; required: boolean; status: "demonstrated" | "listed" | "missing" };
+/** A recruiter's read of the tailored resume against the job (computed by the API, see packages/core/src/tailor/recruiter.ts). */
+export type RecruiterReview = {
+  score: number;
+  verdict: "strong" | "good" | "needs_work";
+  strengths: string[];
+  concerns: ReviewFinding[];
+  musts: MustHave[];
+  stats: { bullets: number; quantifiedPct: number; strongVerbPct: number; avgBulletWords: number; years: number | null; requiredYears: number | null; skillsListed: number };
+};
+
 export type ApplicationDetail = {
   application: Application;
   job: Job;
   resume: Resume | null;
+  /** Absent on older APIs and in demo mode. */
+  recruiter?: RecruiterReview | null;
   events: RunEventRow[];
   company: Company | null;
 };

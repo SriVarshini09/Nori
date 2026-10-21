@@ -5,6 +5,7 @@ import { applications, jobs, resumes, type ResumeChange, type ResumeContent } fr
 import { ensureRequirements } from "../feeds/requirements.js";
 import { ResumeDocError, mergeStyle, stableJson } from "../resume/docs.js";
 import { renderPdf } from "../tailor/pdf.js";
+import { LEFT_OUT } from "../tailor/rewrite.js";
 import { emit } from "./events.js";
 import { artifactsRootOf, type RunnerDeps } from "./runner.js";
 
@@ -40,6 +41,8 @@ export function recomputeChanges(prev: { content: ResumeContent; changes: Resume
     edited.add(id);
     out.push({ bulletId: id, before: original, after: s.text, reason: old ? "Edited by you" : "Added by you", nodeIds: old ? s.nodeIds : [] });
   }
+  // Bullets the tailoring left out are not in `next` at all, so their records are carried over as they were.
+  for (const pc of prev.changes) if (pc.after === LEFT_OUT && !out.some((c) => c.bulletId === pc.bulletId)) out.push(pc);
   const mark = <T extends { id: string; text: string; nodeIds: string[]; edited?: boolean }>(b: T): T => (edited.has(b.id) ? { ...b, edited: true } : b);
   const content: ResumeContent = {
     ...next,
