@@ -1,7 +1,7 @@
 import { pct } from "@/lib/format";
 import { cx } from "./cx";
 
-/** Match score as a tabular figure with a 2px hairline meter underneath. Monochrome. */
+/** Match score as a tabular figure with a 2px hairline meter underneath. Gradient meter. */
 export function MatchBadge({ score, size = "md" }: { score: number | null | undefined; size?: "sm" | "md" | "lg" }) {
   if (score == null) return <span className="text-meta text-faint">No score</span>;
   const p = pct(score);
@@ -11,8 +11,8 @@ export function MatchBadge({ score, size = "md" }: { score: number | null | unde
       <span className={cx("font-display font-medium leading-none tracking-[-0.03em] text-ink tnum", num)}>
         {p}<span className="ml-0.5 align-top text-[0.45em] font-normal tracking-normal text-muted">%</span>
       </span>
-      <span aria-hidden="true" className={cx("relative block h-[2px] bg-line", size === "lg" ? "w-24" : "w-10")}>
-        <span className="absolute inset-y-0 left-0 bg-ink" style={{ width: `${p}%` }} />
+      <span aria-hidden="true" className={cx("relative block h-[4px] overflow-hidden rounded-full bg-black/10", size === "lg" ? "w-24" : "w-12")}>
+        <span className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-400 to-amber-400" style={{ width: `${p}%` }} />
       </span>
     </span>
   );

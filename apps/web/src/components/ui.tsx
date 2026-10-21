@@ -52,10 +52,10 @@ export function Card({ children, className, title, actions, pad = true, index, i
 const btnBase =
   "group inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full text-[13px] font-medium tracking-[-0.005em] transition-[background-color,border-color,color,opacity] duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-40";
 const btnVariants = {
-  primary: "bg-ink px-4 text-paper hover:bg-accent",
-  secondary: "border border-line px-4 text-ink hover:border-ink",
+  primary: "dash-btn px-5",
+  secondary: "border border-black/10 bg-white px-4 text-ink shadow-sm hover:-translate-y-px hover:border-black/25",
   ghost: "px-1 text-ink underline-offset-4 decoration-line-strong hover:underline",
-  danger: "border border-line px-4 text-ink hover:border-accent hover:text-accent-ink",
+  danger: "border border-black/10 bg-white px-4 text-ink hover:border-rose-400 hover:text-rose-700",
 } as const;
 const btnSizes = { sm: "", md: "" } as const;
 
