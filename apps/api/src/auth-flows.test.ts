@@ -249,3 +249,23 @@ describe("server errors", () => {
     expect(JSON.stringify(res.json)).not.toMatch(/uuid|syntax|SELECT|ENOENT/i);
   });
 });
+
+describe("retracting claims", () => {
+  const RESUME_A = "Jordan Rivera\njordan@example.com\n\nEXPERIENCE\nSenior Engineer at Northwind Labs\nJan 2022 - Present\n- Cut page load time by 45% with React\n";
+  const RESUME_B = "Jordan Rivera\njordan@example.com\n\nEXPERIENCE\nSenior Engineer at Northwind Labs\nJan 2022 - Present\n- Cut page load time by 30% with React\n";
+  const said = (g: { nodes: { label: string; props?: Record<string, unknown> }[] }, s: string) => g.nodes.some((n) => `${n.label} ${String(n.props?.statement ?? "")}`.includes(s));
+
+  it("a corrected resume can replace the old one, and one node can be removed", async () => {
+    const u = await call("POST", "/api/auth/signup", { email: "retract@example.com", password: "first-password" });
+    await call("POST", "/api/profile/resume", { text: RESUME_A }, u.cookie!);
+    await call("POST", "/api/profile/resume", { text: RESUME_B, replace: true }, u.cookie!);
+    const g = (await call("GET", "/api/graph", undefined, u.cookie!)).json;
+    expect(said(g, "45%")).toBe(false);
+    expect(said(g, "30%")).toBe(true);
+    const metric = g.nodes.find((n: { type: string }) => n.type === "metric");
+    expect((await call("DELETE", `/api/graph/nodes/${metric.id}`, undefined, u.cookie!)).status).toBe(204);
+    expect((await call("GET", "/api/graph", undefined, u.cookie!)).json.nodes.some((n: { id: string }) => n.id === metric.id)).toBe(false);
+    const other = await call("POST", "/api/auth/signup", { email: "retract2@example.com", password: "first-password" });
+    expect((await call("DELETE", `/api/graph/nodes/${g.nodes[0].id}`, undefined, other.cookie!)).status).toBe(404);
+  });
+});

@@ -184,8 +184,11 @@ export const api = {
     if (USE_MOCK) return { ...(await mock()).me.profile, ...patch, preferences: { ...(await mock()).me.profile.preferences, ...patch.preferences } } as Profile;
     return request("PUT", "/api/profile", patch);
   },
-  uploadResume: async (text: string): Promise<IngestResult> =>
-    USE_MOCK ? (await mock()).ingest : request("POST", "/api/profile/resume", { text }),
+  uploadResume: async (text: string, replace = false): Promise<IngestResult> =>
+    USE_MOCK ? (await mock()).ingest : request("POST", "/api/profile/resume", { text, replace }),
+  deleteGraphNode: async (id: string): Promise<void> => {
+    if (!USE_MOCK) await request("DELETE", `/api/graph/nodes/${id}`);
+  },
 
   // ---- graph
   graph: async (): Promise<Graph> => (USE_MOCK ? (await mock()).graph : request("GET", "/api/graph")),

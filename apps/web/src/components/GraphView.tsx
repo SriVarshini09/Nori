@@ -596,6 +596,16 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
 }
 
 function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Neighbor[]; onClose: () => void; onPick: (id: string) => void }) {
+  const router = useRouter();
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  // Retract a claim: it stops being evidence for resumes and answers. Not for the person node itself.
+  async function remove() {
+    if (!window.confirm(`Remove "${node.label}" from your graph? Nori will stop using it in resumes and answers.`)) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try { await api.deleteGraphNode(node.id); onClose(); router.refresh(); } catch (e) { setRemoveError((e as Error).message); } finally { setRemoving(false); }
+  }
   const groups = new Map<string, Neighbor[]>();
   for (const n of nbrs) {
     const key = edgePhrase(n.edgeType, n.dir);
@@ -631,6 +641,12 @@ function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Nei
               {node.source && <span>from {node.source}</span>}
             </p>
           )}
+          {node.type !== "person" && (
+            <button type="button" onClick={remove} disabled={removing} className="mt-3 text-[12px] font-medium text-accent-ink underline underline-offset-4 disabled:opacity-40">
+              {removing ? "Removing..." : "Remove this from my graph"}
+            </button>
+          )}
+          {removeError && <p role="alert" className="mt-1 text-[12px] text-accent-ink">{removeError}</p>}
         </div>
 
         {isMetric && statement && (
@@ -725,6 +741,8 @@ export function GraphInputs() {
   const router = useRouter();
   const [fact, setFact] = useState("");
   const [resumeText, setResumeText] = useState("");
+  // A corrected resume should replace what the old one said, or the old numbers stay as evidence. Chat facts are kept.
+  const [replaceOld, setReplaceOld] = useState(true);
   const [busy, setBusy] = useState<"fact" | "resume" | null>(null);
   const [note, setNote] = useState<{ tone: "green" | "red"; text: string } | null>(null);
 
@@ -751,7 +769,7 @@ export function GraphInputs() {
     setBusy("resume");
     setNote(null);
     try {
-      const r = await api.uploadResume(resumeText.trim());
+      const r = await api.uploadResume(resumeText.trim(), replaceOld);
       setNote({ tone: "green", text: `Ingested resume: ${plural(r.nodesCreated, "node")}, ${plural(r.edgesCreated, "edge")}${r.usedLLM ? "" : " (heuristic parser, no LLM configured)"}.` });
       setResumeText("");
       router.refresh();
@@ -781,11 +799,15 @@ export function GraphInputs() {
             </div>
           </form>
         </Panel>
-        <Panel index="02" title="Paste your resume" aside="Merges into the graph" className="col-span-12 lg:col-span-5">
+        <Panel index="02" title="Paste your resume" aside={replaceOld ? "Replaces your last resume" : "Merges into the graph"} className="col-span-12 lg:col-span-5">
           <form onSubmit={sendResume} className="flex h-full flex-col gap-4">
-            <Field label="Resume text" hint="Plain text. Re-ingesting merges, never duplicates.">
+            <Field label="Resume text" hint="Plain text. Re-ingesting never duplicates.">
               <textarea className={cx(inputClass, "resize-none font-mono text-[12.5px]")} rows={5} value={resumeText} onChange={(e) => setResumeText(e.target.value)} placeholder="Paste the full text of your resume" />
             </Field>
+            <label className="flex items-start gap-2 text-[13px] text-ink">
+              <input type="checkbox" className="mt-0.5" checked={replaceOld} onChange={(e) => setReplaceOld(e.target.checked)} />
+              <span>Replace what my earlier resume said. Facts you added in chat stay. Untick to merge two resumes.</span>
+            </label>
             <div className="mt-auto flex justify-end border-t border-line pt-4">
               <Button type="submit" icon={FileUp} disabled={busy !== null || !resumeText.trim()}>{busy === "resume" ? "Ingesting..." : "Ingest resume"}</Button>
             </div>

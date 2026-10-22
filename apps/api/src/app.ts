@@ -11,6 +11,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from "drizzle-orm";
 import {
+  clearResumeNodes, deleteGraphNode,
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
@@ -408,7 +409,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.json({ user: publicUser(u), profile });
   });
 
-  const saveResumeText = async (c: Context, userId: string, text: string, links: ExtractedLink[] = []) => {
+  const saveResumeText = async (c: Context, userId: string, text: string, links: ExtractedLink[] = [], replace = false) => {
+    // replace: this resume supersedes the earlier ones, so what they said (and this one no longer does) is forgotten.
+    if (replace) await clearResumeNodes(db, userId);
     const result = await ingestResume(db, userId, text, { links });
     await db.update(profiles).set({ rawResumeText: text, updatedAt: new Date() }).where(eq(profiles.userId, userId));
     await rescore(c, userId);
@@ -418,8 +421,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   };
 
   app.post("/api/profile/resume", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text").max(200_000, "That is longer than any resume: paste just the resume") }));
-    return c.json(await saveResumeText(c, c.get("user").id, text));
+    const { text, replace } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text").max(200_000, "That is longer than any resume: paste just the resume"), replace: z.boolean().optional() }));
+    return c.json(await saveResumeText(c, c.get("user").id, text, [], replace ?? false));
   });
 
   app.post("/api/profile/resume-file",
@@ -466,6 +469,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.get("/api/graph", async (c) => c.json(await getGraph(db, c.get("user").id)));
+
+  // Retract one claim: the node and its edges go, and matches are rescored without it.
+  app.delete("/api/graph/nodes/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!uuidOk(id) || !(await deleteGraphNode(db, c.get("user").id, id))) throw bad("Not found", 404);
+    await rescore(c, c.get("user").id);
+    return c.body(null, 204);
+  });
 
   app.get("/api/graph/export", async (c) => {
     const data = await exportGraph(db, c.get("user").id);
