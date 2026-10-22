@@ -46,18 +46,19 @@ const settings = {
   autoApplyMinScore: z.number().min(0).max(1).optional(),
 };
 
+const shortList = z.array(z.string().max(200)).max(100);
 const preferenceKeys = {
-  titles: z.array(z.string()).optional(), locations: z.array(z.string()).optional(), remote: z.enum(["only", "ok", "no"]).optional(),
-  salaryMin: z.number().optional(), stages: z.array(z.string()).optional(), excludeCompanies: z.array(z.string()).optional(),
+  titles: shortList.optional(), locations: shortList.optional(), remote: z.enum(["only", "ok", "no"]).optional(),
+  salaryMin: z.number().optional(), stages: shortList.optional(), excludeCompanies: z.array(z.string().max(200)).max(1000).optional(),
 };
 // Known keys are typed; extra keys are kept, never stripped.
 // agent (bookkeeping) and lanes are kept by the server; a client echoing them back, as the wizard does, must not be refused.
 const preferences = z.object({ ...preferenceKeys, country: z.string().optional(), github: z.string().optional(), agent: z.unknown().optional(), lanes: z.unknown().optional() })
-  .catchall(z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]));
+  .catchall(z.union([z.string().max(2000), z.number(), z.boolean(), shortList, z.null()]));
 
 /** PUT /api/profile: every profile column plus nested preferences and settings. */
 export const ProfileBody = z.object({
-  name: z.string().optional(),
+  name: z.string().max(200).optional(),
   ...contact, ...authorization, ...screening, ...settings,
   preferences: preferences.optional(),
   settings: z.object(settings).optional(),

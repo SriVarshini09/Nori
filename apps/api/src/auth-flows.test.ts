@@ -232,3 +232,11 @@ describe("cross-site requests", () => {
     expect((await app.request("/api/graph/facts", { method: "POST", headers: { cookie: u.cookie!, origin: "https://nori.test", "content-type": "application/json" }, body: '{"text":"I know Rust"}' })).status).not.toBe(403);
   });
 });
+
+describe("request size", () => {
+  it("refuses an oversized body on any route, including public ones", async () => {
+    const big = JSON.stringify({ email: "x@example.com", password: "a".repeat(2 * 1024 * 1024) });
+    const res = await app.request("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: big });
+    expect(res.status).toBe(413);
+  });
+});

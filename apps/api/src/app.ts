@@ -231,6 +231,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   // Off under test runners (they hammer signup and login), on everywhere else unless explicitly disabled.
   const limits = opts.rateLimit ?? !(process.env.VITEST || process.env.NODE_ENV === "test");
   if (limits) app.use("/api/*", rateLimit(Array.isArray(limits) ? limits : defaultRateRules()));
+  // Every body is read into memory, so every route gets a ceiling. The resume upload sets its own, larger one.
+  const jsonLimit = bodyLimit({ maxSize: 1024 * 1024, onError: () => { throw bad("Request too large (1 MB max)", 413); } });
+  app.use("*", async (c, next) => (c.req.path === "/api/profile/resume-file" ? next() : jsonLimit(c, next)));
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
@@ -411,7 +414,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   };
 
   app.post("/api/profile/resume", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text") }));
+    const { text } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text").max(200_000, "That is longer than any resume: paste just the resume") }));
     return c.json(await saveResumeText(c, c.get("user").id, text));
   });
 
