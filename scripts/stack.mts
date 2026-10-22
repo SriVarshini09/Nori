@@ -110,7 +110,7 @@ function buildWeb() {
   if (r.status !== 0) throw new Error("web build failed");
 }
 
-export async function startStack(opts: { build?: boolean; realModel?: boolean } = {}): Promise<Stack> {
+export async function startStack(opts: { build?: boolean; realModel?: boolean; realMail?: boolean } = {}): Promise<Stack> {
   // Deterministic runs: never talk to a local model or a hosted one; the heuristic paths are what the tests cover.
   process.env.OLLAMA_BASE_URL = "http://127.0.0.1:1/v1";
   // (realModel keeps the model settings from .env, for scripts/live-flow.mts, which runs the pipeline against a real provider.)
@@ -120,7 +120,8 @@ export async function startStack(opts: { build?: boolean; realModel?: boolean } 
   const artifactsRoot = await mkdtemp(path.join(os.tmpdir(), "nori-e2e-"));
   const outbox: Stack["outbox"] = [];
   const app = createApp(db, {
-    mailer: async (m) => { outbox.push({ to: m.to, subject: m.subject, text: m.text }); },
+    // realMail sends through SMTP_URL / RESEND_API_KEY from .env; otherwise nothing leaves the machine.
+    ...(opts.realMail ? {} : { mailer: async (m: { to: string; subject: string; text: string }) => { outbox.push({ to: m.to, subject: m.subject, text: m.text }); } }),
     runnerDeps: { pickDriver: () => new FakeDriver(), artifactsRoot, allowRealSubmit: false },
     mcp: true, defaultUserEmail: null, rateLimit: false, webUrl: WEB,
   });

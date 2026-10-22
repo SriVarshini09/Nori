@@ -4,7 +4,7 @@ import type { FormField } from "../contracts.js";
 export type QuestionKind =
   | "motivation_company" | "motivation_role" | "project_story" | "challenge_story" | "strengths" | "weaknesses"
   | "why_leaving" | "team_fit" | "availability" | "salary" | "cover_letter" | "anything_else" | "referral_source"
-  | "relocation" | "portfolio_link" | "reference_contact" | "legal_identifier" | "unknown";
+  | "relocation" | "portfolio_link" | "reference_contact" | "legal_identifier" | "acknowledgement" | "unknown";
 
 /** Kinds answered with prose written by the agent (as opposed to facts or links). */
 export const NARRATIVE_KINDS: ReadonlySet<QuestionKind> = new Set<QuestionKind>([

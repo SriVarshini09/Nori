@@ -46,7 +46,7 @@ export async function listResumeDocs(db: Db, userId: string): Promise<ResumeDoc[
 }
 
 export async function getResumeDoc(db: Db, userId: string, id: string): Promise<ResumeDoc> {
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ResumeDocError("Resume not found", 404);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new ResumeDocError("Resume not found", 404);
   const [row] = await db.select().from(resumeDocs).where(and(eq(resumeDocs.id, id), eq(resumeDocs.userId, userId))).limit(1);
   if (!row) throw new ResumeDocError("Resume not found", 404);
   return row;

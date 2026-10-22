@@ -270,6 +270,26 @@ Graphic Design|design|illustration;typography;layout design;print design;visual 
 Motion Design|design|after effects;motion graphics;animation;lottie
 Video Editing|design|premiere pro;final cut;davinci resolve;video production;video editing
 Design Thinking|design|human-centered design;human centered design;service design;design sprints;design sprint
+SolidWorks|other|solid works;solidworks cad
+AutoCAD|other|auto cad;autodesk autocad
+CAD|other|computer aided design;computer-aided design;cad software;cad modeling;cad modelling
+GD&T|other|geometric dimensioning and tolerancing;geometric dimensioning & tolerancing;tolerance analysis
+FEA|other|finite element analysis;finite element;ansys;abaqus
+Design for Manufacturing|other|dfm;design for manufacturability;dfma;manufacturing engineering
+Six Sigma|practice|lean six sigma;black belt;green belt;dmaic
+Lean Manufacturing|practice|lean;kaizen;5s;continuous improvement
+PLC Programming|other|plc;ladder logic;scada
+Google Analytics|data|ga4;google analytics 4;universal analytics;google tag manager
+QuickBooks|biz|quickbooks online;xero
+Payroll|biz|payroll processing;adp
+Nursing|other|patient care;acute care;bedside care;clinical nursing;medication administration
+RN License|other|registered nurse license;rn licensure;active rn;state nursing license
+BLS|other|basic life support;bls certification
+ACLS|other|advanced cardiac life support;acls certification
+CPR|other|cpr certification
+HIPAA|other|hipaa compliance;phi;protected health information
+EMR|other|electronic medical records;electronic health records;ehr;epic systems
+Teaching|other|classroom instruction;lesson planning;curriculum development;instructional design
 `;
 
 export type SkillEntry = { name: string; category: SkillCategory; synonyms: string[]; ctxSynonyms: string[] };
@@ -329,15 +349,22 @@ const CTX_POST = "(?=[ \\t]*(?:[,;/)|\\u2022]|\\.?[ \\t]*$))";
 
 type Compiled = { name: string; re: RegExp | null; ctx: RegExp | null };
 
+/** Extra case-sensitive patterns for short names that collide with prose: "backend development in Go", "Go services", "Go developer". */
+const PROSE_CONTEXT: Record<string, RegExp> = {
+  Go: /\b(?:in|with|using|of|and|or|including|like|via)\s+Go(?![-\w’'])(?!\s+(?:to|for|the|a|an|live|ahead|beyond|above|back|through|into|on|off|out|up|down)\b)|\bGo\s+(?:developers?|engineers?|programming|programmers?|services?|microservices?|backends?|codebases?|code|modules?|routines?|concurrency)\b|\bGo\s*\(/,
+};
+
 const COMPILED: Compiled[] = ENTRIES.map((e) => {
   const terms = [e.name, ...e.synonyms].sort((a, b) => b.length - a.length);
   // Short canonical names that collide with prose are context-only (C, R, Go); their plain form is dropped.
   const contextOnly = e.ctxSynonyms.length > 0 && e.name.length <= 2;
   const plain = contextOnly ? terms.filter((t) => t.length > 2) : terms;
   const re = plain.length ? new RegExp(`${PRE}(?:${plain.map(escapeRe).join("|")})${POST}${e.category === "biz" ? BIZ_NOT_ADJECTIVE : ""}${e.name === "React" ? "(?![\\s-]+Native)" : ""}`, "i") : null;
-  const ctx = e.ctxSynonyms.length
+  const listCtx = e.ctxSynonyms.length
     ? new RegExp(`${CTX_PRE}(?:${e.ctxSynonyms.map(escapeRe).join("|")})${CTX_POST}`, "m")
     : null;
+  const prose = PROSE_CONTEXT[e.name];
+  const ctx = prose && listCtx ? { exec: (t: string) => { const a = listCtx.exec(t), b = prose.exec(t); return !a ? b : !b ? a : a.index <= b.index ? a : b; } } as unknown as RegExp : listCtx;
   return { name: e.name, re, ctx };
 });
 

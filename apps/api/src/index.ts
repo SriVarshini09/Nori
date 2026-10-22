@@ -22,6 +22,15 @@ if (envCheck.errors.length) {
 }
 
 const port = Number(process.env.API_PORT ?? 4000);
+// Development shortcuts (the sign-in fallback user, an open /mcp, the public key-encryption key, private model URLs) are
+// keyed on NODE_ENV. So a server that is not in production mode only listens on this machine, and one asked to listen
+// beyond it must be in production mode. A self-hoster who forgets NODE_ENV gets a clear refusal, not an open server.
+const production = process.env.NODE_ENV === "production";
+const host = process.env.API_HOST?.trim() || (production ? "0.0.0.0" : "127.0.0.1");
+if (!production && !/^(localhost|127(\.\d{1,3}){3}|::1|\[::1\])$/i.test(host)) {
+  console.error(`[api] configuration error: API_HOST=${host} serves beyond this machine, but NODE_ENV is not "production", so development shortcuts (no sign-in needed, open /mcp, a public encryption key) would be exposed. Set NODE_ENV=production and the production settings it asks for.`);
+  process.exit(1);
+}
 const db = await getDb();
 await warmLLM();
 const runner = defaultRunnerDeps();
@@ -43,7 +52,7 @@ if (embed) {
 }
 
 const app = createApp(db, { router, runnerDeps: runner, notify });
-const server = serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   const msg = `[api] listening on http://localhost:${info.port} (MCP at /mcp${process.env.MCP_TOKEN || process.env.NODE_ENV === "production" ? ", bearer token required" : ", no auth: localhost only"})${embed ? "; scheduler and channel listeners embedded" : ""}`;
   (runtime?.consoleMode ? console.error : console.log)(msg);
 });

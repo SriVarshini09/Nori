@@ -9,13 +9,14 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from "drizzle-orm";
 import {
+  clearResumeNodes, deleteGraphNode,
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
-  changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -26,7 +27,7 @@ import {
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
 import {
-  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, waitForVerificationCode, TOOLKITS,
+  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
@@ -197,6 +198,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     else p.catch((err) => console.warn("[api] background run failed:", (err as Error).message));
   };
   const loadApp = async (c: Context<AppEnv>, id: string) => {
+    if (!uuidOk(id)) throw bad("Application not found", 404);
     const user = c.get("user");
     const [row] = await db.select().from(applications).where(and(eq(applications.id, id), eq(applications.userId, user.id))).limit(1);
     if (!row) throw bad("Application not found", 404);
@@ -211,17 +213,39 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     credentials: true,
   }));
 
+  // Cross-site request forgery: a page on another site can make the browser POST here with the person's cookie (a plain
+  // form needs no preflight). Browsers say where a request comes from, so state-changing requests from any other origin are
+  // refused. Requests without an Origin (scripts, the companion app, server-to-server webhooks) still need a session.
+  const ownOrigins = new Set([new URL(webUrl).origin]);
+  app.use("*", async (c, next) => {
+    const m = c.req.method;
+    if (m === "GET" || m === "HEAD" || m === "OPTIONS" || c.req.path.startsWith("/api/webhooks/")) return next();
+    const origin = c.req.header("origin");
+    const crossSite = c.req.header("sec-fetch-site") === "cross-site";
+    const allowed = !origin || ownOrigins.has(origin) || origin === new URL(c.req.url).origin
+      || (!secure && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    if (!allowed || (crossSite && !(origin && ownOrigins.has(origin)))) throw bad("Cross-site request refused", 403);
+    return next();
+  });
+
   app.use("*", securityHeaders({ hsts: secure }));
   // Off under test runners (they hammer signup and login), on everywhere else unless explicitly disabled.
   const limits = opts.rateLimit ?? !(process.env.VITEST || process.env.NODE_ENV === "test");
   if (limits) app.use("/api/*", rateLimit(Array.isArray(limits) ? limits : defaultRateRules()));
+  // Every body is read into memory, so every route gets a ceiling. The resume upload sets its own, larger one.
+  const jsonLimit = bodyLimit({ maxSize: 1024 * 1024, onError: () => { throw bad("Request too large (1 MB max)", 413); } });
+  app.use("*", async (c, next) => (c.req.path === "/api/profile/resume-file" ? next() : jsonLimit(c, next)));
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[api] ${c.req.method} ${c.req.path}: ${message}`);
-    if (/not set|not configured|PARALLEL_API_KEY|COMPOSIO_API_KEY/i.test(message)) return c.json({ error: message }, 503);
-    return c.json({ error: message }, 500);
+    // The full error (file paths, SQL, upstream replies) goes to the server log only; the person gets a reference to quote.
+    const ref = Math.random().toString(36).slice(2, 10);
+    console.warn(`[api] ${ref} ${c.req.method} ${c.req.path}: ${message}`, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : "");
+    if (/PARALLEL_API_KEY|Parallel/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Web job search is not set up on this server." }, 503);
+    if (/COMPOSIO_API_KEY|Composio/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Connected apps (Gmail, Sheets, Slack) are not set up on this server." }, 503);
+    if (/not set|not configured/i.test(message)) return c.json({ error: "This feature is not set up on this server." }, 503);
+    return c.json({ error: `Something went wrong on our side. If it keeps happening, quote reference ${ref}.`, ref }, 500);
   });
   app.notFound((c) => c.json({ error: `No route ${c.req.method} ${c.req.path}` }, 404));
 
@@ -385,7 +409,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.json({ user: publicUser(u), profile });
   });
 
-  const saveResumeText = async (c: Context, userId: string, text: string, links: ExtractedLink[] = []) => {
+  const saveResumeText = async (c: Context, userId: string, text: string, links: ExtractedLink[] = [], replace = false) => {
+    // replace: this resume supersedes the earlier ones, so what they said (and this one no longer does) is forgotten.
+    if (replace) await clearResumeNodes(db, userId);
     const result = await ingestResume(db, userId, text, { links });
     await db.update(profiles).set({ rawResumeText: text, updatedAt: new Date() }).where(eq(profiles.userId, userId));
     await rescore(c, userId);
@@ -395,8 +421,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   };
 
   app.post("/api/profile/resume", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text") }));
-    return c.json(await saveResumeText(c, c.get("user").id, text));
+    const { text, replace } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text").max(200_000, "That is longer than any resume: paste just the resume"), replace: z.boolean().optional() }));
+    return c.json(await saveResumeText(c, c.get("user").id, text, [], replace ?? false));
   });
 
   app.post("/api/profile/resume-file",
@@ -444,6 +470,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.get("/api/graph", async (c) => c.json(await getGraph(db, c.get("user").id)));
 
+  // Retract one claim: the node and its edges go, and matches are rescored without it.
+  app.delete("/api/graph/nodes/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!uuidOk(id) || !(await deleteGraphNode(db, c.get("user").id, id))) throw bad("Not found", 404);
+    await rescore(c, c.get("user").id);
+    return c.body(null, 204);
+  });
+
   app.get("/api/graph/export", async (c) => {
     const data = await exportGraph(db, c.get("user").id);
     c.header("content-disposition", `attachment; filename="jobgraph-export-${data.exportedAt.slice(0, 10)}.json"`);
@@ -455,7 +489,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   const ModelBody = z.object({
     provider: z.enum(LLM_PROVIDERS),
     apiKey: z.string().trim().max(1000).optional(),
-    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).nullable().optional().or(z.literal("").transform(() => null)),
+    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
     qualityModel: z.string().trim().max(200).nullable().optional(),
     bulkModel: z.string().trim().max(200).nullable().optional(),
   });
@@ -477,7 +511,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const user = c.get("user");
     const b = await body(c, z.object({
       provider: z.enum(LLM_PROVIDERS), apiKey: z.string().trim().max(1000).optional(),
-      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).nullable().optional().or(z.literal("").transform(() => null)),
+      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
     }));
     const current = await getUserCredentials(db, user.id);
     const same = current?.provider === b.provider;
@@ -531,7 +565,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.post("/api/graph/facts", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(1) }));
+    const { text } = await body(c, z.object({ text: z.string().min(1, "Write the fact first").max(4000, "Keep a fact under 4000 characters") }));
     const result = await addFact(db, c.get("user").id, text);
     await rescore(c, c.get("user").id);
     return c.json(result);
@@ -572,7 +606,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/jobs/discover", async (c) => {
     const q = await body(c, DiscoverBody);
     const res = await findAndRank(db, c.get("user").id, q);
-    return c.json({ added: res.added, jobs: res.jobs.map((r) => ({ job: slimJob(r.job), match: r.match })) });
+    return c.json({ added: res.added, heldOnly: res.heldOnly ?? false, jobs: res.jobs.map((r) => ({ job: slimJob(r.job), match: r.match })) });
   });
 
   app.post("/api/jobs/url", async (c) => {
@@ -691,7 +725,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const d = await jobDetail(c, application.jobId);
     const resume = application.resumeId ? (await db.select().from(resumes).where(eq(resumes.id, application.resumeId)).limit(1))[0] ?? null : null;
     const events = (await db.select().from(runEvents).where(eq(runEvents.applicationId, id)).orderBy(asc(runEvents.ts))).map(toRunEvent);
-    return c.json({ application, job: d.job, resume, events, company: d.company, match: d.match });
+    // What a recruiter would see on this resume for this job (pure and cheap, so it is computed fresh after every edit).
+    const [req] = await db.select({ requirements: jobs.requirements }).from(jobs).where(eq(jobs.id, application.jobId)).limit(1);
+    const recruiter = resume ? recruiterReview(resume.content, req?.requirements ?? null, { jobTitle: d.job.title, pages: resume.pages }) : null;
+    return c.json({ application, job: d.job, resume, events, company: d.company, match: d.match, recruiter });
   });
 
   app.post("/api/applications/:id/approve-resume", async (c) => {
@@ -704,10 +741,12 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/applications/:id/approve-form", async (c) => {
     let a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers.optional() }));
-    // Answering a question resumes the run in the background, so an approve that follows at once finds the
-    // application still filling the form. Wait for it to reach the review instead of rejecting a valid request.
-    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); (a.status === "filling" || a.status === "queued") && Date.now() < deadline;) {
-      await new Promise((r) => setTimeout(r, 400));
+    // Answering a question resumes the run in the background, so an approve that follows at once can find the application
+    // in the gap before it moves on: still "needs you" with no question left, then queued or filling the form. Wait for it
+    // to reach the review instead of refusing a valid request. (A "needs you" with questions still open is a real refusal.)
+    const resuming = (x: typeof a) => x.status === "filling" || x.status === "queued" || (x.status === "needs_user" && x.pendingQuestions.length === 0);
+    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); resuming(a) && Date.now() < deadline;) {
+      await new Promise((r) => setTimeout(r, 250));
       a = await loadApp(c, a.id);
     }
     if (a.status !== "form_review") throw bad(`Application is ${a.status}, not form_review`, 409);
@@ -718,7 +757,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/applications/:id/answer", async (c) => {
     const a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers }));
-    await kick(c, () => answerPending(db, a.id, deps, answers));
+    // Save the answers and move the application on before replying (quick writes), then run the rest in the background.
+    // Replying first and saving later left a window where the very next request still saw the question open.
+    const { resume } = await acceptAnswers(db, a.id, answers);
+    if (resume) await kick(c, () => runApplication(db, a.id, deps));
     return c.json(await loadApp(c, a.id));
   });
 
@@ -802,7 +844,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.get("/api/inbox", async (c) => {
     const user = c.get("user");
     const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
-    return c.json(await db.select().from(inboxMessages).where(eq(inboxMessages.userId, user.id)).orderBy(desc(inboxMessages.receivedAt)).limit(limit));
+    // Non-job mail is kept only as an empty marker (see syncInbox); it is not the person's inbox to show.
+    return c.json(await db.select().from(inboxMessages).where(and(eq(inboxMessages.userId, user.id), ne(inboxMessages.bodyText, "")))
+      .orderBy(desc(inboxMessages.receivedAt)).limit(limit));
   });
 
   app.post("/api/inbox/sync", async (c) => {
@@ -838,10 +882,17 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     .filter((r) => r.kind !== "web")));
 
   app.post("/api/channels", async (c) => {
-    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1), meta: z.record(z.string(), z.unknown()).optional() }));
+    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1).max(320), meta: z.record(z.string(), z.unknown()).optional() }));
     const user = c.get("user");
+    // An address belongs to whoever linked it first. Re-pointing someone else's chat at this account would send their
+    // commands here and this account's notifications (resumes, job details) to their phone.
+    const [taken] = await db.select({ userId: channels.userId }).from(channels).where(and(eq(channels.kind, b.kind), eq(channels.address, b.address))).limit(1);
+    if (taken && taken.userId !== user.id) throw bad("That address is already linked to another account", 409);
+    // Email notifications go only to the account's own address.
+    if (b.kind === "email" && b.address.trim().toLowerCase() !== user.email.toLowerCase()) throw bad("Email notifications go to your account's own address", 400);
     const [row] = await db.insert(channels).values({ userId: user.id, kind: b.kind, address: b.address, meta: b.meta ?? {} })
-      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { userId: user.id, meta: b.meta ?? {} } }).returning();
+      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, where: eq(channels.userId, user.id) }).returning();
+    if (!row) throw bad("That address is already linked to another account", 409);
     return c.json(row, 201);
   });
 
@@ -854,7 +905,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.get("/api/integrations", async (c) => {
-    if (!composioAvailable()) return c.json(TOOLKITS.map((toolkit) => ({ toolkit, connected: false })));
+    if (!composioAvailable()) return c.json(TOOLKITS.map((toolkit) => ({ toolkit, connected: false, available: false })));
     try {
       return c.json(await listConnections(c.get("user").id));
     } catch (err) {
@@ -907,6 +958,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       tickMinutes: tickMinutes(),
       dailyCap: profile.autoApplyDailyCap, usedToday: Number(usedToday), minScore: profile.autoApplyMinScore,
       autoApprove: profile.resumeAutoApprove, reviewBeforeSubmit: profile.reviewBeforeSubmit,
+      autopilot: profile.autopilot, autopilotTrust: { approved: await countHumanApprovals(db, user.id), needed: AUTOPILOT_MIN_HUMAN_APPROVALS },
       /** False means every "submitted" application is a dry run: the form is filled and stopped, nothing is sent. */
       liveSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
       channels: chs.filter((ch) => ch.kind !== "web"),
@@ -964,7 +1016,11 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.post("/api/webhooks/whatsapp", async (c) => {
     if (!opts.router) throw bad("WhatsApp webhook not enabled", 503);
-    const payload = await c.req.json().catch(() => ({}));
+    if (!process.env.WHATSAPP_APP_SECRET) throw bad("WhatsApp webhook needs WHATSAPP_APP_SECRET", 503);
+    const raw = await c.req.text();
+    if (!verifyWhatsAppSignature(raw, c.req.header("x-hub-signature-256"))) throw bad("Bad signature", 401);
+    let payload: unknown = {};
+    try { payload = JSON.parse(raw); } catch { throw bad("Body must be JSON"); }
     const msgs = await opts.router.whatsapp.handleWebhook(payload);
     return c.json({ received: msgs.length });
   });

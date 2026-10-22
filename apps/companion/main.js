@@ -6,7 +6,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const WEB_URL = (process.env.WEB_URL || "http://localhost:3000").replace(/\/$/, "");
-const API_URL = (process.env.API_URL || "http://localhost:4000").replace(/\/$/, "");
+// The API is reached through the web app's /api proxy, like the browser does: the sign-in cookie belongs to the web
+// app's host, so calling a separate API host (api.example.com) directly is never signed in once deployed.
+// COMPANION_API_URL overrides it for unusual setups.
+const API_URL = (process.env.COMPANION_API_URL || WEB_URL).replace(/\/$/, "");
 const COMPANION_URL = `${WEB_URL}/companion`;
 const POLL_MS = 60_000;
 const ASSETS = path.join(__dirname, "assets");
@@ -44,7 +47,7 @@ function iconFor(hasDot) {
   return img;
 }
 
-// ---------- API (uses the Electron session, so it carries the sign-in cookie; localhost cookies ignore ports) ----------
+// ---------- API (uses the Electron session, so it carries the sign-in cookie set by the web app) ----------
 async function api(method, route, body) {
   const res = await session.defaultSession.fetch(`${API_URL}${route}`, {
     method,
@@ -139,6 +142,12 @@ function contextMenu() {
 }
 
 // ---------- popover plumbing ----------
+function openOutside(url) {
+  let scheme = "";
+  try { scheme = new URL(url).protocol; } catch { return; }
+  if (scheme === "https:" || scheme === "http:" || scheme === "mailto:") shell.openExternal(url);
+  else console.warn("[companion] not opening a", scheme, "link");
+}
 const OFFLINE_HTML = (url) => "data:text/html;charset=utf-8," + encodeURIComponent(
   "<!doctype html><meta charset=utf-8>" +
   "<body style=\"font:14px system-ui;margin:24px;color:#222;background:#fff\">" +
@@ -150,11 +159,12 @@ function wirePopover(win) {
   const origin = new URL(WEB_URL).origin;
   let sawLogin = false;
 
-  // Anything that is not our web app opens in the real browser.
-  wc.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
+  // Anything that is not our web app opens in the real browser, and only web and mail links: a job posting's link
+  // with a custom scheme (or file:) must not be handed to the operating system to open.
+  wc.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: "deny" }; });
   wc.on("will-navigate", (e, url) => {
     if (url.startsWith("data:")) return;
-    if (new URL(url).origin !== origin) { e.preventDefault(); shell.openExternal(url); }
+    if (new URL(url).origin !== origin) { e.preventDefault(); openOutside(url); }
   });
 
   // Sign-in happens inside the popover: /companion redirects to /login, and after login we return to /companion.

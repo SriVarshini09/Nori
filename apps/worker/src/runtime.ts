@@ -16,11 +16,11 @@
 import { and, eq, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import {
   applications, channels, companies, FEEDS, MAX_ATTEMPTS, STALE_MS, ensureDefaultUser, createAgent, computeMatchesForUser, usersWithGraph,
-  agentTick, announceInbox, seedBoardRegistry, pruneAuthTokens, pruneSessions, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, retryApplication, runApplication, withUserLLM,
+  agentTick, announceInbox, seedBoardRegistry, pruneAuthTokens, pruneSessions, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, pruneArtifacts, recoverStuckCodeWaits, retryApplication, runApplication, withUserLLM,
   type AtsType, type Db, type OutboundMessage, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
-import { composioAvailable, createChannelRouter, sendToUser, syncInbox, waitForVerificationCode, type ChannelRouter } from "@jobgraph/channels";
+import { composioAvailable, createChannelRouter, pruneInbox, sendToUser, syncInbox, waitForVerificationCode, type ChannelRouter } from "@jobgraph/channels";
 import { CONSOLE_ADDRESS, ConsoleChannel } from "./console.js";
 
 export type Notify = (userId: string, msg: OutboundMessage) => Promise<unknown>;
@@ -139,8 +139,12 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   });
 
   every("housekeeping", 60 * 60_000, async () => {
-    const [sessions, tokens] = [await pruneSessions(db), await pruneAuthTokens(db)];
-    if (sessions || tokens) log(`housekeeping: removed ${sessions} expired session(s) and ${tokens} spent account link(s)`);
+    const stuck = await recoverStuckCodeWaits(db);
+    if (stuck) log(`housekeeping: ${stuck} application(s) recovered from an interrupted code wait`);
+    const art = await pruneArtifacts(db, { root: runner.artifactsRoot });
+    if (art.files || art.dirs) log(`housekeeping: removed ${art.files} old screenshot(s) and ${art.dirs} orphaned artifact folder(s)`);
+    const [sessions, tokens, mail] = [await pruneSessions(db), await pruneAuthTokens(db), await pruneInbox(db)];
+    if (sessions || tokens || mail) log(`housekeeping: removed ${sessions} expired session(s), ${tokens} spent account link(s), ${mail} non-job mail marker(s)`);
   });
 
   every("inbox", INBOX_EVERY, async () => {

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * The quality gate. Every change must pass this before it is committed:
- *   node scripts/gate.mjs          typecheck, unit tests, lint, production web build, crawl of every route and link, browser end-to-end journey
+ *   node scripts/gate.mjs          typecheck, unit tests (embedded database and real PostgreSQL), lint, production web build,
+ *                                  crawl of every route and link, browser end-to-end journey (both databases)
  *   node scripts/gate.mjs --fast   skip the web build, the crawl and the end-to-end journey
  *   node scripts/gate.mjs --only typecheck,tests
  * Exit code 0 only when every step passed.
@@ -21,6 +22,8 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const STEPS = [
   { id: "typecheck", label: "TypeScript", cmd: npm, args: ["run", "typecheck"] },
   { id: "tests", label: "Unit and API tests", cmd: npx, args: ["vitest", "run"] },
+  // The same tests on a real PostgreSQL 17 server (what production runs), not only the embedded PGlite stand-in.
+  { id: "postgres", label: "Unit and API tests on real PostgreSQL", cmd: npm, args: ["run", "test:pg"] },
   { id: "lint", label: "Lint (web)", cmd: npm, args: ["run", "lint", "--workspace", "apps/web"] },
   {
     id: "build", label: "Web production build (live mode)", cmd: npm, args: ["run", "build", "--workspace", "apps/web"], skipWhenFast: true,
@@ -28,6 +31,7 @@ const STEPS = [
   },
   { id: "crawl", label: "Route, link and console crawl", cmd: npx, args: ["tsx", "scripts/crawl.mts"], skipWhenFast: true },
   { id: "e2e", label: "Browser end-to-end journey", cmd: npm, args: ["run", "e2e"], skipWhenFast: true },
+  { id: "e2e-pg", label: "Browser journey on real PostgreSQL", cmd: npm, args: ["run", "test:pg", "--", "--e2e"], skipWhenFast: true },
 ];
 
 const results = [];

@@ -1,11 +1,11 @@
 import path from "node:path";
-import { and, count, desc, eq, gte, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lt, ne, notExists, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import {
   applications, companies, jobs, matches, profiles, resumes, runEvents, users,
   type ApplicationStatus, type CompanyResearch, type JobRequirements, type PendingQuestion, type Receipt, type ResumeContent,
 } from "../db/schema.js";
-import type { ApplyDriver, DriverContext, DriverResult, RenderResult, TailorInput } from "../contracts.js";
+import type { ApplyDriver, DriverContext, DriverResult, FormField, RenderResult, TailorInput } from "../contracts.js";
 import { ensureRequirements } from "../feeds/requirements.js";
 import { parallelAvailable } from "../feeds/parallel.js";
 import { researchCompany } from "../research/company.js";
@@ -16,6 +16,8 @@ import { renderPdf } from "../tailor/pdf.js";
 import { getProfile } from "../users.js";
 import { baselineFromDoc, getDefaultResumeDoc } from "../resume/docs.js";
 import { emit } from "./events.js";
+import { checkDisqualifiers, unprovenConstraints } from "../agent/gate.js";
+import { AUTOPILOT_COMPANY_COOLDOWN_DAYS, autopilotVerdict, describeVerdict, type AutopilotMode } from "./autopilot.js";
 import { withUserLLM } from "../llm/index.js";
 import { LIKELY_QUESTIONS, isProfileField, makeAnswerQuestion, toApplicantProfile, type ComposedAnswer } from "./answers.js";
 
@@ -38,6 +40,8 @@ export type RunnerDeps = {
   tailor?: (input: TailorInput) => Promise<TailorOutcome>;
   /** Root for artifacts; default data/artifacts (or ARTIFACTS_DIR). Files land under <root>/<applicationId>/. */
   artifactsRoot?: string;
+  /** How many hand-approved applications Autopilot needs before it sends any; default AUTOPILOT_MIN_HUMAN_APPROVALS (tests lower it). */
+  autopilotMinApprovals?: number;
   /** Defaults to process.env.ALLOW_REAL_SUBMIT === "true". The driver enforces its own check too. */
   allowRealSubmit?: boolean;
   /** Verification code wait; default 3 minutes. */
@@ -192,6 +196,8 @@ type DriveSetup = {
   ctx: Omit<DriverContext, "dryRun" | "waitForCode">; driver: ApplyDriver; reviewBeforeSubmit: boolean;
   /** Free-text answers the composer wrote during this run, with their sources. */
   composed: Record<string, ComposedAnswer>;
+  /** What Autopilot needs to judge the filled form. */
+  job: typeof jobs.$inferSelect; requirements: JobRequirements | null; profileRow: typeof profiles.$inferSelect;
 };
 
 async function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
@@ -249,6 +255,7 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
   return {
     driver,
     composed,
+    job, requirements, profileRow,
     reviewBeforeSubmit: profileRow.reviewBeforeSubmit,
     ctx: {
       applyUrl: job.applyUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
@@ -321,7 +328,9 @@ async function runDriver(db: Db, app: Application, driver: ApplyDriver, ctx: Dri
 async function failDriver(db: Db, app: Application, res: Extract<DriverResult, { outcome: "failed" }>, root: string): Promise<ApplicationStatus> {
   const left = MAX_ATTEMPTS - app.attempts;
   const shot = relArtifactPath(res.screenshotPath, root);
-  return transition(db, app, "failed", { error: res.error },
+  // After a submit click, clear the form approval: a retry then refills as a dry run and waits for the person, instead of
+  // sending a second copy to the employer.
+  return transition(db, app, "failed", { error: res.error, ...(res.submitClicked ? { formApprovedAt: null } : {}) },
     `Driver failed: ${res.error}${left > 0 ? ` (${left} attempt(s) left)` : " (no attempts left)"}${shot ? ` [screenshot ${shot}]` : ""}`);
 }
 
@@ -336,7 +345,9 @@ function codeWaiter(db: Db, app: Application, deps: RunnerDeps) {
     } catch (err) {
       await emit(db, app.id, "verification", `Code lookup failed: ${(err as Error).message}`, {}, "warn");
     }
-    await patch(db, app.id, { status: app.status });
+    // Back to the step that asked, unless the person skipped (or anything else moved it) while we waited.
+    await db.update(applications).set({ status: app.status, updatedAt: new Date() })
+      .where(and(eq(applications.id, app.id), eq(applications.status, "awaiting_code")));
     await emit(db, app.id, "verification", code ? "Verification code received" : "No verification code arrived in time",
       { found: !!code, to: app.status }, code ? "info" : "warn");
     return code;
@@ -351,9 +362,57 @@ async function finishSubmitted(db: Db, app: Application, receipt: Receipt): Prom
     receipt.confirmationText ? `Submitted: ${receipt.confirmationText.slice(0, 200)}` : "Submitted");
 }
 
+/** Applications the person approved themselves (not Autopilot) that went out: the trust Autopilot is built on. */
+export async function countHumanApprovals(db: Db, userId: string): Promise<number> {
+  const sent = ["submitted", "viewed", "replied", "interview", "offer", "rejected"] as ApplicationStatus[];
+  const [{ n }] = await db.select({ n: count() }).from(applications).where(and(
+    eq(applications.userId, userId), eq(applications.autopilot, false), inArray(applications.status, sent), sql`${applications.formApprovedAt} is not null`));
+  return Number(n);
+}
+
+/** Autopilot's decision for a freshly filled form. Records the checks on the timeline and returns whether it may approve. */
+/** Required fields (other than file uploads) that the receipt shows empty after the fill. */
+export function unansweredRequired(fields: FormField[], receipt: Receipt): string[] {
+  const filled = new Set(receipt.fields.filter((f) => f.value.trim()).map((f) => f.label.trim().toLowerCase()));
+  return fields.filter((f) => f.required && f.kind !== "file" && !filled.has(f.label.trim().toLowerCase())).map((f) => f.label);
+}
+
+async function judgeByAutopilot(db: Db, app: Application, deps: RunnerDeps, setup: DriveSetup, writtenLabels: string[],
+  opts: { mode: AutopilotMode; unanswered: string[] }): Promise<boolean> {
+  const { job, requirements, profileRow } = setup;
+  const [m] = await db.select({ score: matches.score }).from(matches).where(and(eq(matches.userId, app.userId), eq(matches.jobId, job.id))).limit(1);
+  const [resume] = app.resumeId ? await db.select({ atsScore: resumes.atsScore }).from(resumes).where(eq(resumes.id, app.resumeId)).limit(1) : [];
+  const graph = await getGraph(db, app.userId);
+  const humanApprovals = await countHumanApprovals(db, app.userId);
+  const since = new Date(Date.now() - AUTOPILOT_COMPANY_COOLDOWN_DAYS * 86_400_000);
+  const [{ n: recent }] = await db.select({ n: count() }).from(applications).innerJoin(jobs, eq(jobs.id, applications.jobId)).where(and(
+    eq(applications.userId, app.userId), ne(applications.id, app.id), gte(applications.createdAt, since),
+    notInArray(applications.status, ["failed", "skipped"] as ApplicationStatus[]),
+    sql`lower(${jobs.companyName}) = ${job.companyName.trim().toLowerCase()}`));
+  const verdict = autopilotVerdict({
+    mode: opts.mode,
+    atsType: setup.driver.atsType,
+    submitLockOpen: deps.allowRealSubmit ?? process.env.ALLOW_REAL_SUBMIT === "true",
+    score: m?.score ?? null,
+    minScore: profileRow.autoApplyMinScore,
+    gate: checkDisqualifiers(job, requirements, profileRow, { graph }),
+    unproven: unprovenConstraints(job, requirements, profileRow),
+    filled: true,
+    pendingQuestions: opts.unanswered.length,
+    writtenAnswers: writtenLabels,
+    atsScore: resume?.atsScore ?? null,
+    humanApprovals,
+    minHumanApprovals: deps.autopilotMinApprovals,
+    recentSameCompany: Number(recent),
+  });
+  await emit(db, app.id, "autopilot", describeVerdict(verdict), { allowed: verdict.allow, checks: verdict.checks }, verdict.allow ? "info" : "warn");
+  return verdict.allow;
+}
+
 async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<ApplicationStatus> {
   const root = artifactsRootOf(deps);
-  const { ctx, driver, reviewBeforeSubmit, composed } = await setupDrive(db, app, deps, { research: true });
+  const setup = await setupDrive(db, app, deps, { research: true });
+  const { ctx, driver, reviewBeforeSubmit, composed } = setup;
   const user = { ...app.answers };
 
   // Pre-answer the questions most forms ask, fresh from the current profile and evidence on every run.
@@ -365,9 +424,9 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
   }
   ctx.answers = { ...pre, ...user };
 
-  const allowReal = deps.allowRealSubmit ?? process.env.ALLOW_REAL_SUBMIT === "true";
-  const dryRun = reviewBeforeSubmit ? true : !allowReal;
-  const res = await runDriver(db, app, driver, { ...ctx, dryRun, waitForCode: codeWaiter(db, app, deps) });
+  // The fill is always a dry run. Sending happens only in stepSubmitting, after a person or every Autopilot check approved the
+  // filled form. Turning "review before submit" off used to fill with dryRun false and send with no check at all.
+  const res = await runDriver(db, app, driver, { ...ctx, dryRun: true, waitForCode: codeWaiter(db, app, deps) });
   const stored = (r: Receipt) => storeReceipt(r, root, collectAuto(pre, r, user, composed), sourcesOf(composed));
   const composedLabels = Object.keys(composed);
   if (composedLabels.length) {
@@ -378,10 +437,22 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
   switch (res.outcome) {
     case "filled": {
       const receipt = stored(res.receipt);
-      if (reviewBeforeSubmit) {
-        return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null }, `Form filled (${receipt.fields.length} fields); waiting for review`);
+      // Autopilot may approve the form itself, but only when every check passes (see autopilot.ts); otherwise it waits as always.
+      // With "review before submit" off the person has asked not to be asked, so the checks run at least in "safe" mode: that
+      // setting skips the question, never the safeguards.
+      // Nori pre-writes answers to questions most forms ask, whether or not this form does: only the ones it used count.
+      const used = new Set(receipt.fields.map((f) => f.label.trim().toLowerCase()));
+      const written = Object.keys(composed).filter((label) => used.has(label.trim().toLowerCase()));
+      const profileMode = setup.profileRow.autopilot as AutopilotMode;
+      const mode: AutopilotMode = !reviewBeforeSubmit && profileMode === "off" ? "safe" : profileMode;
+      const approved = mode !== "off"
+        ? await judgeByAutopilot(db, app, deps, setup, written, { mode, unanswered: unansweredRequired(res.fields, res.receipt) })
+        : false;
+      if (approved) {
+        return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null, formApprovedAt: new Date(), autopilot: true },
+          `Form filled (${receipt.fields.length} fields); approved by Autopilot`);
       }
-      return transition(db, app, "submitting", { receipt, pendingQuestions: [], error: null }, "Form filled; submitting (review before submit is off)");
+      return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null }, `Form filled (${receipt.fields.length} fields); waiting for review`);
     }
     case "submitted":
       return finishSubmitted(db, app, stored(res.receipt));
@@ -415,12 +486,36 @@ async function stepSubmitting(db: Db, app: Application, deps: RunnerDeps): Promi
     case "needs_user": {
       const receipt = stored(res.receipt);
       const code = res.pending.some((p) => p.type === "verification_code");
-      return transition(db, app, "needs_user", { receipt, pendingQuestions: res.pending },
-        code ? "No verification code arrived within the timeout" : `${res.pending.length} question(s) need your answer`);
+      const what = code ? "No verification code arrived within the timeout" : `${res.pending.length} question(s) need your answer`;
+      if (res.receipt.submitClicked) {
+        // Submit was already clicked once. Answering or retrying must not silently send it again: drop the approval so the
+        // next run refills as a dry run and the person decides, after checking their email for a confirmation.
+        return transition(db, app, "needs_user", { receipt, pendingQuestions: res.pending, formApprovedAt: null },
+          `${what}. Nori already clicked submit once, so check your email for a confirmation before you approve it again.`);
+      }
+      return transition(db, app, "needs_user", { receipt, pendingQuestions: res.pending }, what);
     }
     case "failed":
       return failDriver(db, app, res, root);
   }
+}
+
+/**
+ * An application left in awaiting_code by a process that stopped mid-wait: nothing picks it up again (it is a waiting
+ * status) and only Skip worked. The code wait starts after a submit click, so it goes to the person with the form approval
+ * dropped: no automatic second submit. Returns how many were recovered.
+ */
+export async function recoverStuckCodeWaits(db: Db, olderThanMs = 15 * 60_000): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const stuck = await db.update(applications)
+    .set({
+      status: "needs_user", formApprovedAt: null, updatedAt: new Date(),
+      pendingQuestions: [{ label: "Verification code", type: "verification_code", required: true }],
+      error: "The wait for a verification code was interrupted. Nori may already have clicked submit: check your email for a confirmation before you approve it again.",
+    })
+    .where(and(eq(applications.status, "awaiting_code"), lt(applications.updatedAt, cutoff))).returning();
+  for (const r of stuck) await emit(db, r.id, "status", "Recovered from an interrupted code wait; waiting for you", { to: "needs_user" }, "warn");
+  return stuck.length;
 }
 
 /** Advance exactly one step. Returns the status after the step (unchanged when another process owns it). */
@@ -507,15 +602,25 @@ export async function approveForm(db: Db, id: string, deps: RunnerDeps, answers?
   return runApplication(db, id, deps);
 }
 
-/** Answer pending questions, then resume from where the run stopped. */
-export async function answerPending(db: Db, id: string, deps: RunnerDeps, answers: Record<string, string>): Promise<ApplicationStatus> {
+/**
+ * Save answers to pending questions and, when the application was waiting on them, move it on to where the run stopped.
+ * Only quick database writes: the caller replies as soon as this returns, so the person's very next request (usually
+ * "approve") sees the answers saved and the application already moving. `resume` says whether the run should now continue.
+ */
+export async function acceptAnswers(db: Db, id: string, answers: Record<string, string>): Promise<{ status: ApplicationStatus; resume: boolean }> {
   const app = await load(db, id);
   const still: PendingQuestion[] = app.pendingQuestions.filter((q) => !(q.label in answers));
   const updated = await patch(db, id, { answers: { ...app.answers, ...answers }, pendingQuestions: still });
   await emit(db, id, "answer", `Answered ${Object.keys(answers).length} question(s)`, { labels: Object.keys(answers) });
-  if (app.status !== "needs_user") return app.status;
+  if (app.status !== "needs_user") return { status: app.status, resume: false };
   await condTransition(db, updated, resumePoint(updated), { error: null }, "Resuming with your answers");
-  return runApplication(db, id, deps);
+  return { status: resumePoint(updated), resume: true };
+}
+
+/** Answer pending questions, then resume from where the run stopped. */
+export async function answerPending(db: Db, id: string, deps: RunnerDeps, answers: Record<string, string>): Promise<ApplicationStatus> {
+  const r = await acceptAnswers(db, id, answers);
+  return r.resume ? runApplication(db, id, deps) : r.status;
 }
 
 export async function skipApplication(db: Db, id: string): Promise<ApplicationStatus> {

@@ -371,8 +371,19 @@ function collectLinks(text: string, lines: string[], headSet: Set<number>, links
 }
 
 // ------------------------------------------------------------------ entry point
+
+/**
+ * The contact regexes rescan a long unbroken run from every start position, so their cost grows with the square of the run.
+ * One very long "word" (or a long run of digits and spaces) in a pasted or uploaded resume froze the whole server for good.
+ * Contact details sit in the header and are short, so cap the text and blank out any run no email, URL or phone could be.
+ */
+export const MAX_CONTACT_CHARS = 60_000;
+export function boundContactText(text: string): string {
+  return text.slice(0, MAX_CONTACT_CHARS).replace(/\S{200,}/g, " ").replace(/[\d \t().\-–]{40,}/g, " ");
+}
+
 export function extractContact(textRaw: string, links: ExtractedLink[] = []): ContactInfo {
-  const text = textRaw.replace(/\r\n?/g, "\n");
+  const text = boundContactText(textRaw.replace(/\r\n?/g, "\n"));
   const lines = text.split("\n");
   const { head, headSet } = headRegion(lines);
   const out: ContactInfo = { otherLinks: [], confidence: {} };

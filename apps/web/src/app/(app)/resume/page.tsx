@@ -11,7 +11,7 @@ export default async function ResumePage() {
     return (
       <div>
         <PageHeader label="Resume" title={<>Your resumes,<br />your look.</>} subtitle="Edit, restyle and export." />
-        <EmptyState title="Needs the live API">The resume studio runs on the real renderer. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.</EmptyState>
+        <EmptyState title="Needs the live API">The resume studio runs on the real renderer. Unset NEXT_PUBLIC_USE_MOCK and start apps/api.</EmptyState>
       </div>
     );
   }

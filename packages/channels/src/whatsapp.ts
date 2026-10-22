@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { ChannelAdapter, InboundMessage, OutboundMessage } from "@jobgraph/core";
 import { chunkText } from "./telegram.js";
@@ -30,10 +31,25 @@ export function parseWhatsAppWebhook(body: unknown): InboundMessage[] {
   return out;
 }
 
+/**
+ * Meta signs every webhook POST with the app secret: `X-Hub-Signature-256: sha256=<hex HMAC of the raw body>`.
+ * Without this check anyone who knows a linked phone number could post a forged message and drive that person's agent.
+ * No secret configured means no inbound messages at all (fail closed).
+ */
+export function verifyWhatsAppSignature(rawBody: string, header: string | undefined, secret = process.env.WHATSAPP_APP_SECRET): boolean {
+  if (!secret || !header?.startsWith("sha256=")) return false;
+  const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest();
+  let got: Buffer;
+  try { got = Buffer.from(header.slice(7), "hex"); } catch { return false; }
+  return got.length === expected.length && timingSafeEqual(got, expected);
+}
+
 /** WhatsApp Cloud API. Inbound needs a public webhook: wire POST to `handleWebhook(body)` and GET to `verifyWebhook(query)`. */
 export class WhatsAppChannel implements ChannelAdapter {
   kind = "whatsapp" as const;
   private handler: ((msg: InboundMessage) => Promise<void>) | null = null;
+  /** Message ids already handled: Meta retries deliveries, and a replayed signed body must not run a command twice. */
+  private seen = new Set<string>();
 
   get available(): boolean { return Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID); }
 
@@ -75,7 +91,13 @@ export class WhatsAppChannel implements ChannelAdapter {
 
   /** Call from the POST webhook route. Returns the parsed messages after dispatching them to the listener. */
   async handleWebhook(body: unknown): Promise<InboundMessage[]> {
-    const msgs = parseWhatsAppWebhook(body);
+    const msgs = parseWhatsAppWebhook(body).filter((m) => {
+      if (!m.externalId) return true;
+      if (this.seen.has(m.externalId)) return false;
+      this.seen.add(m.externalId);
+      if (this.seen.size > 5000) this.seen.delete(this.seen.values().next().value as string);
+      return true;
+    });
     for (const m of msgs) {
       try { await this.handler?.(m); } catch (err) { console.warn("[whatsapp] handler error:", (err as Error).message); }
     }

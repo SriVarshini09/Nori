@@ -36,6 +36,7 @@ export function checkEnv(env: Env = process.env): EnvCheck {
     if (!env.CREDENTIALS_KEY && !env.APP_SECRET) errors.push("Set CREDENTIALS_KEY (or APP_SECRET): stored model keys are encrypted with it, and the development fallback key is public.");
     else if (!env.CREDENTIALS_KEY) warnings.push("CREDENTIALS_KEY is not set; the key-encryption key is derived from APP_SECRET. Prefer a dedicated CREDENTIALS_KEY.");
     if (env.DEFAULT_USER_EMAIL) errors.push("DEFAULT_USER_EMAIL must not be set in production: it would let anyone without a session act as that user.");
+    if (env.TELEGRAM_AUTOLINK === "true") errors.push("TELEGRAM_AUTOLINK must not be on in production: it links any stranger who messages the bot to the default user.");
     if (!env.MCP_TOKEN) warnings.push("MCP_TOKEN is not set: the /mcp endpoint will refuse every request in production.");
     if (!env.RESEND_API_KEY && !env.SMTP_URL) warnings.push("Neither RESEND_API_KEY nor SMTP_URL is set: password-reset and verification emails are only written to the log, so users cannot recover an account.");
     if (!env.ARTIFACTS_DIR) warnings.push("ARTIFACTS_DIR is not set: resume PDFs and screenshots go to the working directory and vanish with the container. Mount a volume and set it.");
@@ -72,7 +73,7 @@ export function integrationReport(env: Env = process.env): IntegrationState[] {
     row("composio", "Gmail, Sheets, Calendar, Slack (Composio)", ["COMPOSIO_API_KEY"], "Inbox sync, the tracker sheet and verification-code lookup are unavailable."),
     row("parallel", "Job discovery and company research (Parallel)", ["PARALLEL_API_KEY"], "Discovery outside the public ATS feeds and company research are unavailable."),
     row("telegram", "Telegram channel", ["TELEGRAM_BOT_TOKEN"], "No Telegram chat; the web app and other channels still work."),
-    row("whatsapp", "WhatsApp channel", ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN"], "No WhatsApp chat."),
+    row("whatsapp", "WhatsApp channel", ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"], "No WhatsApp chat."),
     {
       id: "email", name: "Account email (Resend or SMTP)",
       state: (has("RESEND_API_KEY") || has("SMTP_URL")) && has("EMAIL_FROM") ? "configured" : "blocked",

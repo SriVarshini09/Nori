@@ -28,7 +28,7 @@ async function shellData(): Promise<ShellData> {
 /** Signed-in app chrome. Sends a stale session to /login and an unfinished onboarding to /onboarding. */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ob = await api.onboarding().catch((e: unknown) => e);
-  if (ob instanceof ApiError && ob.status === 401) redirect("/login");
+  if (ob instanceof ApiError && ob.status === 401) redirect("/session-expired");
   // Any other failure (API down, older API without the route) falls through to the pages, which show their own errors.
   if (!(ob instanceof Error) && ob && typeof ob === "object" && "step" in ob && ob.step !== "done") redirect("/onboarding");
   const data = await shellData();

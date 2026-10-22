@@ -11,14 +11,19 @@ export async function body<T extends z.ZodType>(c: Context, schema: T): Promise<
   let raw: unknown = {};
   const text = await c.req.text();
   if (text.trim()) {
-    try { raw = JSON.parse(text); } catch { throw bad("Body must be JSON"); }
+    // Only real JSON requests: a cross-site <form enctype="text/plain"> can post a JSON-shaped body without a preflight.
+    if (!/^application\/(.+\+)?json\b/i.test(c.req.header("content-type") ?? "")) throw bad("Content-Type must be application/json", 415);
+    // Postgres cannot store a NUL character in text; one in a pasted fact or chat message used to end in a 500 with the SQL
+    // error. Strip it from every string at the door.
+    try { raw = JSON.parse(text, (_k, v) => (typeof v === "string" && v.includes("\u0000") ? v.replaceAll("\u0000", "") : v)); } catch { throw bad("Body must be JSON"); }
   }
   const r = schema.safeParse(raw);
   if (!r.success) throw bad(r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
   return r.data;
 }
 
-export const uuidOk = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
+/** A canonical UUID. Anything else would reach Postgres as an invalid uuid and come back as a 500 with the SQL error. */
+export const uuidOk = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 /** A short, human label for a session's user agent ("Chrome on Windows"). Never the raw string. */
 export function describeDevice(ua: string | null | undefined): string {

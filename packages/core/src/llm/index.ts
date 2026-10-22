@@ -226,8 +226,19 @@ export function forgetUserModels(userId?: string) {
 
 // ---------- providers ----------
 
+/**
+ * Model endpoints may be chosen by the user. The address is checked once (presets.ts), so a redirect must never be
+ * followed: a public host answering 302 to http://169.254.169.254/ would otherwise be fetched from the server.
+ */
+const noRedirectFetch: typeof fetch = (input, init) => fetch(input, { ...init, redirect: "manual" });
+function refuseRedirect(res: Response): void {
+  if (res.status >= 300 && res.status < 400) throw new Error(`The model endpoint answered with a redirect (${res.status}); redirects are not followed. Use the provider's final URL.`);
+}
+
 function anthropicLLM(spec: LLMSpec): LLM {
-  const client = new Anthropic(spec.apiKey ? { apiKey: spec.apiKey, ...(spec.baseUrl ? { baseURL: spec.baseUrl } : {}) } : {});
+  const client = new Anthropic(spec.apiKey
+    ? { apiKey: spec.apiKey, fetch: noRedirectFetch, ...(spec.baseUrl ? { baseURL: spec.baseUrl } : {}) }
+    : { fetch: noRedirectFetch });
   const model = spec.model;
   return {
     provider: "anthropic", model, available: true, mode: "anthropic",
@@ -269,7 +280,7 @@ async function ollamaContext(baseUrl: string, model: string): Promise<number | n
   if (hit && Date.now() - hit.at < 60_000) return hit.ctx;
   let ctx: number | null = null;
   try {
-    const res = await fetch(`${baseUrl.replace(/\/v1$/, "")}/api/ps`, { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(`${baseUrl.replace(/\/v1$/, "")}/api/ps`, { signal: AbortSignal.timeout(1500), redirect: "manual" });
     const data = (await res.json()) as { models?: { name?: string; model?: string; context_length?: number }[] };
     ctx = data.models?.find((m) => m.name === model || m.model === model)?.context_length ?? null;
   } catch { ctx = null; }
@@ -355,7 +366,9 @@ function openAICompatLLM(spec: LLMSpec): LLM {
         headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
         signal,
+        redirect: "manual",
       });
+      refuseRedirect(res);
       if (res.status !== 400) break;
       const text = await res.text();
       const fixed = adaptBodyToRefusal(body, text);

@@ -161,7 +161,7 @@ describe("composeAnswer (offline heuristic)", () => {
     expect(await ask("What are your salary expectations?")).toBe("Around $185k a year, open to talking about it.");
     expect(await ask("When can you start?")).toBe("I could start on June 1, 2027. I'd need to give 2 weeks' notice first.");
     expect(await ask("Are you willing to relocate?")).toMatch(/^Yes, I'm open to relocating/);
-    expect(await ask("How did you hear about us?")).toBe("Job board");
+    expect(await ask("How did you hear about us?")).toBe("Company careers page"); // where Nori found it, not an invented channel
     for (const l of ["What are your salary expectations?", "When can you start?", "Are you willing to relocate?"]) expect(lint((await ask(l))!, "short")).toEqual([]);
   });
 

@@ -77,6 +77,8 @@ describe("syncInbox", () => {
     const rows = await db.select().from(inboxMessages).where(eq(inboxMessages.userId, user.id));
     expect(rows.find((r) => r.externalId === "e1")).toMatchObject({ kind: "interview", applicationId: app.id });
     expect(rows.find((r) => r.externalId === "e2")?.applicationId).toBeNull();
+    // Mail that is not about the job search is not kept: only an empty marker so it is not read again.
+    expect(rows.find((r) => r.externalId === "e2")).toMatchObject({ kind: "other", fromAddress: "", subject: "", bodyText: "" });
     const [a] = await db.select().from(applications).where(eq(applications.id, app.id));
     expect(a.status).toBe("interview");
     expect((await syncInbox(db, user.id, { fetchEmails })).imported).toBe(0);
@@ -104,5 +106,17 @@ describe("syncInbox", () => {
     const [row] = await db.select().from(inboxMessages).where(eq(inboxMessages.externalId, "c1"));
     expect(row.read).toBe(true);
     expect(await waitForVerificationCode(db, user.id, "acme", 30, { intervalMs: 5, sync: async () => ({ imported: 0 }) })).toBeNull();
+  });
+});
+
+describe("mail from someone who is not the company", () => {
+  it("cannot change an application's status, plant a code, or put a link in a draft", async () => {
+    const { senderSpeaksFor, safeDraft, fromAts } = await import("./inbox.js");
+    expect(senderSpeaksFor("Jane <jane@acme.com>", "Acme Inc")).toBe(true);
+    expect(senderSpeaksFor("Acme Recruiting <no-reply@greenhouse-mail.io>", "Acme")).toBe(true);
+    expect(senderSpeaksFor("Acme HR <acme.hr.team@gmail.com>", "Acme")).toBe(false);
+    expect(senderSpeaksFor("Unfortunately <news@phish.example>", "Acme")).toBe(false);
+    expect(fromAts("Lever <no-reply@hire.lever.co>")).toBe(true);
+    expect(safeDraft("Thanks! Book here: https://evil.example/x and talk soon")).toBe("Thanks! Book here:  and talk soon");
   });
 });

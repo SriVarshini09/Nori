@@ -56,6 +56,8 @@ export type Profile = {
   rawResumeText?: string | null;
   resumeAutoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  /** off: you approve every form. safe: Nori sends by itself only when every check passes. written: the same, and short answers Nori wrote are allowed. */
+  autopilot?: "off" | "safe" | "written";
   autoApplyDailyCap: number;
   autoApplyMinScore: number;
   updatedAt: string;
@@ -211,6 +213,8 @@ export type Application = {
   attempts: number;
   resumeApprovedAt: string | null;
   formApprovedAt: string | null;
+  /** True when Autopilot, not the person, approved the filled form. */
+  autopilot?: boolean;
   submittedAt: string | null;
   sheetRow?: number | null;
   createdAt: string;
@@ -290,10 +294,24 @@ export type RunEvent = {
 
 export type ApplicationListItem = { application: Application; job: Job; resume?: Resume | null };
 
+export type ReviewFinding = { id: string; severity: "high" | "medium" | "low"; title: string; detail: string; fix?: string };
+export type MustHave = { skill: string; required: boolean; status: "demonstrated" | "listed" | "missing" };
+/** A recruiter's read of the tailored resume against the job (computed by the API, see packages/core/src/tailor/recruiter.ts). */
+export type RecruiterReview = {
+  score: number;
+  verdict: "strong" | "good" | "needs_work";
+  strengths: string[];
+  concerns: ReviewFinding[];
+  musts: MustHave[];
+  stats: { bullets: number; quantifiedPct: number; strongVerbPct: number; avgBulletWords: number; years: number | null; requiredYears: number | null; skillsListed: number };
+};
+
 export type ApplicationDetail = {
   application: Application;
   job: Job;
   resume: Resume | null;
+  /** Absent on older APIs and in demo mode. */
+  recruiter?: RecruiterReview | null;
   events: RunEventRow[];
   company: Company | null;
 };
@@ -327,7 +345,8 @@ export type Channel = {
   createdAt: string;
 };
 
-export type Integration = { toolkit: string; connected: boolean; error?: string };
+/** `available: false` means this server has no connection provider configured, so Connect cannot work yet. */
+export type Integration = { toolkit: string; connected: boolean; error?: string; available?: boolean };
 
 // ---- agent (GET /api/agent/activity, /api/agent/status, POST /api/agent/tick, /api/agent/chat)
 export type AgentActivityKind =
@@ -346,6 +365,8 @@ export type AgentActivity = {
 
 export type AgentAwaitingReview = {
   applicationId: string;
+  /** resume_review: a tailored resume waits; form_review: a filled form waits (approving it sends the application). */
+  status?: "resume_review" | "form_review";
   title: string;
   companyName: string;
   atsScore: number | null;
@@ -360,6 +381,9 @@ export type AgentStatus = {
   minScore: number;
   autoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  autopilot?: "off" | "safe" | "written";
+  /** How many applications you approved yourself, and how many Autopilot needs before it sends any. */
+  autopilotTrust?: { approved: number; needed: number };
   /** False: the server runs in dry-run mode, forms are filled but never sent. Absent on older APIs. */
   liveSubmit?: boolean;
   channels: { kind: string; address: string }[];

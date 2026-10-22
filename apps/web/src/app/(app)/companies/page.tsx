@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Companies" };
 export const dynamic = "force-dynamic";
 
 export default async function CompaniesPage() {
-  if (USE_MOCK) return <EmptyState title="Needs the live API">The company list comes from the real job boards. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.</EmptyState>;
+  if (USE_MOCK) return <EmptyState title="Needs the live API">The company list comes from the real job boards. Unset NEXT_PUBLIC_USE_MOCK and start apps/api.</EmptyState>;
   const initial = await api.listCompanies({ limit: 60 });
   return (
     <div>

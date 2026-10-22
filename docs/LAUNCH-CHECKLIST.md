@@ -17,13 +17,17 @@ I cannot merge into `main` or push; that stays yours.
 |---|---|---|
 | `HOSTED_LLM_PROVIDER` / `HOSTED_LLM_BASE_URL` / `HOSTED_LLM_API_KEY` (or `ANTHROPIC_API_KEY`) | any provider in Settings, e.g. platform.openai.com/api-keys | model list, connection test, real tailoring on your resume, answers to form questions |
 | `RESEND_API_KEY` + `EMAIL_FROM` **or** `SMTP_URL` + `EMAIL_FROM` | resend.com, or an SMTP login from your mail host | a real reset and confirmation email arrives and its links work |
-| `DATABASE_URL` for a **scratch** Neon database or branch (not production) | neon.tech | both new migrations run, and the whole gate against real Postgres |
+| `DATABASE_URL` for a **scratch** Neon database or branch (not production) | neon.tech | the same suite that already passes on a local PostgreSQL 17 (`npm run test:pg`), now against Neon: SSL, pooled URL, connection limits |
 | `TELEGRAM_BOT_TOKEN` (optional) | message @BotFather in Telegram | link the bot, talk to the agent from your phone |
 | `COMPOSIO_API_KEY`, `PARALLEL_API_KEY` (optional) | composio.dev, parallel.ai | inbox sync, tracker sheet, web job discovery |
 
 Check what is read: `npm run doctor` prints "configured" or "BLOCKED" per area. "Configured" means the key is present; I then run the real call and report the result.
 
-## 3. Four job links (2 minutes)
+## 3. Four job links: DONE without you (see docs/LIVE-DRYRUN.md)
+
+Nori picked one public posting per platform from the live feeds and dry-ran them; no links needed from you. The section below is kept for reference if you want to try a specific posting (`npm run dryrun:live <url>`).
+
+### Original instructions
 
 Paste one **public job posting URL** for each board, ideally a role you would never apply to:
 

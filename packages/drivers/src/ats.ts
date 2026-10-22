@@ -89,13 +89,11 @@ export class SmartRecruitersDriver implements ApplyDriver {
     return runApplyFlow(ctx, {
       name: "smartrecruiters",
       beforeDiscover: async (page) => {
-        // The posting page shows the description; "I'm interested" opens the one-click application.
-        const btn = page.getByRole("link", { name: /i'?m interested|apply now|apply/i }).first();
-        if (await btn.count()) {
-          ctx.onEvent("navigate", "Opening the application from the posting");
-          await Promise.all([page.waitForLoadState("domcontentloaded").catch(() => {}), btn.click({ timeout: 5000 }).catch(() => {})]);
-          await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
-        }
+        // The posting page is web components, and the apply link's text is in the page's language ("I'm interested",
+        // "Me interesa"), so find it by its address. Playwright's CSS selectors see through open shadow roots.
+        const link = page.locator('a[href*="/oneclick-ui/"]').first();
+        const href = (await link.count()) ? await link.getAttribute("href").catch(() => null) : null;
+        if (href) await openUrl(page, ctx, new URL(href, page.url()).toString());
       },
     });
   }

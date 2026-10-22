@@ -7,6 +7,7 @@ import type { ApplicationStatus } from "@/lib/types";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
 import type { MarkTone } from "./IndexLabel";
+import { PILL_TONE } from "./Pill";
 
 /**
  * Status -> marker. Accent = waiting on you; ink = sent / positive; hollow = agent working;
@@ -56,7 +57,7 @@ export function StatusPill({ status }: { status: ApplicationStatus | string }) {
   const live = s === "tailoring" || s === "filling" || s === "submitting";
   const needsYou = STATUS_MARK[s] === "accent";
   return (
-    <span className={cx("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-stone pl-2 pr-2.5 text-[12px] font-medium text-ink", needsYou && "ring-1 ring-inset ring-accent")}>
+    <span className={cx("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full pl-2 pr-2.5 text-[12px] font-medium ring-1 ring-inset", PILL_TONE[STATUS_MARK[s] ?? "muted"], needsYou && "shadow-[0_0_0_3px_rgba(245,158,11,0.15)]")}>
       <Icon icon={STATUS_ICON[s] ?? Clock} className={cx(live && "animate-pulse")} />
       {STATUS_LABEL[s] ?? status}
     </span>

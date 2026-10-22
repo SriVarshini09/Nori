@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
+import { NoriLogo } from "./Logo";
 import { Square } from "./IndexLabel";
 import { LogoutButton } from "./LogoutButton";
 
@@ -56,11 +57,8 @@ const crumb = (p: string, prev: string | undefined) => (UUID.test(p) ? (prev ===
 
 function Wordmark() {
   return (
-    <Link href="/dashboard" className="inline-flex items-center gap-2" aria-label="Nori home">
-      <span aria-hidden="true" className="relative flex h-7 w-7 items-center justify-center rounded-[10px] bg-gradient-to-br from-[#0f2a21] to-[#1f5a45] shadow-[0_6px_14px_-6px_rgba(15,42,33,0.7)]">
-        <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-[#6ef0b3] to-[#ffb347]" />
-      </span>
-      <span className="font-display text-[19px] font-semibold tracking-[-0.04em] text-ink">Nori</span>
+    <Link href="/dashboard" className="inline-flex items-center" aria-label="Nori home">
+      <NoriLogo size={34} />
     </Link>
   );
 }
@@ -122,7 +120,7 @@ function SearchBox({ onDone }: { onDone?: () => void }) {
             aria-label="Search jobs"
             className="h-8 w-full bg-transparent text-meta text-ink placeholder:text-faint focus:outline-none"
           />
-          <button type="submit" aria-label="Search" className="pl-2 text-muted hover:text-ink"><Icon icon={ArrowRight} /></button>
+          <button type="submit" aria-label="Search" className="-my-1 inline-flex min-h-6 items-center pl-2 pr-1 text-muted hover:text-ink"><Icon icon={ArrowRight} /></button>
         </span>
       </label>
     </form>

@@ -103,8 +103,8 @@ export function Integrations({ initial }: { initial: Integration[] }) {
             </div>
             <div className="flex items-center gap-3">
               {i.connected && <Pill mark="ink" className="hidden sm:inline-flex">Connected</Pill>}
-              <Button variant={i.connected ? "secondary" : "primary"} icon={Plug} onClick={() => connect(i.toolkit)} disabled={busy === i.toolkit}>
-                {busy === i.toolkit ? "Opening..." : i.connected ? "Reconnect" : "Connect"}
+              <Button variant={i.connected ? "secondary" : "primary"} icon={Plug} onClick={() => connect(i.toolkit)} disabled={busy === i.toolkit || i.available === false} title={i.available === false ? "Connections are not switched on for this Nori yet" : undefined}>
+                {busy === i.toolkit ? "Opening..." : i.available === false ? "Not available yet" : i.connected ? "Reconnect" : "Connect"}
               </Button>
             </div>
           </li>

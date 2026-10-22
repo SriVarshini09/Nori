@@ -2,8 +2,8 @@
  * Typed client for the jobgraph HTTP API (ARCHITECTURE.md "HTTP API" and "Auth and onboarding").
  * In the browser every call is same-origin (`/api/...`, proxied to apps/api by next.config rewrites) so the
  * httpOnly `jg_session` cookie rides along. On the server, calls go straight to the API with the incoming
- * request's cookie header forwarded. When NEXT_PUBLIC_USE_MOCK is not "0" (default) every call is answered
- * from ./mock instead of the network.
+ * request's cookie header forwarded. Only when NEXT_PUBLIC_USE_MOCK is exactly "1" is every call answered from
+ * ./mock instead of the network. Live is the default, so a deploy that forgets the variable never ships the demo.
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
@@ -11,15 +11,29 @@ import type {
   BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
 } from "./types";
 
-export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
+export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
 /** Server-side base URL of apps/api. The browser never uses it. */
 const SERVER_API_URL = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
 
+/**
+ * `message` is what a person should read ("Cannot reach the server. Try again in a moment."), so every component that shows
+ * `error.message` is already safe. The technical text (method, path, status, internal address) lives in `technical`, for logs.
+ */
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public detail: string = message) {
-    super(message);
+  technical: string;
+  constructor(public status: number, technical: string, public detail: string = technical) {
+    super(detail);
+    this.technical = technical;
     this.name = "ApiError";
   }
+}
+
+/** A server message that names an environment variable or a vendor is for the operator, not the person using Nori. */
+export function friendly(msg: string): string {
+  if (/COMPOSIO|through Composio/i.test(msg)) return "Connections (Gmail, Sheets, Slack, Calendar) are not switched on for this Nori yet. Everything else works without them.";
+  if (/PARALLEL_API_KEY|Parallel search/i.test(msg)) return "Live company research is not switched on for this Nori yet.";
+  if (/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b.*\b(?:is not set|not configured|missing)\b|\b(?:is not set|not configured)\b.*\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/.test(msg)) return "This feature is not set up on this Nori yet.";
+  return msg;
 }
 
 /** Base URL + headers for the current runtime: relative in the browser, absolute with forwarded cookies on the server. */
@@ -51,7 +65,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       credentials: "include",
     });
   } catch (e) {
-    throw new ApiError(0, `Cannot reach the jobgraph API${base ? ` at ${base}` : ""}. Start apps/api or set NEXT_PUBLIC_USE_MOCK=1. (${(e as Error).message})`, "Cannot reach the server. Try again in a moment.");
+    const err = new ApiError(0, `Cannot reach the jobgraph API${base ? ` at ${base}` : ""}. Start apps/api or set NEXT_PUBLIC_USE_MOCK=1. (${(e as Error).message})`, "Cannot reach the server. Try again in a moment.");
+    if (typeof window === "undefined") console.warn(`[web] ${err.technical}`);
+    throw err;
   }
   if (!res.ok) {
     let msg = res.statusText;
@@ -59,7 +75,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       const j = (await res.json()) as { error?: string; message?: string };
       msg = j.error ?? j.message ?? msg;
     } catch { /* not json */ }
-    throw new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, msg);
+    const err = new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, friendly(msg));
+    // A session that ended mid-visit (expired, signed out elsewhere, password reset): go sign in again, back to this page,
+    // instead of leaving "Unauthorized" in every panel. Sign-in calls themselves report their own 401s.
+    if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/")) {
+      window.location.assign(`/session-expired?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    }
+    if (typeof window === "undefined" && res.status >= 500) console.warn(`[web] ${err.technical}`);
+    throw err;
   }
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get("content-type") ?? "";
@@ -81,9 +104,9 @@ const qs = (params: Record<string, string | number | boolean | undefined | null>
   return s ? `?${s}` : "";
 };
 
-/** Calls only the live API can answer. In mock mode they explain how to turn live mode on instead of faking a renderer. */
+/** Calls only the live API can answer (resume studio, account security). In mock mode they say so instead of faking it. */
 async function live<T>(method: string, path: string, body?: unknown): Promise<T> {
-  if (USE_MOCK) throw new ApiError(0, "The resume studio needs the live API. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.", "The resume studio is not available in demo mode.");
+  if (USE_MOCK) throw new ApiError(0, "This needs the live API. Unset NEXT_PUBLIC_USE_MOCK and start apps/api.", "This is not available in demo mode: demo mode has no real account.");
   return request<T>(method, path, body);
 }
 
@@ -161,8 +184,11 @@ export const api = {
     if (USE_MOCK) return { ...(await mock()).me.profile, ...patch, preferences: { ...(await mock()).me.profile.preferences, ...patch.preferences } } as Profile;
     return request("PUT", "/api/profile", patch);
   },
-  uploadResume: async (text: string): Promise<IngestResult> =>
-    USE_MOCK ? (await mock()).ingest : request("POST", "/api/profile/resume", { text }),
+  uploadResume: async (text: string, replace = false): Promise<IngestResult> =>
+    USE_MOCK ? (await mock()).ingest : request("POST", "/api/profile/resume", { text, replace }),
+  deleteGraphNode: async (id: string): Promise<void> => {
+    if (!USE_MOCK) await request("DELETE", `/api/graph/nodes/${id}`);
+  },
 
   // ---- graph
   graph: async (): Promise<Graph> => (USE_MOCK ? (await mock()).graph : request("GET", "/api/graph")),

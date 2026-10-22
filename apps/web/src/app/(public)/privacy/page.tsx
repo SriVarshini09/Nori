@@ -19,8 +19,8 @@ export default function PrivacyPage() {
           <li><strong>Your account:</strong> email address, name, and a salted hash of your password (never the password itself).</li>
           <li><strong>Your career graph and resumes:</strong> the text and facts read from the resume you add, the resumes you build in the studio, and every tailored version with the reasons for each change.</li>
           <li><strong>Your preferences and answers:</strong> job titles, locations, salary and work-authorisation answers, and the answers you give to application questions.</li>
-          <li><strong>Your applications:</strong> the jobs you apply to, the form fields Nori filled, screenshots of the filled form, and the status of each application.</li>
-          <li><strong>Connected services, if you connect them:</strong> messages from your mailbox that look like job replies, and the chat addresses (for example Telegram) you link.</li>
+          <li><strong>Your applications:</strong> the jobs you apply to, the form fields Nori filled, screenshots of the filled form (deleted 30 days after the application is settled), and the status of each application.</li>
+          <li><strong>Connected services, if you connect them:</strong> messages from your mailbox that are about your job search (replies, interviews, codes, confirmations). Other mail is read once to sort it and is not kept. And the chat addresses (for example Telegram) you link.</li>
           <li><strong>A model key, if you add one:</strong> it is encrypted at rest and only used to call the model you chose for your own requests.</li>
           <li><strong>Sign-in sessions:</strong> a random token in a cookie. Only a hash of it is stored, together with your browser&apos;s user-agent text so you can recognise a device and sign it out in Settings.</li>
         </ul>

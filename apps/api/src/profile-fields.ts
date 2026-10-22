@@ -41,21 +41,24 @@ const screening = {
 const settings = {
   resumeAutoApprove: z.boolean().optional(),
   reviewBeforeSubmit: z.boolean().optional(),
+  autopilot: z.enum(["off", "safe", "written"]).optional(),
   autoApplyDailyCap: z.number().int().min(0).max(100).optional(),
   autoApplyMinScore: z.number().min(0).max(1).optional(),
 };
 
+const shortList = z.array(z.string().max(200)).max(100);
 const preferenceKeys = {
-  titles: z.array(z.string()).optional(), locations: z.array(z.string()).optional(), remote: z.enum(["only", "ok", "no"]).optional(),
-  salaryMin: z.number().optional(), stages: z.array(z.string()).optional(), excludeCompanies: z.array(z.string()).optional(),
+  titles: shortList.optional(), locations: shortList.optional(), remote: z.enum(["only", "ok", "no"]).optional(),
+  salaryMin: z.number().optional(), stages: shortList.optional(), excludeCompanies: z.array(z.string().max(200)).max(1000).optional(),
 };
 // Known keys are typed; extra keys are kept, never stripped.
-const preferences = z.object({ ...preferenceKeys, country: z.string().optional(), github: z.string().optional() })
-  .catchall(z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]));
+// agent (bookkeeping) and lanes are kept by the server; a client echoing them back, as the wizard does, must not be refused.
+const preferences = z.object({ ...preferenceKeys, country: z.string().optional(), github: z.string().optional(), agent: z.unknown().optional(), lanes: z.unknown().optional() })
+  .catchall(z.union([z.string().max(2000), z.number(), z.boolean(), shortList, z.null()]));
 
 /** PUT /api/profile: every profile column plus nested preferences and settings. */
 export const ProfileBody = z.object({
-  name: z.string().optional(),
+  name: z.string().max(200).optional(),
   ...contact, ...authorization, ...screening, ...settings,
   preferences: preferences.optional(),
   settings: z.object(settings).optional(),
@@ -75,7 +78,7 @@ export const STEP_SCHEMAS: Record<OnboardingStep, z.ZodType<Record<string, unkno
 const COLUMNS = [
   "fullName", "email", "phone", "location", "city", "state", "country", "linkedin", "github", "website", "pronouns",
   "willingToRelocate", "remotePreference", "heardAbout", "salaryExpectation", "earliestStartDate", "noticePeriodWeeks",
-  "securityClearance", "over18", "resumeAutoApprove", "reviewBeforeSubmit", "autoApplyDailyCap", "autoApplyMinScore",
+  "securityClearance", "over18", "resumeAutoApprove", "reviewBeforeSubmit", "autopilot", "autoApplyDailyCap", "autoApplyMinScore",
 ] as const;
 
 const compact = <T extends Record<string, unknown>>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
@@ -85,11 +88,14 @@ export function buildProfilePatch(current: ProfileRow, data: Record<string, unkn
   const d = { ...data, ...((data.settings as Record<string, unknown> | undefined) ?? {}) };
   const set: Record<string, unknown> = {};
   for (const k of COLUMNS) if (d[k] !== undefined) set[k] = d[k];
+  // Autopilot stands in for "ask every time", so it needs that review step to exist: turning it on turns review back on.
+  if (set.autopilot && set.autopilot !== "off") set.reviewBeforeSubmit = true;
   if (d.workAuth) set.workAuth = compact({ ...current.workAuth, ...(d.workAuth as Record<string, unknown>) });
   if (d.eeo) set.eeo = { ...current.eeo, ...compact(d.eeo as Record<string, unknown>) };
   const flatPrefs = Object.fromEntries(Object.keys(preferenceKeys).filter((k) => d[k] !== undefined).map((k) => [k, d[k]]));
   if (d.preferences || Object.keys(flatPrefs).length) {
-    set.preferences = { ...current.preferences, ...((d.preferences as object | undefined) ?? {}), ...flatPrefs };
+    const { agent: _agent, lanes: _lanes, ...incoming } = (d.preferences as Record<string, unknown> | undefined) ?? {}; // server-owned: never taken from the client
+    set.preferences = { ...current.preferences, ...incoming, ...flatPrefs };
   }
   // City/state/country from the wizard keep the free-text location (used by older heuristics) in sync.
   if (d.location === undefined && (d.city !== undefined || d.state !== undefined || d.country !== undefined)) {

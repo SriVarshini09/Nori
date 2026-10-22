@@ -14,6 +14,7 @@ import {
 import { DiffRow } from "./DiffRow";
 import { EventLog } from "./EventLog";
 import { ResearchView } from "./ResearchPanel";
+import { RecruiterView } from "./RecruiterView";
 import { ResumePreview } from "./ResumePreview";
 import { PIPELINE, Stepper } from "./Stepper";
 import { StatusPill } from "./StatusPill";
@@ -40,6 +41,7 @@ function BlockHead({ index, label, action }: { index: string; label: ReactNode; 
 export function ApplicationReview({ initial, nodeLabels }: { initial: ApplicationDetail; nodeLabels: NodeLabels }) {
   const [app, setApp] = useState<Application>(initial.application);
   const [resume, setResume] = useState<Resume | null>(initial.resume);
+  const [recruiter, setRecruiter] = useState(initial.recruiter ?? null);
   const [events, setEvents] = useState<RunEventRow[]>(initial.events);
   const job: Job = initial.job;
   const company: Company | null = initial.company;
@@ -69,6 +71,7 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
       const d = await api.getApplication(app.id);
       setApp(d.application);
       setResume(d.resume);
+      setRecruiter(d.recruiter ?? null);
       setAnswers((prev) => (Object.keys(prev).length === 0 ? d.application.answers : { ...d.application.answers, ...prev }));
       d.events.forEach(pushEvent);
     } catch (e) {
@@ -163,6 +166,9 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
       await api.approveForm(app.id, { ...answers, ...filled });
     }, { status: "submitting", formApprovedAt: now(), pendingQuestions: [], answers: { ...answers, ...pending } });
 
+  // What Autopilot decided about this form, in its own words (see runner/autopilot.ts).
+  const autopilotEvent = [...events].reverse().find((e) => e.step === "autopilot");
+  const autopilotNote = autopilotEvent ? { sent: app.autopilot === true, text: autopilotEvent.message.replace(/^Autopilot /, "").replace(/^./, (c) => c.toUpperCase()) } : null;
   const lastStep = [...events].reverse().map((e) => e.step).find((s) => (PIPELINE as string[]).includes(s));
   const formEditable = app.status === "form_review" || app.status === "needs_user";
   const showForm = formEditable || app.status === "awaiting_code" || (Object.keys(answers).length > 0 && !app.receipt);
@@ -202,6 +208,7 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
         </figure>
 
         <aside className="col-span-12 flex flex-col gap-8 lg:col-span-4">
+          {resume && recruiter && <RecruiterView review={recruiter} />}
           {resume && (
             <div>
               <IndexLabel>ATS score</IndexLabel>
@@ -397,9 +404,10 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
         <Stepper status={app.status} lastStep={lastStep} />
       </Frame>
 
-      {(error || app.error || NEEDS_YOU.includes(app.status)) && (
+      {(error || app.error || NEEDS_YOU.includes(app.status) || autopilotNote) && (
         <div className="mt-6 space-y-3">
           {error && <Notice tone="red">{error}</Notice>}
+          {autopilotNote && <Notice tone={autopilotNote.sent ? "green" : "amber"} label="Autopilot">{autopilotNote.text}</Notice>}
           {app.error && <Notice tone="red" label="Run error">{app.error}</Notice>}
           {NEEDS_YOU.includes(app.status) && (
             <Notice tone="amber" label="Your turn">

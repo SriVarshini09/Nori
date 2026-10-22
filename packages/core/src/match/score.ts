@@ -92,7 +92,10 @@ export function disqualifierConflicts(disqualifiers: string[], profile: MatchPro
 type Category = { weight: number; total: number; covered: number };
 
 /** Weighted coverage score with explanation. Pure. */
-export function scoreMatch(requirements: JobRequirements, evidence: Evidence[], profile: MatchProfile = {}): MatchResult {
+export function scoreMatch(requirements: JobRequirements, allEvidence: Evidence[], profile: MatchProfile = {}): MatchResult {
+  // Placeholder rows for soft skills prove nothing: those requirements count neither for nor against the match.
+  const neutral = new Set(allEvidence.filter((e) => e.inferred).map((e) => norm(e.requirement)));
+  const evidence = allEvidence.filter((e) => !e.inferred);
   const matched: MatchResult["matched"] = [];
   const missing: MatchResult["missing"] = [];
   const seen = new Set<string>();
@@ -130,6 +133,7 @@ export function scoreMatch(requirements: JobRequirements, evidence: Evidence[], 
   for (const p of nicePhrases) {
     const ev = findPhraseEvidence(p, evidence);
     if (ev) { niceCat.covered++; niceCovered.push(p); push(p, ev, false); }
+    else if (neutral.has(norm(p))) niceCat.total--;
     else missing.push({ requirement: p, required: false });
   }
 
@@ -140,6 +144,7 @@ export function scoreMatch(requirements: JobRequirements, evidence: Evidence[], 
   for (const m of mustHaves) {
     const ev = findPhraseEvidence(m, evidence);
     if (ev) { mustCat.covered++; push(m, ev, true); }
+    else if (neutral.has(norm(m))) mustCat.total--;
     else { mustMissing.push(m); missing.push({ requirement: m, required: true }); }
   }
 

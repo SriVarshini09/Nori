@@ -55,6 +55,7 @@ export function IntegrationsStep({ initial, model, presets, busy, onBack, onFini
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connected = (t: string) => items.find((i) => i.toolkit === t)?.connected ?? false;
+  const unavailable = (t: string) => items.find((i) => i.toolkit === t)?.available === false;
 
   async function connect(toolkit: string) {
     setOpening(toolkit);
@@ -93,8 +94,8 @@ export function IntegrationsStep({ initial, model, presets, busy, onBack, onFini
                 <div className="mt-4 text-[15px] font-medium text-ink">{c.name}</div>
                 <div className="mt-0.5 text-meta text-muted">{c.what}</div>
                 <div className="mt-auto pt-5">
-                  <ObButton variant={on ? "soft" : "primary"} className="h-10 px-5 text-[13px]" onClick={() => connect(c.toolkit)} disabled={opening === c.toolkit}>
-                    {opening === c.toolkit ? <><Icon icon={LoaderCircle} className="animate-spin" />Opening</> : on ? "Reconnect" : "Connect"}
+                  <ObButton variant={on ? "soft" : "primary"} className="h-10 px-5 text-[13px]" onClick={() => connect(c.toolkit)} disabled={opening === c.toolkit || unavailable(c.toolkit)} title={unavailable(c.toolkit) ? "Connections are not switched on for this Nori yet" : undefined}>
+                    {opening === c.toolkit ? <><Icon icon={LoaderCircle} className="animate-spin" />Opening</> : unavailable(c.toolkit) ? "Not available yet" : on ? "Reconnect" : "Connect"}
                   </ObButton>
                 </div>
               </Soft>

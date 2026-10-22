@@ -16,7 +16,8 @@ export function Doll({ messages, cheer = 0, shy = false }: { messages: string[];
   const [i, setI] = useState(0);
   const [ready, setReady] = useState(false);
   const count = messages.length;
-  const key = messages.join("");
+  // Joined on U+0001 (a character no message contains) so the effect below reruns only when the messages change.
+  const key = messages.join("\u0001");
 
   useEffect(() => {
     if (count < 2) return;
@@ -25,7 +26,7 @@ export function Doll({ messages, cheer = 0, shy = false }: { messages: string[];
   }, [count]);
 
   useEffect(() => {
-    const text = key.split("")[i % Math.max(1, count)] ?? "";
+    const text = key.split("\u0001")[i % Math.max(1, count)] ?? "";
     latest.current = text;
     setNote.current(text);
   }, [i, key, count]);

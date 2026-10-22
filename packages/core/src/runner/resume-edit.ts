@@ -5,6 +5,7 @@ import { applications, jobs, resumes, type ResumeChange, type ResumeContent } fr
 import { ensureRequirements } from "../feeds/requirements.js";
 import { ResumeDocError, mergeStyle, stableJson } from "../resume/docs.js";
 import { renderPdf } from "../tailor/pdf.js";
+import { LEFT_OUT } from "../tailor/rewrite.js";
 import { emit } from "./events.js";
 import { artifactsRootOf, type RunnerDeps } from "./runner.js";
 
@@ -40,6 +41,8 @@ export function recomputeChanges(prev: { content: ResumeContent; changes: Resume
     edited.add(id);
     out.push({ bulletId: id, before: original, after: s.text, reason: old ? "Edited by you" : "Added by you", nodeIds: old ? s.nodeIds : [] });
   }
+  // Bullets the tailoring left out are not in `next` at all, so their records are carried over as they were.
+  for (const pc of prev.changes) if (pc.after === LEFT_OUT && !out.some((c) => c.bulletId === pc.bulletId)) out.push(pc);
   const mark = <T extends { id: string; text: string; nodeIds: string[]; edited?: boolean }>(b: T): T => (edited.has(b.id) ? { ...b, edited: true } : b);
   const content: ResumeContent = {
     ...next,
@@ -54,7 +57,7 @@ export function recomputeChanges(prev: { content: ResumeContent; changes: Resume
  * version (the earlier ones stay), re-renders the PDF and ATS report, and keeps the application waiting for approval.
  */
 export async function editApplicationResume(db: Db, userId: string, applicationId: string, edit: ResumeEdit, deps: Partial<RunnerDeps> = {}) {
-  if (!/^[0-9a-f-]{36}$/i.test(applicationId)) throw new ResumeDocError("Application not found", 404);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId)) throw new ResumeDocError("Application not found", 404);
   const [app] = await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.userId, userId))).limit(1);
   if (!app) throw new ResumeDocError("Application not found", 404);
   if (app.status !== "resume_review") throw new ResumeDocError("You can edit the resume while it waits for your review, before the form is filled.", 409);

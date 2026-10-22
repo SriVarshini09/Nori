@@ -207,3 +207,65 @@ async function vi_waitFor(cond: () => boolean, ms = 3000) {
     await new Promise((r) => setTimeout(r, 20));
   }
 }
+
+describe("linking a chat channel", () => {
+  it("cannot take over an address another account linked, and email goes only to the account's own address", async () => {
+    const alice = await call("POST", "/api/auth/signup", { email: "alice.ch@example.com", password: "first-password" });
+    const mallory = await call("POST", "/api/auth/signup", { email: "mallory.ch@example.com", password: "first-password" });
+    expect((await call("POST", "/api/channels", { kind: "telegram", address: "555001" }, alice.cookie!)).status).toBe(201);
+    expect((await call("POST", "/api/channels", { kind: "telegram", address: "555001" }, alice.cookie!)).status).toBe(201); // own re-link is fine
+    expect((await call("POST", "/api/channels", { kind: "telegram", address: "555001" }, mallory.cookie!)).status).toBe(409);
+    expect((await call("GET", "/api/channels", undefined, alice.cookie!)).json.map((r: { address: string }) => r.address)).toEqual(["555001"]);
+    expect((await call("POST", "/api/channels", { kind: "email", address: "victim@example.com" }, mallory.cookie!)).status).toBe(400);
+    expect((await call("POST", "/api/channels", { kind: "email", address: "mallory.ch@example.com" }, mallory.cookie!)).status).toBe(201);
+  });
+});
+
+describe("cross-site requests", () => {
+  it("refuses state changes from another site and JSON smuggled in a text/plain form", async () => {
+    const u = await call("POST", "/api/auth/signup", { email: "csrf@example.com", password: "first-password" });
+    const post = (headers: Record<string, string>, body = "{}") =>
+      app.request("/api/agent/tick", { method: "POST", headers: { cookie: u.cookie!, ...headers }, body });
+    expect((await post({ origin: "https://evil.example", "content-type": "application/json" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "cross-site", "content-type": "application/json" })).status).toBe(403);
+    expect((await app.request("/api/graph/facts", { method: "POST", headers: { cookie: u.cookie!, "content-type": "text/plain" }, body: '{"text":"I led NASA"}' })).status).toBe(415);
+    expect((await app.request("/api/graph/facts", { method: "POST", headers: { cookie: u.cookie!, origin: "https://nori.test", "content-type": "application/json" }, body: '{"text":"I know Rust"}' })).status).not.toBe(403);
+  });
+});
+
+describe("request size", () => {
+  it("refuses an oversized body on any route, including public ones", async () => {
+    const big = JSON.stringify({ email: "x@example.com", password: "a".repeat(2 * 1024 * 1024) });
+    const res = await app.request("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: big });
+    expect(res.status).toBe(413);
+  });
+});
+
+describe("server errors", () => {
+  it("never show internal details, and a malformed id is a plain 404", async () => {
+    const u = await call("POST", "/api/auth/signup", { email: "errs@example.com", password: "first-password" });
+    const res = await call("GET", "/api/resume-docs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", undefined, u.cookie!);
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.json)).not.toMatch(/uuid|syntax|SELECT|ENOENT/i);
+  });
+});
+
+describe("retracting claims", () => {
+  const RESUME_A = "Jordan Rivera\njordan@example.com\n\nEXPERIENCE\nSenior Engineer at Northwind Labs\nJan 2022 - Present\n- Cut page load time by 45% with React\n";
+  const RESUME_B = "Jordan Rivera\njordan@example.com\n\nEXPERIENCE\nSenior Engineer at Northwind Labs\nJan 2022 - Present\n- Cut page load time by 30% with React\n";
+  const said = (g: { nodes: { label: string; props?: Record<string, unknown> }[] }, s: string) => g.nodes.some((n) => `${n.label} ${String(n.props?.statement ?? "")}`.includes(s));
+
+  it("a corrected resume can replace the old one, and one node can be removed", async () => {
+    const u = await call("POST", "/api/auth/signup", { email: "retract@example.com", password: "first-password" });
+    await call("POST", "/api/profile/resume", { text: RESUME_A }, u.cookie!);
+    await call("POST", "/api/profile/resume", { text: RESUME_B, replace: true }, u.cookie!);
+    const g = (await call("GET", "/api/graph", undefined, u.cookie!)).json;
+    expect(said(g, "45%")).toBe(false);
+    expect(said(g, "30%")).toBe(true);
+    const metric = g.nodes.find((n: { type: string }) => n.type === "metric");
+    expect((await call("DELETE", `/api/graph/nodes/${metric.id}`, undefined, u.cookie!)).status).toBe(204);
+    expect((await call("GET", "/api/graph", undefined, u.cookie!)).json.nodes.some((n: { id: string }) => n.id === metric.id)).toBe(false);
+    const other = await call("POST", "/api/auth/signup", { email: "retract2@example.com", password: "first-password" });
+    expect((await call("DELETE", `/api/graph/nodes/${g.nodes[0].id}`, undefined, other.cookie!)).status).toBe(404);
+  });
+});
