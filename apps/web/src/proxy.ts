@@ -5,7 +5,9 @@ import { NextResponse, type NextRequest } from "next/server";
  * The cookie is only checked for presence here; the API validates it, and the (app) layout sends a
  * rejected session back to /login and an unfinished onboarding to /onboarding.
  */
-const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email", "/privacy", "/terms"];
+// Share images and the companion icon have no file extension, so the matcher catches them: they must stay public, or link
+// previews in Slack, X and LinkedIn get a redirect to /login instead of an image.
+const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email", "/privacy", "/terms", "/opengraph-image", "/twitter-image", "/icon", "/apple-icon"];
 
 /**
  * Requests the web app proxies to the API (/api, /mcp) carry the visitor's address, signed with PROXY_SECRET, so the API's
