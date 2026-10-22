@@ -106,15 +106,19 @@ export function Hero({ first, status, week, applied, replied, interviews, hoursS
   const cap = status?.dailyCap ?? 0;
   const capPct = cap > 0 ? Math.round((used / cap) * 100) : 0;
   const replyRate = applied > 0 ? Math.round((replied / applied) * 100) : 0;
+  // Say what really happens. On a dry-run server forms are filled and never sent; with no enabled lane or a cap of 0 the
+  // agent does nothing on its own. "Sent" and "applying in the background" are only true when both hold.
+  const live = status?.liveSubmit === true;
+  const active = !!status && cap > 0 && (status.lanes ? status.lanes.some((l) => l.enabled) : true);
   const bubbles = [
     needsYou > 0 ? `${needsYou} ${needsYou === 1 ? "thing needs" : "things need"} your OK. Tap the queue!` : "All caught up. Nice work!",
-    `I sent ${applied} applications this week.`,
+    live ? `I sent ${applied} applications this week.` : `I prepared ${applied} applications this week. Dry run: nothing was sent.`,
     replied > 0 ? `${replied} ${replied === 1 ? "company" : "companies"} replied. ${interviews > 0 ? `${interviews} interview${interviews === 1 ? "" : "s"} booked!` : "Fingers crossed."}` : "No replies yet. Give it time.",
     `Next sweep in ${inMin(status?.nextTickAt)}.`,
     "Poke me. Go on.",
   ];
   const tiles: { label: string; value: number; decimals?: number; note: string; icon: LucideIcon; hue: Hue }[] = [
-    { label: "Applied", value: applied, note: "this week", icon: Send, hue: "jade" },
+    { label: live ? "Applied" : "Prepared", value: applied, note: live ? "this week" : "this week, not sent (dry run)", icon: Send, hue: "jade" },
     { label: "Replies", value: replied, note: `${replyRate}% reply rate`, icon: MessageSquareReply, hue: "sky" },
     { label: "Interviews", value: interviews, note: interviews ? "on your calendar" : "none yet", icon: CalendarClock, hue: "iris" },
     { label: "Hours saved", value: hoursSaved, decimals: 1, note: "vs applying by hand", icon: Timer, hue: "sun" },
@@ -135,7 +139,7 @@ export function Hero({ first, status, week, applied, replied, interviews, hoursS
               <span className="dash-pulse absolute inset-0 rounded-full" />
               <span className="h-2 w-2 rounded-full bg-emerald-300" />
             </span>
-            {status ? "Agent online" : "Agent offline"}
+            {!status ? "Agent offline" : active ? "Agent on" : "Agent paused"}
             <span className="text-white/35">&middot;</span>
             <span className="text-white/65">Week {week}</span>
           </div>
@@ -146,7 +150,11 @@ export function Hero({ first, status, week, applied, replied, interviews, hoursS
             {needsYou > 0 ? (
               <>Your agent has <strong className="font-medium text-amber-200">{needsYou} {needsYou === 1 ? "thing" : "things"}</strong> waiting on you. Everything else is moving on its own.</>
             ) : (
-              <>Nothing is waiting on you. The agent keeps finding, tailoring and applying in the background.</>
+              <>Nothing is waiting on you. {!active
+                ? "The agent is paused: turn on a lane and set a daily cap in Agent settings to let it work on its own."
+                : live
+                  ? "The agent keeps finding, tailoring and applying in the background."
+                  : "The agent keeps finding and tailoring in the background. This server runs dry: forms are filled, nothing is sent."}</>
             )}
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -168,7 +176,7 @@ export function Hero({ first, status, week, applied, replied, interviews, hoursS
               <span className="font-display text-[1.25rem] font-medium leading-none tracking-[-0.04em]"><CountUp value={used} /></span>
             </GradRing>
             <div className="min-w-0 text-[12px] leading-snug text-white/65">
-              <p className="font-display text-[15px] font-medium tracking-[-0.02em] text-white">{used} of {cap || "-"} sent today</p>
+              <p className="font-display text-[15px] font-medium tracking-[-0.02em] text-white">{used} of {cap || "-"} started today</p>
               <p className="mt-1 flex items-center gap-1.5"><Clock size={12} aria-hidden="true" className="text-white/45" />Swept {ago(status?.lastTickAt)}</p>
               <p className="flex items-center gap-1.5"><Sparkles size={12} aria-hidden="true" className="text-emerald-300" />Next in {inMin(status?.nextTickAt)}</p>
             </div>
