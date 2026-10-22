@@ -285,7 +285,80 @@ body {
   background-attachment: fixed;
 }
 
-/* meadow landing: Nori bobs gently */
-@keyframes mdw-bob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-8px) rotate(-1deg); } }
-.mdw-bob { animation: mdw-bob 4.6s ease-in-out infinite; transform-origin: 270px 440px; }
-@media (prefers-reduced-motion: reduce) { .mdw-bob { animation: none; } }
+/*
+ * Nori the mascot (components/home/NoriBuddy.tsx). Every moving part is an SVG <g> or shape without a transform
+ * attribute, sized to its own box (transform-box: fill-box) so the origins below are relative to the part itself.
+ * Movements stay small; the breath and the hop share the body's bottom edge as their pivot so Nori stays on its rock.
+ */
+.nb { overflow: visible; cursor: default; }
+.nb .nb-body, .nb .nb-shadow, .nb .nb-blink, .nb .nb-blush, .nb .nb-nod, .nb .nb-spin, .nb .nb-spin-slow,
+.nb .nb-sprout, .nb .nb-twinkle, .nb .nb-sway, .nb .nb-float, .nb .nb-beat { transform-box: fill-box; }
+
+.nb .nb-body { transform-origin: 50% 100%; animation: nb-breathe 3.4s ease-in-out infinite; }
+.nb .nb-shadow { transform-origin: 50% 50%; animation: nb-shadow 3.4s ease-in-out infinite; }
+.nb .nb-blink { transform-origin: 50% 50%; animation: nb-blink 5.2s ease-in-out infinite; }
+.nb .nb-blush { animation: nb-blush 3.4s ease-in-out infinite; }
+.nb .nb-nod { transform-origin: 30% 100%; animation: nb-nod 2.6s ease-in-out infinite alternate; }
+.nb .nb-spin { transform-origin: 50% 50%; animation: nb-spin 18s linear infinite; }
+.nb .nb-spin-slow { transform-origin: 50% 50%; animation: nb-spin 26s linear infinite reverse; }
+.nb .nb-sprout { transform-origin: 0% 100%; animation: nb-sprout 3s ease-in-out infinite alternate; }
+.nb .nb-twinkle { transform-origin: 50% 50%; animation: nb-twinkle 1.65s ease-in-out infinite; }
+.nb .nb-sway { transform-origin: 46% 100%; animation: nb-sway 3.8s ease-in-out infinite alternate; }
+.nb .nb-float { transform-origin: 50% 50%; animation: nb-float 4.4s ease-in-out infinite alternate; }
+.nb .nb-beat { transform-origin: 50% 50%; animation: nb-beat 1.5s ease-in-out infinite; }
+
+/* A happy hop when pointed at or tapped: crouch, jump, land with a squash. */
+.nb.nb-hop .nb-body { animation: nb-hop 0.8s cubic-bezier(0.3, 0.7, 0.4, 1) 1; }
+.nb.nb-hop .nb-shadow { animation: nb-hop-shadow 0.8s cubic-bezier(0.3, 0.7, 0.4, 1) 1; }
+.nb.nb-hop .nb-twinkle { animation-duration: 0.4s; }
+
+@keyframes nb-breathe {
+  0%, 100% { transform: translateY(0) scale(1.012, 0.988); }
+  50% { transform: translateY(-7px) scale(0.992, 1.01); }
+}
+@keyframes nb-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.22; }
+  50% { transform: scaleX(0.9); opacity: 0.16; }
+}
+@keyframes nb-blink {
+  0%, 90%, 94%, 100% { transform: scaleY(1); }
+  92% { transform: scaleY(0.08); }
+}
+@keyframes nb-blush { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.7; } }
+@keyframes nb-nod { from { transform: rotate(-7deg); } to { transform: rotate(6deg); } }
+@keyframes nb-spin { to { transform: rotate(360deg); } }
+@keyframes nb-sprout { from { transform: rotate(-5deg); } to { transform: rotate(6deg); } }
+@keyframes nb-twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(0.7); }
+}
+@keyframes nb-sway { from { transform: rotate(-2.2deg); } to { transform: rotate(2.2deg); } }
+@keyframes nb-float {
+  from { transform: translateY(0) rotate(-1.5deg); }
+  to { transform: translateY(-9px) rotate(1.5deg); }
+}
+@keyframes nb-beat {
+  0%, 40%, 100% { transform: scale(1); }
+  20% { transform: scale(1.16); }
+  30% { transform: scale(0.96); }
+}
+@keyframes nb-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  18% { transform: translateY(0) scale(1.08, 0.9); }
+  45% { transform: translateY(-38px) scale(0.95, 1.06); }
+  68% { transform: translateY(0) scale(1.07, 0.93); }
+  84% { transform: translateY(-4px) scale(0.98, 1.02); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes nb-hop-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.22; }
+  45% { transform: scaleX(0.72); opacity: 0.1; }
+  68% { transform: scaleX(1.05); opacity: 0.25; }
+}
+
+/* Off screen: hold still (NoriBuddy toggles the class with an IntersectionObserver). */
+.nb.nb-paused, .nb.nb-paused * { animation-play-state: paused !important; }
+/* Reduced motion: no movement at all. */
+@media (prefers-reduced-motion: reduce) {
+  .nb * { animation: none !important; }
+}
