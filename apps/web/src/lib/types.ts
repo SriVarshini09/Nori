@@ -365,6 +365,8 @@ export type AgentActivity = {
 
 export type AgentAwaitingReview = {
   applicationId: string;
+  /** resume_review: a tailored resume waits; form_review: a filled form waits (approving it sends the application). */
+  status?: "resume_review" | "form_review";
   title: string;
   companyName: string;
   atsScore: number | null;

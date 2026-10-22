@@ -547,8 +547,8 @@ export function agentStatus(): AgentStatus {
     mode: modelSettings().mode,
     lanes: laneState.map((l, i) => ({ id: l.id, name: l.name, enabled: l.enabled, queuedToday: l.enabled ? [2, 1, 0][i] ?? 0 : 0 })),
     awaitingReview: [
-      { applicationId: "app-2", title: "Frontend Engineer, Design Systems", companyName: "Tidewater", atsScore: 96, changes: 6 },
-      { applicationId: "app-3", title: "Staff Software Engineer, Web Platform", companyName: "Helix Payments", atsScore: 93, changes: 4 },
+      { applicationId: "app-2", status: "resume_review", title: "Frontend Engineer, Design Systems", companyName: "Tidewater", atsScore: 96, changes: 6 },
+      { applicationId: "app-3", status: "form_review", title: "Staff Software Engineer, Web Platform", companyName: "Helix Payments", atsScore: 93, changes: 4 },
     ],
   };
 }
