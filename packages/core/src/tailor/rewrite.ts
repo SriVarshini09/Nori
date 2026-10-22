@@ -39,7 +39,8 @@ function buildCtx(input: TailorInput): Ctx {
   const keywords = uniq(req.keywords);
   const vocab = uniq([...required, ...nice, ...keywords, ...input.baseline.skills.flatMap((g) => g.items)]);
   const byNode = new Map<string, Evidence[]>();
-  for (const e of input.evidence) {
+  const real = input.evidence.filter((e) => !e.inferred);
+  for (const e of real) {
     const list = byNode.get(e.nodeId) ?? [];
     list.push(e);
     byNode.set(e.nodeId, list);
@@ -48,7 +49,7 @@ function buildCtx(input: TailorInput): Ctx {
   return {
     input, required, nice, niceSkills, keywords, vocab, byNode,
     baselineText: contentText(input.baseline),
-    allEvidenceText: input.evidence.map((e) => `${e.label}. ${e.text}`).join("\n"),
+    allEvidenceText: real.map((e) => `${e.label}. ${e.text}`).join("\n"),
     years: yearsOfExperience(input.baseline.experience),
   };
 }
@@ -64,7 +65,7 @@ function sectionsOf(c: ResumeContent): Section[] {
 export function bulletSupport(bullet: ResumeBullet, evidence: Evidence[] | Map<string, Evidence[]>): string {
   const byNode = evidence instanceof Map ? evidence : groupByNode(evidence);
   const parts = [bullet.text];
-  for (const id of bullet.nodeIds) for (const e of byNode.get(id) ?? []) parts.push(e.label, e.text);
+  for (const id of bullet.nodeIds) for (const e of byNode.get(id) ?? []) if (!e.inferred) parts.push(e.label, e.text);
   return parts.join("\n");
 }
 

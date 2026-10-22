@@ -55,6 +55,11 @@ export type Evidence = {
   roleLabel?: string;
   companyLabel?: string;
   score: number;
+  /**
+   * Not evidence of anything: a placeholder for a soft skill ("strong communication") the graph says nothing about, so it
+   * is not listed as a gap. Scoring treats the requirement as neutral, and tailoring and answers never use it as support.
+   */
+  inferred?: boolean;
 };
 
 export type IngestResult = { nodesCreated: number; edgesCreated: number; usedLLM: boolean; profilePatch: Partial<{ fullName: string; email: string; phone: string; linkedin: string; location: string; website: string }> };
