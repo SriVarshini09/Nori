@@ -117,9 +117,11 @@ export default async function LandingPage() {
             <a href="#start" className="group inline-flex items-center gap-2 rounded-full bg-[#5a2a12] px-8 py-3.5 text-[16px] font-semibold text-white shadow-[0_14px_30px_-12px_rgba(90,42,18,0.7)] transition-transform duration-150 hover:-translate-y-0.5">
               Create your account <ArrowRight size={18} aria-hidden="true" className="transition-transform duration-150 group-hover:translate-x-1" />
             </a>
-            <a href={REPO_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#5a2a12]/20 bg-white/60 px-7 py-3.5 text-[16px] font-medium text-[#4a2410] backdrop-blur transition-colors duration-150 hover:bg-white/90">
-              <GitBranch size={17} aria-hidden="true" />Read the source
-            </a>
+            {REPO_URL && (
+              <a href={REPO_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#5a2a12]/20 bg-white/60 px-7 py-3.5 text-[16px] font-medium text-[#4a2410] backdrop-blur transition-colors duration-150 hover:bg-white/90">
+                <GitBranch size={17} aria-hidden="true" />Read the source
+              </a>
+            )}
           </div>
         </section>
         <div className="relative z-10"><PublicFooter /></div>

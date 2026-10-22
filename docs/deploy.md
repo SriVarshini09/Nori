@@ -32,7 +32,7 @@ fly deploy
 ## 3. Dashboard (Vercel)
 1. Import the repo, **Root Directory = `apps/web`** (keep "Include source files outside the Root Directory" on). `apps/web/vercel.json` installs at the repo root.
 2. Environment variables (Production):
-   `API_URL=https://api.norinote.xyz`, `NEXT_PUBLIC_API_URL=https://api.norinote.xyz`, `PROXY_SECRET` (the same value as on Fly). Live mode is the default; never set `NEXT_PUBLIC_USE_MOCK=1` here.
+   `API_URL=https://api.norinote.xyz`, `NEXT_PUBLIC_API_URL=https://api.norinote.xyz`, `PROXY_SECRET` (the same value as on Fly), and `NEXT_PUBLIC_REPO_URL` once the repository is public (unset hides the source-code links). Live mode is the default; never set `NEXT_PUBLIC_USE_MOCK=1` here.
 3. Deploy. Add the domain `jobs.norinote.xyz`.
 
 ## 4. DNS

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export const REPO_URL = "https://github.com/SriVarshini09/Nori";
+/**
+ * The public source repository, or null. Links to it are shown only when NEXT_PUBLIC_REPO_URL is set: while the repo is
+ * private every visitor got "page not found". Set it (for example https://github.com/SriVarshini09/Nori) once it is public.
+ */
+export const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL?.trim() || null;
 export const CONTACT = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || null;
 
 export function Wordmark({ light = false }: { light?: boolean }) {
@@ -42,7 +46,7 @@ export function PublicFooter({ dark = false }: { dark?: boolean }) {
         <nav aria-label="Legal and project" className="flex flex-wrap gap-x-5 gap-y-2">
           <Link href="/privacy" className={`underline-offset-4 hover:underline ${link}`}>Privacy</Link>
           <Link href="/terms" className={`underline-offset-4 hover:underline ${link}`}>Terms</Link>
-          <a href={REPO_URL} target="_blank" rel="noreferrer" className={`underline-offset-4 hover:underline ${link}`}>Source code</a>
+          {REPO_URL && <a href={REPO_URL} target="_blank" rel="noreferrer" className={`underline-offset-4 hover:underline ${link}`}>Source code</a>}
         </nav>
       </div>
     </footer>
