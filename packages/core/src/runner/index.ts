@@ -7,3 +7,4 @@ export * from "../compose/index.js";
 export * from "./resume-edit.js";
 export * from "./autopilot.js";
 export * from "./work-country.js";
+export * from "./artifacts.js";
