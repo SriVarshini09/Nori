@@ -2,8 +2,8 @@
  * Typed client for the jobgraph HTTP API (ARCHITECTURE.md "HTTP API" and "Auth and onboarding").
  * In the browser every call is same-origin (`/api/...`, proxied to apps/api by next.config rewrites) so the
  * httpOnly `jg_session` cookie rides along. On the server, calls go straight to the API with the incoming
- * request's cookie header forwarded. When NEXT_PUBLIC_USE_MOCK is not "0" (default) every call is answered
- * from ./mock instead of the network.
+ * request's cookie header forwarded. Only when NEXT_PUBLIC_USE_MOCK is exactly "1" is every call answered from
+ * ./mock instead of the network. Live is the default, so a deploy that forgets the variable never ships the demo.
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
@@ -11,7 +11,7 @@ import type {
   BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
 } from "./types";
 
-export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "0";
+export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
 /** Server-side base URL of apps/api. The browser never uses it. */
 const SERVER_API_URL = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
 
@@ -99,9 +99,9 @@ const qs = (params: Record<string, string | number | boolean | undefined | null>
   return s ? `?${s}` : "";
 };
 
-/** Calls only the live API can answer. In mock mode they explain how to turn live mode on instead of faking a renderer. */
+/** Calls only the live API can answer (resume studio, account security). In mock mode they say so instead of faking it. */
 async function live<T>(method: string, path: string, body?: unknown): Promise<T> {
-  if (USE_MOCK) throw new ApiError(0, "The resume studio needs the live API. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.", "The resume studio is not available in demo mode.");
+  if (USE_MOCK) throw new ApiError(0, "This needs the live API. Unset NEXT_PUBLIC_USE_MOCK and start apps/api.", "This is not available in demo mode: demo mode has no real account.");
   return request<T>(method, path, body);
 }
 

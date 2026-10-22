@@ -1,5 +1,5 @@
 /**
- * Mock data for development without the API (NEXT_PUBLIC_USE_MOCK=1, the default).
+ * Mock data for development without the API (only when NEXT_PUBLIC_USE_MOCK=1; live is the default).
  * Shapes follow ARCHITECTURE.md / schema.ts. Mutating endpoints just return plausible results;
  * client components keep their own optimistic state.
  */

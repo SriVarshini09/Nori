@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Resume studio" };
 export const dynamic = "force-dynamic";
 
 export default async function ResumeStudioPage({ params }: { params: Promise<{ id: string }> }) {
-  if (USE_MOCK) return <EmptyState title="Needs the live API">The resume studio runs on the real renderer. Set NEXT_PUBLIC_USE_MOCK=0 and start apps/api.</EmptyState>;
+  if (USE_MOCK) return <EmptyState title="Needs the live API">The resume studio runs on the real renderer. Unset NEXT_PUBLIC_USE_MOCK and start apps/api.</EmptyState>;
   const { id } = await params;
   const [doc, options] = await Promise.all([
     api.resumeDoc(id).catch((e: unknown) => { if (e instanceof ApiError && (e.status === 404 || e.status === 400)) notFound(); throw e; }),
