@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import {
-  channels, conversations, ensureDefaultUser,
+  channels, conversations, ensureDefaultUser, getState, setState,
   type ChannelAdapter, type ChannelKind, type Db, type InboundMessage, type OutboundMessage,
 } from "@jobgraph/core";
 import { EmailChannel } from "./email.js";
@@ -32,7 +32,9 @@ function adapterFor(kind: ChannelKind, userId: string, shared: ChannelAdapter[],
 
 export function createChannelRouter(db: Db, handlers: RouterHandlers, options: RouterOptions = {}) {
   const whatsapp = new WhatsAppChannel();
-  const shared: ChannelAdapter[] = options.adapters ?? [new TelegramChannel(), whatsapp];
+  // Telegram's read position lives in the database, so a restart (or the other process taking over) carries on from it.
+  const offsets = { load: () => getState<number>(db, "telegram:offset"), save: (n: number) => setState(db, "telegram:offset", n) };
+  const shared: ChannelAdapter[] = options.adapters ?? [new TelegramChannel({ offsets }), whatsapp];
 
   async function resolveChannel(msg: InboundMessage) {
     const found = await db.query.channels.findFirst({ where: and(eq(channels.kind, msg.channel), eq(channels.address, msg.address)) });

@@ -46,10 +46,14 @@ export function parseTelegramUpdates(json: unknown): { messages: InboundMessage[
   return { messages, nextOffset };
 }
 
+/** Where the listener keeps the next update id to ask for, so a restart does not hand old updates out again. */
+export type OffsetStore = { load(): Promise<number | undefined>; save(offset: number): Promise<void> };
+
 export class TelegramChannel implements ChannelAdapter {
   kind = "telegram" as const;
   private tokenOverride?: string;
-  constructor(opts: { token?: string } = {}) { this.tokenOverride = opts.token; }
+  private offsets?: OffsetStore;
+  constructor(opts: { token?: string; offsets?: OffsetStore } = {}) { this.tokenOverride = opts.token; this.offsets = opts.offsets; }
 
   private get token(): string | undefined { return this.tokenOverride ?? process.env.TELEGRAM_BOT_TOKEN; }
   get available(): boolean { return Boolean(this.token); }
@@ -91,7 +95,10 @@ export class TelegramChannel implements ChannelAdapter {
   async listen(handler: (msg: InboundMessage) => Promise<void>): Promise<() => void> {
     if (!this.available) { console.warn("[telegram] TELEGRAM_BOT_TOKEN not set; not listening"); return () => {}; }
     const ctl = new AbortController();
-    let offset: number | undefined;
+    // Telegram re-delivers every update after the last acknowledged offset. Kept only in memory, a crash or restart
+    // re-ran the last batch ("approve" twice). The offset is saved before the messages are handled: after a crash a
+    // message may be lost (the person sends it again), but a command never runs twice.
+    let offset: number | undefined = await this.offsets?.load().catch(() => undefined);
     const loop = async () => {
       while (!ctl.signal.aborted) {
         try {
@@ -101,7 +108,10 @@ export class TelegramChannel implements ChannelAdapter {
             body: JSON.stringify({ timeout: 30, allowed_updates: ["message"], ...(offset !== undefined ? { offset } : {}) }),
           }, ctl.signal);
           const { messages, nextOffset } = parseTelegramUpdates(json);
-          if (nextOffset !== undefined) offset = nextOffset;
+          if (nextOffset !== undefined) {
+            offset = nextOffset;
+            await this.offsets?.save(nextOffset).catch((e) => console.warn("[telegram] could not save offset:", (e as Error).message));
+          }
           for (const m of messages) {
             try { await handler(m); } catch (err) { console.warn("[telegram] handler error:", (err as Error).message); }
           }

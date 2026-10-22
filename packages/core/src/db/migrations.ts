@@ -270,4 +270,19 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS autopilot text NOT NULL DEFAULT 'o
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS autopilot boolean NOT NULL DEFAULT false
 `,
   },
+  {
+    id: "0008_runtime",
+    sql: `
+CREATE TABLE IF NOT EXISTS runtime_leases (
+  name text PRIMARY KEY,
+  owner text NOT NULL,
+  expires_at timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS runtime_state (
+  key text PRIMARY KEY,
+  value jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+)
+`,
+  },
 ];
