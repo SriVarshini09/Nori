@@ -57,7 +57,7 @@ export default function TermsPage() {
         <h2>Changes and contact</h2>
         <p>
           If these terms change, the date above changes with them. Questions:{" "}
-          {CONTACT ? <a href={`mailto:${CONTACT}`}>{CONTACT}</a> : <>open an issue in the <a href={REPO_URL} target="_blank" rel="noreferrer">project repository</a></>}.
+          {CONTACT ? <a href={`mailto:${CONTACT}`}>{CONTACT}</a> : REPO_URL ? <>open an issue in the <a href={REPO_URL} target="_blank" rel="noreferrer">project repository</a></> : <>contact the people who run this Nori server</>}.
         </p>
       </section>
     </Prose>

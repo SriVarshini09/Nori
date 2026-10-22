@@ -24,7 +24,10 @@ const AXE_FAIL = new Set(["serious", "critical"]);
 const notes: Issue[] = [];
 
 // SwiftShader (software GL in headless Chromium) warns about shader precision in three.js; not an app defect.
-const NOISE = [/Download the React DevTools/i, /THREE.WebGLProgram/i];
+// GPU driver performance notices come from the machine's (often virtual) graphics card while the 3D mascot draws, not
+// from Nori: "GL Driver Message (OpenGL, Performance, ...): GPU stall due to ReadPixels". Only Performance-type driver
+// messages are skipped; driver errors still count.
+const NOISE = [/Download the React DevTools/i, /THREE.WebGLProgram/i, /GL Driver Message \([^)]*\bPerformance\b/i];
 
 function attach(page: Page, label: string, expected401: boolean, expect404Path?: string) {
   page.on("console", (m) => {

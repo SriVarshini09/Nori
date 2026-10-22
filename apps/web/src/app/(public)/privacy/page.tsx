@@ -60,7 +60,7 @@ export default function PrivacyPage() {
       <section>
         <h2>Questions</h2>
         <p>
-          {CONTACT ? <>Write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</> : <>Open an issue in the <a href={REPO_URL} target="_blank" rel="noreferrer">project repository</a>.</>}
+          {CONTACT ? <>Write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</> : REPO_URL ? <>Open an issue in the <a href={REPO_URL} target="_blank" rel="noreferrer">project repository</a>.</> : <>Contact the people who run this Nori server.</>}
           {" "}Nori is open source, so you can read exactly what it does with your data.
         </p>
       </section>
