@@ -32,7 +32,7 @@ export class ApiError extends Error {
 export function friendly(msg: string): string {
   if (/COMPOSIO|through Composio/i.test(msg)) return "Connections (Gmail, Sheets, Slack, Calendar) are not switched on for this Nori yet. Everything else works without them.";
   if (/PARALLEL_API_KEY|Parallel search/i.test(msg)) return "Live company research is not switched on for this Nori yet.";
-  if (/[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+.*(?:is not set|not configured|missing)|(?:is not set|not configured).*[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/.test(msg)) return "This feature is not set up on this Nori yet.";
+  if (/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b.*\b(?:is not set|not configured|missing)\b|\b(?:is not set|not configured)\b.*\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/.test(msg)) return "This feature is not set up on this Nori yet.";
   return msg;
 }
 
