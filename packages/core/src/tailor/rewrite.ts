@@ -85,6 +85,7 @@ export type Verdict = { ok: true } | { ok: false; reason: string };
  *  - every number must already appear in the original text or its evidence
  *  - no known skill/tool may appear unless the original text or evidence mentions it
  *  - must be non-empty, a sane length, and free of first-person pronouns
+ *  - may not upgrade ownership ("contributed to" -> "led") or scope ("company-wide") beyond what the original or evidence says
  */
 export function validateBullet(original: ResumeBullet, candidate: { text: string; nodeIds: string[] }, supportText: string, vocab: string[] = []): Verdict {
   const text = (candidate.text ?? "").trim();
@@ -101,9 +102,37 @@ export function validateBullet(original: ResumeBullet, candidate: { text: string
   if (/\b(I|me|my|mine|we|our|us)\b/.test(text.replace(/\bU\.?S\.?\b/g, ""))) return { ok: false, reason: "first-person pronoun" };
   const fluff = FLUFF_RE.exec(text)?.[0];
   if (fluff && !FLUFF_RE.test(original.text)) return { ok: false, reason: `filler "${fluff}" the original did not use` };
+  const inflated = inflationIn(text, support);
+  if (inflated) return { ok: false, reason: `claims "${inflated}", which the original and evidence do not` };
   const wc = wordCount(text);
   if (wc < 6 || wc > 34) return { ok: false, reason: `length ${wc} words` };
   return { ok: true };
+}
+
+/**
+ * Ownership and scope words a rewrite may not add. "Contributed to a migration" rewritten as "Led the migration" or
+ * "drove a company-wide migration" passes the number and skill checks but tells the employer something untrue.
+ * Each entry: the claim word(s), and the words in the source that justify it.
+ */
+const INFLATION: { claim: RegExp; justified: RegExp }[] = [
+  { claim: /\b(led|lead|leading)\b/i, justified: /\b(led|lead|leading|leader|headed|managed|directed|ran|owned|tech lead|team lead)\b/i },
+  { claim: /\b(spearhead(ed|ing)?|architect(ed|ing)?|head(ed|ing)|direct(ed|ing)|found(ed|ing)|pioneer(ed|ing)?)\b/i, justified: /\b(spearhead|architect|head|direct|found|pioneer|led|lead|design(ed)? the|owned)/i },
+  { claim: /\b(own(ed|ing)?|ownership)\b/i, justified: /\b(own(ed|ing)?|ownership|led|lead|responsible for|in charge)\b/i },
+  { claim: /\b(managed|managing|manager of)\b/i, justified: /\b(manag(ed|ing|er)|led|lead|supervis|direct reports?)\b/i },
+  { claim: /\b(mentor(ed|ing)?|coach(ed|ing)?)\b/i, justified: /\b(mentor|coach|train(ed|ing)? (new|junior)|onboard)/i },
+  { claim: /\b(company|organi[sz]ation|org|enterprise|cross[- ]company)[- ]wide\b/i, justified: /\b(company|organi[sz]ation|org|enterprise|cross[- ]company)[- ]wide\b|\ball (teams|engineers|employees|departments)\b/i },
+  { claim: /\b(global(ly)?|worldwide|industry[- ]leading|world[- ]class)\b/i, justified: /\b(global|worldwide|international|countries|regions|industry[- ]leading|world[- ]class)\b/i },
+  { claim: /\b(large|entire|whole) (team|organi[sz]ation|org|department|company)\b/i, justified: /\b(large|entire|whole) (team|organi[sz]ation|org|department|company)\b/i },
+  { claim: /\bsingle[- ]handedly|\bsole(ly)?\b|\bindependently\b/i, justified: /\bsingle[- ]handedly|\bsole(ly)?\b|\bindependently\b|\bby myself\b|\balone\b/i },
+];
+
+/** The first ownership or scope claim in `text` that `support` does not justify, or null. */
+export function inflationIn(text: string, support: string): string | null {
+  for (const r of INFLATION) {
+    const m = r.claim.exec(text);
+    if (m && !r.justified.test(support)) return m[0];
+  }
+  return null;
 }
 
 function validateSummary(summary: string, ctx: Ctx): Verdict {
@@ -127,6 +156,8 @@ function validateSummary(summary: string, ctx: Ctx): Verdict {
   if (/\b(I|me|my|we|our)\b/.test(s)) return { ok: false, reason: "first person" };
   const fluff = FLUFF_RE.exec(s)?.[0];
   if (fluff) return { ok: false, reason: `filler "${fluff}"` };
+  const inflated = inflationIn(s, support);
+  if (inflated) return { ok: false, reason: `claims "${inflated}" without evidence` };
   if (wordCount(s) > 55) return { ok: false, reason: "too long" };
   return { ok: true };
 }
