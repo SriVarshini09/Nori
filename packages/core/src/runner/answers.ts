@@ -588,6 +588,10 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
         const out = (await getLLM("quality").text({ system: SYSTEM, prompt, maxTokens: 400 })).trim();
         if (!out || /^unknown\.?$/i.test(out)) return null;
         if (field.options?.length) return field.options.find((o) => o.toLowerCase() === out.toLowerCase()) ?? null;
+        // Free text the model wrote: every figure must already be in the facts it was given, or the question goes to the
+        // person. It is recorded as a written answer so the review screen and Autopilot treat it as one.
+        if (!numbersSupported(out, [facts, ctx.profile.fullName, ctx.profile.location ?? ""].join("\n"))) return null;
+        if (ctx.composed) ctx.composed[field.label] = { answer: out, kind: "unknown", sources: [], usedLLM: true };
         return out;
       },
       () => null,
@@ -595,6 +599,13 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
     );
     return value;
   };
+}
+
+/** True when every number in `text` (years, percentages, counts, money) also appears in `facts`. */
+export function numbersSupported(text: string, facts: string): boolean {
+  const norm = (n: string) => n.replace(/[,\s]/g, "");
+  const known = new Set((facts.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map(norm));
+  return (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).every((n) => known.has(norm(n)));
 }
 
 /** Questions most applications ask; answered up front so the user sees them at form review. */

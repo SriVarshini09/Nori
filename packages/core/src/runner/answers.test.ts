@@ -265,3 +265,23 @@ describe("preferred name, pronouns and state", () => {
     expect(full({}, sel("Do you live in one of the following states: CA, NY?", ["Yes", "No"]))).toBe("Yes");
   });
 });
+
+describe("model-written answers to unclassified questions", () => {
+  it("are recorded as written answers, and an answer with an invented figure goes to the person", async () => {
+    const { setLLM } = await import("../llm/index.js");
+    const { numbersSupported } = await import("./answers.js");
+    let reply = "I ran Kubernetes clusters in production at Northwind.";
+    setLLM({ provider: "openai-compatible", model: "fake", available: true, async json() { throw new Error("no"); }, async text() { return reply; } } as never);
+    try {
+      const composed: Record<string, { answer: string; usedLLM: boolean }> = {};
+      const profile = { fullName: "Jordan Rivera", firstName: "Jordan", lastName: "Rivera", email: "j@example.com", workAuth: { authorizedUS: true, needsSponsorship: false } } as ApplicantProfile;
+      const ask = makeAnswerQuestion({ profile, evidence: [{ text: "Ran Kubernetes clusters at Northwind", nodeId: "n1" } as never], jobTitle: "SRE", companyName: "Acme", composed: composed as never });
+      const field: FormField = { label: "Kubernetes in production", kind: "text", required: false, selector: "#k" };
+      expect(await ask(field, "")).toBe(reply);
+      expect(composed["Kubernetes in production"]).toMatchObject({ usedLLM: true });
+      reply = "I ran 40 Kubernetes clusters serving 3M users.";
+      expect(await ask({ ...field, label: "Kubernetes scale" }, "")).toBeNull();
+      expect(numbersSupported("cut load time by 45%", "cutting page load time by 45%")).toBe(true);
+    } finally { setLLM(null); }
+  });
+});
