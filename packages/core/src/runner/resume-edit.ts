@@ -57,7 +57,7 @@ export function recomputeChanges(prev: { content: ResumeContent; changes: Resume
  * version (the earlier ones stay), re-renders the PDF and ATS report, and keeps the application waiting for approval.
  */
 export async function editApplicationResume(db: Db, userId: string, applicationId: string, edit: ResumeEdit, deps: Partial<RunnerDeps> = {}) {
-  if (!/^[0-9a-f-]{36}$/i.test(applicationId)) throw new ResumeDocError("Application not found", 404);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId)) throw new ResumeDocError("Application not found", 404);
   const [app] = await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.userId, userId))).limit(1);
   if (!app) throw new ResumeDocError("Application not found", 404);
   if (app.status !== "resume_review") throw new ResumeDocError("You can edit the resume while it waits for your review, before the form is filled.", 409);

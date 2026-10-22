@@ -238,9 +238,13 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[api] ${c.req.method} ${c.req.path}: ${message}`);
-    if (/not set|not configured|PARALLEL_API_KEY|COMPOSIO_API_KEY/i.test(message)) return c.json({ error: message }, 503);
-    return c.json({ error: message }, 500);
+    // The full error (file paths, SQL, upstream replies) goes to the server log only; the person gets a reference to quote.
+    const ref = Math.random().toString(36).slice(2, 10);
+    console.warn(`[api] ${ref} ${c.req.method} ${c.req.path}: ${message}`, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : "");
+    if (/PARALLEL_API_KEY|Parallel/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Web job search is not set up on this server." }, 503);
+    if (/COMPOSIO_API_KEY|Composio/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Connected apps (Gmail, Sheets, Slack) are not set up on this server." }, 503);
+    if (/not set|not configured/i.test(message)) return c.json({ error: "This feature is not set up on this server." }, 503);
+    return c.json({ error: `Something went wrong on our side. If it keeps happening, quote reference ${ref}.`, ref }, 500);
   });
   app.notFound((c) => c.json({ error: `No route ${c.req.method} ${c.req.path}` }, 404));
 

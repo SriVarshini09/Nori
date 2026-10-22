@@ -240,3 +240,12 @@ describe("request size", () => {
     expect(res.status).toBe(413);
   });
 });
+
+describe("server errors", () => {
+  it("never show internal details, and a malformed id is a plain 404", async () => {
+    const u = await call("POST", "/api/auth/signup", { email: "errs@example.com", password: "first-password" });
+    const res = await call("GET", "/api/resume-docs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", undefined, u.cookie!);
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.json)).not.toMatch(/uuid|syntax|SELECT|ENOENT/i);
+  });
+});
