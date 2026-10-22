@@ -134,6 +134,8 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
   const preferred = opts.preferredForms ?? PREFERRED_FORM_SELECTORS;
   let browser: Browser | undefined;
   let page: Page | undefined;
+  /** Set once submit has been clicked: from then on the employer may have the application, and every result says so. */
+  let clicked = false;
   let fields: FormField[] = [];
   const receipt = (extra: Partial<Receipt> & Pick<Receipt, "fields" | "files">): Receipt => ({
     submittedVia: opts.name, dryRun: ctx.dryRun, durationMs: Date.now() - started, ...extra,
@@ -210,6 +212,7 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     const startUrl = page.url();
     const confirmedBefore = CONFIRM_RE.test(await bodyText(page));
     await clickSubmit(page, ctx);
+    clicked = true;
     let state = await waitForAfterSubmit(page, startUrl, 20_000, confirmedBefore);
 
     if (state === "verify") {
@@ -220,7 +223,7 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
         return {
           outcome: "needs_user",
           pending: [{ label: "Verification code", type: "verification_code", required: true }],
-          receipt: receipt({ fields: filled, files, screenshotPath: shot }),
+          receipt: { ...receipt({ fields: filled, files, screenshotPath: shot }), submitClicked: true },
         };
       }
       await enterCode(page, code);
@@ -233,14 +236,23 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     if (await detectCaptcha(page)) {
       const shot = await screenshot(page, ctx, opts.name, "captcha");
       ctx.onEvent("captcha", "CAPTCHA appeared after submit; leaving it for the user");
-      return { outcome: "needs_user", pending: [CAPTCHA_QUESTION], receipt: receipt({ fields: filled, files, screenshotPath: shot }) };
+      return { outcome: "needs_user", pending: [CAPTCHA_QUESTION], receipt: { ...receipt({ fields: filled, files, screenshotPath: shot }), submitClicked: true } };
     }
 
     const confirmationText = (await runScript<string | null>(page, CONFIRMATION_SCRIPT).catch(() => null)) ?? undefined;
     const submittedShot = (await screenshot(page, ctx, opts.name, "submitted")) ?? filledShot;
 
     if (!confirmationText && state === "errors") {
-      return { outcome: "failed", error: "Form reported validation errors after submit", screenshotPath: submittedShot };
+      return { outcome: "failed", error: "Form reported validation errors after submit", screenshotPath: submittedShot, submitClicked: true };
+    }
+    if (!confirmationText && state === "timeout") {
+      // No thank-you text and the same form still on the same page: the click most likely did not send it (a step button,
+      // a silent validation error). Calling it "submitted" would put a job in the tracker that the employer never got.
+      const formStill = (await page.locator("[data-jobgraph-form]").count().catch(() => 0)) > 0 && page.url() === startUrl;
+      if (formStill) {
+        return { outcome: "failed", screenshotPath: submittedShot, submitClicked: true,
+          error: "Clicked submit, but the form is still on the page and no confirmation appeared. It may not have gone through: check the employer's site or your email before trying again." };
+      }
     }
     if (!confirmationText) ctx.onEvent("submit_unconfirmed", "Submitted but no confirmation text was found");
     ctx.onEvent("submitted", confirmationText ?? "Submitted");
@@ -249,7 +261,7 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     const error = err instanceof Error ? err.message : String(err);
     ctx.onEvent("error", error);
     const shot = page ? await screenshot(page, ctx, opts.name, "error") : undefined;
-    return { outcome: "failed", error, screenshotPath: shot };
+    return { outcome: "failed", error, screenshotPath: shot, ...(clicked ? { submitClicked: true } : {}) };
   } finally {
     await browser?.close().catch(() => {});
   }

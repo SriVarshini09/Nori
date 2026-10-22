@@ -301,6 +301,8 @@ export type Receipt = {
   submittedVia: string;
   dryRun: boolean;
   durationMs: number;
+  /** The driver clicked submit on this run, so the employer may already have the application. Never re-sent automatically. */
+  submitClicked?: boolean;
 };
 
 export const resumes = pgTable("resumes", {

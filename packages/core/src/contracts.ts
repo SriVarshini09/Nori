@@ -116,7 +116,7 @@ export type DriverResult =
   | { outcome: "submitted"; receipt: Receipt }
   | { outcome: "filled"; receipt: Receipt; fields: FormField[] }     // dryRun or review gate: form filled, not submitted
   | { outcome: "needs_user"; pending: PendingQuestion[]; receipt: Receipt }
-  | { outcome: "failed"; error: string; screenshotPath?: string };
+  | { outcome: "failed"; error: string; screenshotPath?: string; /** Submit was clicked before it failed: the employer may have it. */ submitClicked?: boolean };
 
 export interface ApplyDriver {
   atsType: AtsType;

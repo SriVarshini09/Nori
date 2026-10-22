@@ -285,3 +285,31 @@ describe("a site that turns automation away", () => {
     expect(res).toMatchObject({ outcome: "failed", error: "No application form fields found" });
   }, TIMEOUT);
 });
+
+describe("multi-page forms", () => {
+  it("never clicks a step button as submit, and never reports an unconfirmed click as submitted", async () => {
+    process.env.ALLOW_REAL_SUBMIT = "true";
+    // Page 1 of a multi-step form: its only button is a type=submit "Next" that shows page 2 in place (same URL, no thank-you).
+    const multi = path.join(tmp, "multi.html");
+    await writeFile(multi, `<html><body><h1>Apply now</h1><form id="application_form" onsubmit="event.preventDefault()">
+      <label for="fn">First name</label><input id="fn" name="fn" type="text">
+      <label for="em">Email</label><input id="em" name="em" type="email">
+      <button type="submit">Next</button></form></body></html>`);
+    const { ctx, events } = makeCtx({ applyUrl: pathToFileURL(multi).toString(), dryRun: false });
+    const res = await runApplyFlow(ctx, { name: "test" });
+    expect(res.outcome, JSON.stringify(res)).toBe("failed");
+    expect(events.some((e) => e.step === "submit" && /Next/.test(e.message))).toBe(false);
+  }, TIMEOUT);
+
+  it("reports a click that leaves the same form on screen as not confirmed, flagged as clicked", async () => {
+    process.env.ALLOW_REAL_SUBMIT = "true";
+    const silent = path.join(tmp, "silent.html");
+    await writeFile(silent, `<html><body><form id="application_form" onsubmit="event.preventDefault()">
+      <label for="fn">First name</label><input id="fn" name="fn" type="text">
+      <label for="em">Email</label><input id="em" name="em" type="email">
+      <button type="submit">Submit application</button></form></body></html>`);
+    const { ctx } = makeCtx({ applyUrl: pathToFileURL(silent).toString(), dryRun: false });
+    const res = await runApplyFlow(ctx, { name: "test" });
+    expect(res).toMatchObject({ outcome: "failed", submitClicked: true });
+  }, 90_000);
+});

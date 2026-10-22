@@ -328,7 +328,9 @@ async function runDriver(db: Db, app: Application, driver: ApplyDriver, ctx: Dri
 async function failDriver(db: Db, app: Application, res: Extract<DriverResult, { outcome: "failed" }>, root: string): Promise<ApplicationStatus> {
   const left = MAX_ATTEMPTS - app.attempts;
   const shot = relArtifactPath(res.screenshotPath, root);
-  return transition(db, app, "failed", { error: res.error },
+  // After a submit click, clear the form approval: a retry then refills as a dry run and waits for the person, instead of
+  // sending a second copy to the employer.
+  return transition(db, app, "failed", { error: res.error, ...(res.submitClicked ? { formApprovedAt: null } : {}) },
     `Driver failed: ${res.error}${left > 0 ? ` (${left} attempt(s) left)` : " (no attempts left)"}${shot ? ` [screenshot ${shot}]` : ""}`);
 }
 
@@ -482,8 +484,14 @@ async function stepSubmitting(db: Db, app: Application, deps: RunnerDeps): Promi
     case "needs_user": {
       const receipt = stored(res.receipt);
       const code = res.pending.some((p) => p.type === "verification_code");
-      return transition(db, app, "needs_user", { receipt, pendingQuestions: res.pending },
-        code ? "No verification code arrived within the timeout" : `${res.pending.length} question(s) need your answer`);
+      const what = code ? "No verification code arrived within the timeout" : `${res.pending.length} question(s) need your answer`;
+      if (res.receipt.submitClicked) {
+        // Submit was already clicked once. Answering or retrying must not silently send it again: drop the approval so the
+        // next run refills as a dry run and the person decides, after checking their email for a confirmation.
+        return transition(db, app, "needs_user", { receipt, pendingQuestions: res.pending, formApprovedAt: null },
+          `${what}. Nori already clicked submit once, so check your email for a confirmation before you approve it again.`);
+      }
+      return transition(db, app, "needs_user", { receipt, pendingQuestions: res.pending }, what);
     }
     case "failed":
       return failDriver(db, app, res, root);

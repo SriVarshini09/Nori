@@ -386,3 +386,33 @@ describe("review before submit off", () => {
     expect(a.submittedAt).toBeNull();
   });
 });
+
+describe("after submit was clicked", () => {
+  /** Fills fine on dry runs; on the real run it clicks submit and then fails (no confirmation, CAPTCHA, ...). */
+  class ClickThenFail extends FakeDriver {
+    constructor(private how: "failed" | "captcha") { super(); }
+    async run(ctx: DriverContext): Promise<DriverResult> {
+      if (ctx.dryRun) return super.run(ctx);
+      this.calls.push(ctx);
+      const receipt = { fields: [], files: [], submittedVia: "fake", dryRun: false, durationMs: 1, submitClicked: true };
+      return this.how === "failed"
+        ? { outcome: "failed", error: "Clicked submit, but the form is still on the page", submitClicked: true }
+        : { outcome: "needs_user", pending: [{ label: "CAPTCHA", type: "captcha", required: true }], receipt };
+    }
+  }
+
+  for (const how of ["failed", "captcha"] as const) {
+    it(`never re-sends on retry (${how}): the form goes back to the person`, async () => {
+      const driver = new ClickThenFail(how);
+      const d = deps(driver);
+      await db.update(profiles).set({ resumeAutoApprove: true }).where(eq(profiles.userId, userId));
+      const created = await createApplication(db, userId, jobId);
+      expect(await runApplication(db, created.id, d)).toBe("form_review");
+      expect(await approveForm(db, created.id, d)).toBe(how === "failed" ? "failed" : "needs_user");
+      expect((await app(created.id)).formApprovedAt).toBeNull();
+      const realRuns = driver.calls.filter((c) => !c.dryRun).length;
+      expect(await retryApplication(db, created.id, d)).toBe("form_review");
+      expect(driver.calls.filter((c) => !c.dryRun).length).toBe(realRuns);
+    });
+  }
+});
