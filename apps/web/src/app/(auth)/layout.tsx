@@ -1,20 +1,33 @@
 import Link from "next/link";
-import { MeadowBackdrop } from "@/components/landing/meadow";
+import { ArrowLeft } from "lucide-react";
 import { NoriLogo } from "@/components/Logo";
-import { PublicFooter } from "@/components/public/Chrome";
+import { BrandPanel } from "@/components/auth/BrandPanel";
 
-/** Signed-out chrome: the sunny meadow, wordmark top-left, the page owns the rest. */
+const quiet = "rounded-md text-bark-3 underline-offset-4 transition-colors hover:text-bark hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun";
+
+/**
+ * Signed-out chrome for sign in, sign up, forgot, reset and verify: the form on solid cream on the left, the brand
+ * panel on the right on wide screens. On phones the form is the whole page.
+ */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative flex min-h-screen flex-col overflow-clip text-[#3b2410]">
-      <MeadowBackdrop />
-      <header className="relative z-30 flex h-20 items-center px-4 sm:px-8 lg:px-10">
-        <Link href="/" className="inline-flex items-center" aria-label="Nori home">
-          <NoriLogo size={42} />
-        </Link>
-      </header>
-      <main className="relative z-10 mx-auto flex w-full max-w-[1240px] flex-1 items-center px-4 pb-12 pt-2 sm:px-8 lg:px-10">{children}</main>
-      <div className="relative z-10"><PublicFooter /></div>
+    <div className="min-h-screen bg-cream text-bark lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="flex min-h-screen flex-col">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-bark focus:px-3 focus:py-2 focus:text-cream">Skip to content</a>
+        <header className="flex h-16 items-center justify-between gap-3 px-4 sm:px-8">
+          <Link href="/" aria-label="Nori home" className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"><NoriLogo size={32} /></Link>
+          <Link href="/" className={`${quiet} inline-flex items-center gap-1.5 text-[14px] font-medium`}><ArrowLeft size={16} aria-hidden="true" />Home</Link>
+        </header>
+        <main id="main" className="flex flex-1 items-center justify-center px-4 py-10 sm:px-8">
+          <div className="w-full max-w-[420px]">{children}</div>
+        </main>
+        <footer className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 pb-6 text-[13px] sm:px-8">
+          <Link href="/privacy" className={quiet}>Privacy</Link>
+          <Link href="/terms" className={quiet}>Terms</Link>
+          <span className="text-bark-3">Nori, an open-source personal job agent.</span>
+        </footer>
+      </div>
+      <BrandPanel />
     </div>
   );
 }

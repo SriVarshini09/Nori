@@ -1,17 +1,5 @@
 import { useId } from "react";
 
-/** A small deterministic scatter so the meadow is the same on every render (no hydration drift). */
-function rng(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 const PETAL = "M0 0 C-7 -10 -6 -22 0 -26 C6 -22 7 -10 0 0Z";
 
 function Blossom({ x, y, s, r, hue }: { x: number; y: number; s: number; r: number; hue: string }) {
@@ -20,37 +8,6 @@ function Blossom({ x, y, s, r, hue }: { x: number; y: number; s: number; r: numb
       {[0, 72, 144, 216, 288].map((a) => <path key={a} d={PETAL} transform={`rotate(${a})`} fill={hue} />)}
       <circle r="5" fill="#ff9d1a" />
     </g>
-  );
-}
-
-/** Sunny meadow: sky, haze, drifting light and flowers (a few sharp, many soft). Decorative only. */
-export function MeadowBackdrop({ className = "" }: { className?: string }) {
-  const id = useId().replace(/:/g, "");
-  const r = rng(11);
-  const flowers = Array.from({ length: 70 }, (_, i) => {
-    const edge = i % 3 === 0;
-    const x = edge ? (i % 2 ? 80 + r() * 20 : r() * 20) : r() * 100;
-    const y = 8 + r() * 92;
-    const near = y > 55;
-    return { x: x * 14, y: y * 9, s: (near ? 1.6 : 0.8) + r() * (near ? 2.4 : 1), r: r() * 360, blur: near ? (r() > 0.5 ? 0 : 3) : (r() > 0.5 ? 3 : 6), hue: ["#ffd23f", "#ffe066", "#ffc21a", "#fff2a8"][Math.floor(r() * 4)], o: near ? 0.95 : 0.7 };
-  });
-  return (
-    <div aria-hidden="true" className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,#bfe0f6_0%,#d9ecdf_30%,#e9eea0_58%,#d8e27a_100%)]" />
-      <div className="absolute -right-24 -top-24 h-[34rem] w-[34rem] rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.95),rgba(255,248,200,0.55)_55%,transparent)]" />
-      <div className="absolute -left-40 top-1/3 h-[30rem] w-[30rem] rounded-full bg-[radial-gradient(closest-side,rgba(255,240,150,0.55),transparent)]" />
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1400 900" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          {[0, 3, 6].map((b) => <filter key={b} id={`${id}b${b}`} x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation={b} /></filter>)}
-        </defs>
-        {flowers.map((f, i) => (
-          <g key={i} opacity={f.o} filter={f.blur ? `url(#${id}b${f.blur})` : undefined}>
-            <Blossom x={f.x} y={f.y} s={f.s} r={f.r} hue={f.hue} />
-          </g>
-        ))}
-      </svg>
-      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#cfdc66]/60 to-transparent" />
-    </div>
   );
 }
 
