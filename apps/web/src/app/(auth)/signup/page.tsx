@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { AuthForm } from "@/components/AuthForm";
+import { AuthPanel } from "@/components/auth/AuthPanel";
 
 export const metadata: Metadata = { title: "Create account" };
 
 export default function SignupPage() {
-  return <AuthForm mode="signup" />;
+  return <AuthPanel mode="signup" />;
 }

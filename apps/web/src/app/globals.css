@@ -69,6 +69,29 @@
   --text-label--letter-spacing: 0.12em;
 }
 
+/*
+ * Public pages (landing, sign-in): one warm palette in solid colours. No translucent colour mixes and no
+ * gradient-clipped text, so the pages look the same in every browser the site supports.
+ */
+@theme {
+  --color-cream: #fbf7ef;       /* page */
+  --color-sand: #f4ecdc;        /* tinted band */
+  --color-rule: #e6dcc8;        /* hairlines, input borders */
+  --color-rule-strong: #cdbb98; /* hovered borders */
+  --color-bark: #2b1a0e;        /* headings and body text */
+  --color-bark-2: #4a3726;      /* secondary text */
+  --color-bark-3: #6b5a45;      /* muted text (6:1 on cream) */
+  --color-brand: #5a2a12;       /* primary button */
+  --color-brand-hover: #73361a;
+  --color-sun: #f2a900;         /* accent: decoration, focus rings, dark-text buttons */
+  --color-sun-hover: #ffbb1f;
+  --color-sun-soft: #fff1c2;    /* sunny panels and chips */
+  --color-sage: #2f5a1f;        /* "accepted" text */
+  --color-sage-soft: #eaf3dd;
+  --color-berry: #9f1f3a;       /* "refused" and error text */
+  --color-berry-soft: #fdecef;
+}
+
 html { background: var(--canvas); }
 
 body {
