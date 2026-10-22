@@ -22,17 +22,17 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 type NodeLook = { fill: string | null; stroke: string | null; lw: number };
 type Palette = Record<"ink" | "ink2" | "paper" | "stone" | "stone2" | "line" | "lineStrong" | "muted" | "faint" | "accent", string>;
 
-/** Roles ink, companies hollow ink, skills amber, metrics stone, projects warm grey, education outlined stone. */
+/** One hue per kind of fact, so the graph reads at a glance: roles jade, skills violet, results amber, projects coral, education sky. */
 function look(type: string, c: Palette): NodeLook {
   switch (type) {
-    case "role": return { fill: c.ink, stroke: null, lw: 0 };
-    case "company": return { fill: c.paper, stroke: c.ink, lw: 1.5 };
-    case "skill": return { fill: c.accent, stroke: null, lw: 0 };
-    case "tool": return { fill: c.paper, stroke: c.accent, lw: 1.5 };
-    case "metric": return { fill: c.stone2, stroke: c.lineStrong, lw: 1 };
-    case "project": return { fill: c.faint, stroke: null, lw: 0 };
-    case "education":
-    case "certification": return { fill: c.stone, stroke: c.muted, lw: 1.25 };
+    case "role": return { fill: "#0f9a72", stroke: null, lw: 0 };
+    case "company": return { fill: c.paper, stroke: "#0f9a72", lw: 1.75 };
+    case "skill": return { fill: "#8b7cff", stroke: null, lw: 0 };
+    case "tool": return { fill: c.paper, stroke: "#8b7cff", lw: 1.75 };
+    case "metric": return { fill: "#ffb347", stroke: null, lw: 0 };
+    case "project": return { fill: "#ff7a8a", stroke: null, lw: 0 };
+    case "education": return { fill: "#5ec2ff", stroke: null, lw: 0 };
+    case "certification": return { fill: c.paper, stroke: "#5ec2ff", lw: 1.75 };
     default: return { fill: c.lineStrong, stroke: null, lw: 0 };
   }
 }
@@ -596,6 +596,16 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
 }
 
 function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Neighbor[]; onClose: () => void; onPick: (id: string) => void }) {
+  const router = useRouter();
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  // Retract a claim: it stops being evidence for resumes and answers. Not for the person node itself.
+  async function remove() {
+    if (!window.confirm(`Remove "${node.label}" from your graph? Nori will stop using it in resumes and answers.`)) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try { await api.deleteGraphNode(node.id); onClose(); router.refresh(); } catch (e) { setRemoveError((e as Error).message); } finally { setRemoving(false); }
+  }
   const groups = new Map<string, Neighbor[]>();
   for (const n of nbrs) {
     const key = edgePhrase(n.edgeType, n.dir);
@@ -631,6 +641,12 @@ function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Nei
               {node.source && <span>from {node.source}</span>}
             </p>
           )}
+          {node.type !== "person" && (
+            <button type="button" onClick={remove} disabled={removing} className="mt-3 text-[12px] font-medium text-accent-ink underline underline-offset-4 disabled:opacity-40">
+              {removing ? "Removing..." : "Remove this from my graph"}
+            </button>
+          )}
+          {removeError && <p role="alert" className="mt-1 text-[12px] text-accent-ink">{removeError}</p>}
         </div>
 
         {isMetric && statement && (
@@ -725,6 +741,8 @@ export function GraphInputs() {
   const router = useRouter();
   const [fact, setFact] = useState("");
   const [resumeText, setResumeText] = useState("");
+  // A corrected resume should replace what the old one said, or the old numbers stay as evidence. Chat facts are kept.
+  const [replaceOld, setReplaceOld] = useState(true);
   const [busy, setBusy] = useState<"fact" | "resume" | null>(null);
   const [note, setNote] = useState<{ tone: "green" | "red"; text: string } | null>(null);
 
@@ -751,7 +769,7 @@ export function GraphInputs() {
     setBusy("resume");
     setNote(null);
     try {
-      const r = await api.uploadResume(resumeText.trim());
+      const r = await api.uploadResume(resumeText.trim(), replaceOld);
       setNote({ tone: "green", text: `Ingested resume: ${plural(r.nodesCreated, "node")}, ${plural(r.edgesCreated, "edge")}${r.usedLLM ? "" : " (heuristic parser, no LLM configured)"}.` });
       setResumeText("");
       router.refresh();
@@ -781,11 +799,15 @@ export function GraphInputs() {
             </div>
           </form>
         </Panel>
-        <Panel index="02" title="Paste your resume" aside="Merges into the graph" className="col-span-12 lg:col-span-5">
+        <Panel index="02" title="Paste your resume" aside={replaceOld ? "Replaces your last resume" : "Merges into the graph"} className="col-span-12 lg:col-span-5">
           <form onSubmit={sendResume} className="flex h-full flex-col gap-4">
-            <Field label="Resume text" hint="Plain text. Re-ingesting merges, never duplicates.">
+            <Field label="Resume text" hint="Plain text. Re-ingesting never duplicates.">
               <textarea className={cx(inputClass, "resize-none font-mono text-[12.5px]")} rows={5} value={resumeText} onChange={(e) => setResumeText(e.target.value)} placeholder="Paste the full text of your resume" />
             </Field>
+            <label className="flex items-start gap-2 text-[13px] text-ink">
+              <input type="checkbox" className="mt-0.5" checked={replaceOld} onChange={(e) => setReplaceOld(e.target.checked)} />
+              <span>Replace what my earlier resume said. Facts you added in chat stay. Untick to merge two resumes.</span>
+            </label>
             <div className="mt-auto flex justify-end border-t border-line pt-4">
               <Button type="submit" icon={FileUp} disabled={busy !== null || !resumeText.trim()}>{busy === "resume" ? "Ingesting..." : "Ingest resume"}</Button>
             </div>

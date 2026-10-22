@@ -178,7 +178,7 @@ function gatherEvidence(ix: Index, item: Item): Evidence[] {
     const roles = ix.graph.nodes.filter((n) => n.type === "role");
     if (roles.length >= 2) {
       const newest = [...roles].sort((a, b) => (b.endDate ?? "9999-12").localeCompare(a.endDate ?? "9999-12") || (b.startDate ?? "").localeCompare(a.startDate ?? ""))[0];
-      put({ requirement: item.text, nodeId: newest.id, nodeType: "role", label: newest.label, text: `General strength across ${roles.length} roles: ${item.text}`, ...ownerContext(ix, newest), score: r3(base * 0.2) });
+      put({ requirement: item.text, nodeId: newest.id, nodeType: "role", label: newest.label, text: `General strength across ${roles.length} roles: ${item.text}`, ...ownerContext(ix, newest), score: r3(base * 0.2), inferred: true });
     }
   }
 

@@ -8,6 +8,7 @@ import { prettifyToken, safeUrl, FETCH_TIMEOUT_MS } from "./http.js";
 import { upsertJobs } from "./normalize.js";
 import { parallelAvailable, parallelExtract, parallelSearch } from "./parallel.js";
 import { matchFeedUrl } from "./registry.js";
+import { safeFetch, UnsafeUrlError } from "./ssrf.js";
 
 export const ATS_DOMAINS = [
   "boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com", "jobs.smartrecruiters.com",
@@ -55,7 +56,7 @@ async function fetchPageDirect(url: string): Promise<{ title?: string; text: str
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Mozilla/5.0 (compatible; jobgraph)", accept: "text/html" } });
+    const res = await safeFetch(url, { signal: ctrl.signal, headers: { "user-agent": "Mozilla/5.0 (compatible; jobgraph)", accept: "text/html" } });
     if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
     const html = (await res.text()).slice(0, 500_000);
     const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
@@ -108,7 +109,10 @@ async function resolveUrl(url: string, via: NormalizedJob["discoveredVia"], cach
       const page = await fetchPageDirect(url);
       text = page.text;
       title = title ?? page.title;
-    } catch { /* give up below */ }
+    } catch (err) {
+      if (err instanceof UnsafeUrlError) throw err; // say why, instead of "could not read"
+      /* otherwise give up below */
+    }
   }
   if (!text.trim()) return null;
   const u = safeUrl(url)!;

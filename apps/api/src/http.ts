@@ -1,0 +1,35 @@
+import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { z } from "zod";
+
+export type HttpStatus = 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 503;
+
+export const bad = (message: string, status: HttpStatus = 400) => new HTTPException(status, { message });
+
+/** Parse a JSON body against a schema; an empty body counts as {}. Errors become readable 400 responses. */
+export async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
+  let raw: unknown = {};
+  const text = await c.req.text();
+  if (text.trim()) {
+    // Only real JSON requests: a cross-site <form enctype="text/plain"> can post a JSON-shaped body without a preflight.
+    if (!/^application\/(.+\+)?json\b/i.test(c.req.header("content-type") ?? "")) throw bad("Content-Type must be application/json", 415);
+    // Postgres cannot store a NUL character in text; one in a pasted fact or chat message used to end in a 500 with the SQL
+    // error. Strip it from every string at the door.
+    try { raw = JSON.parse(text, (_k, v) => (typeof v === "string" && v.includes("\u0000") ? v.replaceAll("\u0000", "") : v)); } catch { throw bad("Body must be JSON"); }
+  }
+  const r = schema.safeParse(raw);
+  if (!r.success) throw bad(r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
+  return r.data;
+}
+
+/** A canonical UUID. Anything else would reach Postgres as an invalid uuid and come back as a 500 with the SQL error. */
+export const uuidOk = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+/** A short, human label for a session's user agent ("Chrome on Windows"). Never the raw string. */
+export function describeDevice(ua: string | null | undefined): string {
+  if (!ua) return "Unknown device";
+  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : null;
+  const os = /Windows/.test(ua) ? "Windows" : /iPhone|iPad|iOS/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X|Macintosh/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : null;
+  if (browser && os) return `${browser} on ${os}`;
+  return browser ?? os ?? "Unknown device";
+}

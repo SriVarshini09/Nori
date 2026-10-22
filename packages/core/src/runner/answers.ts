@@ -3,6 +3,7 @@ import { getLLM, withFallback } from "../llm/index.js";
 import type { CompanyResearch, Eeo, ResumeContent, SalaryExpectation, WorkAuth, profiles } from "../db/schema.js";
 import { FREE_TEXT_KINDS, NEVER_COMPOSE, classifyQuestion, isFreeTextField, type QuestionKind } from "../compose/classify.js";
 import { composeAnswer, type ComposeInput, type ComposeJob } from "../compose/compose.js";
+import { foreignWorkCountry } from "./work-country.js";
 
 type ProfileRow = typeof profiles.$inferSelect;
 
@@ -269,6 +270,30 @@ export function heuristicAnswer(field: FormField, profile: ApplicantProfile | Ap
   // EEO self-identification: the user's choice from onboarding, decline by default.
   if (EEO_RE.test(l) && !/sponsor|authori[sz]/.test(l)) return out(eeoAnswer(field, l, full.eeo));
 
+  // Preferred name: the first name, never something the person did not give.
+  if (/\b(preferred|nick|chosen|goes by|what (should|do) we call)\b.{0,20}\bname\b|\bnickname\b/.test(l) && !/\b(last|family|sur|middle|legal|company|employer)\b/.test(l)) {
+    return full.firstName ? out(full.firstName) : null;
+  }
+
+  // Pronouns: only what the person told us. A guess here would be wrong about a person.
+  if (/\bpronouns?\b/.test(l)) {
+    if (!full.pronouns) return null;
+    if (!opts.length) return full.pronouns;
+    const want = full.pronouns.toLowerCase().replace(/\s+/g, "");
+    return out(opts.find((o) => o.toLowerCase().replace(/\s+/g, "") === want)
+      ?? opts.find((o) => o.toLowerCase().replace(/\s+/g, "").includes(want) || want.includes(o.toLowerCase().replace(/\s+/g, "")) && o.length > 3));
+  }
+
+  // "Which U.S. state or Canadian province do you live in?": the state on the profile (or inferred from the location).
+  if (/\b(state|province|region)\b/.test(l) && /\b(reside|live|living|located|based|home)\b/.test(l) && !/(one of|any of|following|these|listed)/.test(l)) {
+    const st = full.state ? inferState(full.state) ?? { abbr: full.state.toUpperCase(), name: full.state } : inferState(profile.location);
+    if (!st) return null;
+    if (!opts.length) return st.name;
+    return out(opts.find((o) => o.trim().toLowerCase() === st.name.toLowerCase())
+      ?? opts.find((o) => hasWord(o, st.name))
+      ?? opts.find((o) => o.trim().toUpperCase() === st.abbr || new RegExp(`(^|[^A-Za-z])${st.abbr}([^A-Za-z]|$)`).test(o)));
+  }
+
   // Salary: the expected amount, or blank when the user gave none.
   if (SALARY_RE.test(l)) return out(salaryAnswer(field, l, full.salaryExpectation));
 
@@ -301,6 +326,9 @@ export function heuristicAnswer(field: FormField, profile: ApplicantProfile | Ap
   if (ADULT_RE.test(l)) return full.over18 === undefined ? null : yesNo(field, full.over18);
 
   if (RELOCATE_RE.test(l) && full.willingToRelocate !== undefined && (!opts.length || hasYesNo(opts))) return yesNo(field, full.willingToRelocate);
+
+  // The profile's work authorization is about the US: a question about another country goes to the person.
+  if ((/sponsor/.test(l) || AUTH_RE.test(l)) && foreignWorkCountry(field.label)) return null;
 
   if (/sponsor/.test(l)) {
     if (wa.needsSponsorship !== undefined) return yesNo(field, wa.needsSponsorship);
@@ -350,8 +378,10 @@ export function heuristicAnswer(field: FormField, profile: ApplicantProfile | Ap
         ?? opts.find((o) => { const head = o.split(/[(,/]/)[0].trim(); return head.length > 2 && hasWord(h, head); });
       if (hit) return out(hit);
     }
-    if (!opts.length) return "Job board";
-    return out(pick(opts, [/job board/i, /\bother\b/i, /website|careers? (page|site)|company site/i]) ?? null);
+    // Nori found the posting on the company's own job board (its ATS feed or careers page): say exactly that, never a
+    // channel the person did not use. makeAnswerQuestion records it as written so the person sees it at review.
+    if (!opts.length) return "Company careers page";
+    return out(pick(opts, [/careers? (page|site)|company (web)?site|company'?s? (web)?site|\bwebsite\b/i, /\bother\b/i]) ?? null);
   }
 
   if (ACK_RE.test(l)) {
@@ -538,6 +568,15 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
       if (edu !== undefined) return edu;
     }
     const fromProfile = heuristicAnswer(field, ctx.profile);
+    if (fromProfile !== null && ctx.composed) {
+      // Not facts from the profile: an attestation or consent Nori ticked, or a referral source the person never gave.
+      // Recorded as written answers, so they are listed at review and Autopilot (in safe mode) waits for the person.
+      const l = field.label.toLowerCase().replace(/\s+/g, " ");
+      const full = ctx.profile as ApplicantProfileFull;
+      const kind: QuestionKind | null = ACK_RE.test(l) && field.kind !== "email" && !/email/.test(l) ? "acknowledgement"
+        : HEAR_RE.test(l) && !full.heardAbout ? "referral_source" : null;
+      if (kind) ctx.composed[field.label] = { answer: fromProfile, kind, sources: [], usedLLM: false };
+    }
     if (fromProfile !== null || field.kind === "file") return fromProfile;
     const kind = classifyQuestion(field.label, field);
     if (NEVER_COMPOSE.has(kind)) return null;
@@ -564,6 +603,10 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
         const out = (await getLLM("quality").text({ system: SYSTEM, prompt, maxTokens: 400 })).trim();
         if (!out || /^unknown\.?$/i.test(out)) return null;
         if (field.options?.length) return field.options.find((o) => o.toLowerCase() === out.toLowerCase()) ?? null;
+        // Free text the model wrote: every figure must already be in the facts it was given, or the question goes to the
+        // person. It is recorded as a written answer so the review screen and Autopilot treat it as one.
+        if (!numbersSupported(out, [facts, ctx.profile.fullName, ctx.profile.location ?? ""].join("\n"))) return null;
+        if (ctx.composed) ctx.composed[field.label] = { answer: out, kind: "unknown", sources: [], usedLLM: true };
         return out;
       },
       () => null,
@@ -571,6 +614,13 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
     );
     return value;
   };
+}
+
+/** True when every number in `text` (years, percentages, counts, money) also appears in `facts`. */
+export function numbersSupported(text: string, facts: string): boolean {
+  const norm = (n: string) => n.replace(/[,\s]/g, "");
+  const known = new Set((facts.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map(norm));
+  return (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).every((n) => known.has(norm(n)));
 }
 
 /** Questions most applications ask; answered up front so the user sees them at form review. */

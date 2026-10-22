@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { z } from "zod";
 import {
   applications, getLLM, inboxMessages, jobs, withFallback,
@@ -163,6 +163,43 @@ export function guessCompany(from: string): string | undefined {
   return capitalize(base);
 }
 
+/** The sender's registrable domain label ("acme" for jobs@mail.acme.co.uk), lowercased, or "". */
+export function senderBase(from: string): string {
+  const addr = (from.match(/<([^>]+)>/)?.[1] ?? from).trim();
+  const domain = addr.split("@")[1]?.toLowerCase().replace(/[>\s].*$/, "");
+  if (!domain) return "";
+  const labels = domain.split(".");
+  const tld = labels.length > 2 && SECOND_LEVEL.has(labels[labels.length - 2]) ? 3 : 2;
+  return labels.length >= tld ? labels[labels.length - tld] : labels[0];
+}
+
+/** Mail sent by an applicant-tracking system (greenhouse-mail.io, lever.co, ...). */
+export function fromAts(from: string): boolean {
+  return ATS_DOMAINS.has(senderBase(from));
+}
+
+/**
+ * Whether this sender may speak for the company: its own domain, or an ATS whose display name names the company.
+ * Anyone can write "Acme" in a subject line, so a status change (rejected, offer, interview) needs this.
+ */
+export function senderSpeaksFor(from: string, companyName: string): boolean {
+  const company = norm(companyName);
+  if (company.length < 2) return false;
+  const base = norm(senderBase(from));
+  if (base && !MAIL_PROVIDERS.has(base) && (base === company || (base.length >= 4 && (company.includes(base) || base.includes(company))))) return true;
+  if (fromAts(from)) {
+    const display = norm(from.match(/^\s*"?([^"<]*?)"?\s*</)?.[1] ?? "");
+    return display.length >= 2 && display.includes(company);
+  }
+  return false;
+}
+
+/** A model-written draft reply comes from an email anyone could send: no links, and short. */
+export function safeDraft(draft: string | null | undefined): string | undefined {
+  const d = (draft ?? "").replace(/\bhttps?:\/\/\S+|\bwww\.\S+/gi, "").replace(/\s+\n/g, "\n").trim().slice(0, 600);
+  return d || undefined;
+}
+
 export function classifyHeuristic(email: RawEmail): ClassifiedEmail {
   const hay = `${email.subject}\n${email.text}`;
   const companyGuess = guessCompany(email.from);
@@ -212,7 +249,7 @@ export async function classifyEmail(email: RawEmail): Promise<ClassifiedEmail> {
       companyGuess: out.companyGuess ?? h.companyGuess,
       jobTitleGuess: out.jobTitleGuess ?? h.jobTitleGuess,
       interviewAt: out.interviewAt ?? undefined,
-      draftReply: out.draftReply ?? undefined,
+      draftReply: safeDraft(out.draftReply),
     };
   }, heuristic, "classifyEmail", "bulk");
   return value;
@@ -282,15 +319,21 @@ export async function syncInbox(db: Db, userId: string, deps: SyncDeps = {}): Pr
     if (existing.has(email.externalId)) continue;
     const c = await classify(email);
     const app = linkApplication(appRows, email, c);
+    // Only mail about the job search is kept. Everything else (bank, medical, personal) is recorded as an empty marker so
+    // it is not read again on the next sync, and the marker is pruned after a week (pruneInbox).
+    const keep = c.kind !== "other" || Boolean(app);
     const inserted = await db.insert(inboxMessages).values({
       userId, applicationId: app?.id ?? null, externalId: email.externalId,
-      fromAddress: email.from, subject: email.subject, bodyText: email.text, receivedAt: email.receivedAt,
-      kind: c.kind, code: c.code ?? null, draftReply: c.draftReply ?? null, source: "composio_gmail",
+      fromAddress: keep ? email.from : "", subject: keep ? email.subject : "", bodyText: keep ? email.text.slice(0, INBOX_BODY_MAX) : "",
+      receivedAt: email.receivedAt,
+      kind: c.kind, code: c.code ?? null, draftReply: keep ? c.draftReply ?? null : null, source: "composio_gmail",
     }).onConflictDoNothing().returning();
     if (!inserted.length) continue;
     imported++;
     existing.add(email.externalId);
-    if (app) {
+    // The tracker only moves on mail the company (or its ATS) sent. A message that merely mentions the company stays
+    // linked for the person to read, but cannot mark the application rejected or as an offer.
+    if (app && senderSpeaksFor(email.from, app.companyName)) {
       const next = nextStatus(app.status, c.kind);
       if (next) {
         await db.update(applications).set({ status: next, updatedAt: new Date() }).where(eq(applications.id, app.id));
@@ -299,6 +342,17 @@ export async function syncInbox(db: Db, userId: string, deps: SyncDeps = {}): Pr
     }
   }
   return { imported };
+}
+
+/** Longest stored body of a job email. */
+export const INBOX_BODY_MAX = 20_000;
+
+/** Drop the empty markers for non-job mail once they are older than the sync window. */
+export async function pruneInbox(db: Db, olderThanDays = 7): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
+  const gone = await db.delete(inboxMessages)
+    .where(and(eq(inboxMessages.kind, "other"), eq(inboxMessages.bodyText, ""), lt(inboxMessages.receivedAt, cutoff))).returning();
+  return gone.length;
 }
 
 export type WaitOpts = { intervalMs?: number; sync?: (db: Db, userId: string) => Promise<{ imported: number }> };
@@ -328,7 +382,10 @@ export async function waitForVerificationCode(db: Db, userId: string, hint: stri
       .where(and(eq(inboxMessages.userId, userId), eq(inboxMessages.kind, "verification_code"), eq(inboxMessages.read, false), gte(inboxMessages.receivedAt, since)))
       .orderBy(desc(inboxMessages.receivedAt));
     const usable = rows.filter((r) => r.code);
-    const pick = (needle && usable.find((r) => `${r.fromAddress} ${r.subject} ${r.bodyText}`.toLowerCase().includes(needle))) || usable[0];
+    // The code is typed into a real application, so it must come from the site that asked for it: the sender or the
+    // subject names it, or an ATS sent it. A newest-code fallback would type a code planted by anyone who emails you.
+    const named = (r: (typeof usable)[number]) => !!needle && `${r.fromAddress} ${r.subject}`.toLowerCase().includes(needle);
+    const pick = usable.find(named) ?? usable.find((r) => fromAts(r.fromAddress)) ?? (needle ? undefined : usable[0]);
     if (pick?.code) {
       await db.update(inboxMessages).set({ read: true }).where(eq(inboxMessages.id, pick.id));
       return pick.code;

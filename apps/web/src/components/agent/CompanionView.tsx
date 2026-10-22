@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, ArrowUpRight, Play } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AgentActivity, AgentStatus } from "@/lib/types";
+import type { AgentActivity, AgentAwaitingReview, AgentStatus } from "@/lib/types";
 import { cx, Frame, Icon, IndexLabel, inputClass, Square } from "../ui";
 import { ago, headline, inMin, KIND_ICON, KIND_LABEL } from "./kinds";
 
@@ -60,11 +60,19 @@ export function CompanionView({ initialStatus, initialActivity, initialError }: 
     try { await api.agentTick(); await refresh(); } catch (e) { setError((e as Error).message); } finally { setRunning(false); }
   }
 
-  async function resolve(id: string, r: Resolution) {
+  /** One waiting step of one application: after its resume is approved, the same application comes back with its form. */
+  const stepKey = (a: AgentAwaitingReview) => `${a.applicationId}:${a.status ?? "resume_review"}`;
+
+  async function resolve(a: AgentAwaitingReview, r: Resolution) {
+    const id = a.applicationId;
     setBusyId(id);
     try {
-      if (r === "approved") await api.approveResume(id); else await api.skipApplication(id);
-      setResolved((m) => ({ ...m, [id]: r }));
+      // A filled form is approved (and sent) with approve-form; approve-resume on it changed nothing and the row came back.
+      if (r === "skipped") await api.skipApplication(id);
+      else if (a.status === "form_review") await api.approveForm(id);
+      else await api.approveResume(id);
+      setResolved((m) => ({ ...m, [stepKey(a)]: r }));
+      void refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -93,7 +101,7 @@ export function CompanionView({ initialStatus, initialActivity, initialError }: 
     window.open(`${window.location.origin}/agent`, "_blank");
   }
 
-  const waiting = (status?.awaitingReview ?? []).filter((a) => !resolved[a.applicationId]);
+  const waiting = (status?.awaitingReview ?? []).filter((a) => !resolved[stepKey(a)]);
   const line = status ? statusLine(status, running, now) : null;
   const small = "inline-flex h-7 items-center rounded-full px-3 text-[12px] font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-40";
 
@@ -148,11 +156,11 @@ export function CompanionView({ initialStatus, initialActivity, initialError }: 
                 <li key={a.applicationId} className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <div className="min-w-0">
                     <div className="truncate text-[13px] font-medium text-ink">{a.title}</div>
-                    <div className="truncate text-[12px] text-muted tnum">{a.companyName}{a.atsScore != null && <> &middot; ATS {a.atsScore}</>}</div>
+                    <div className="truncate text-[12px] text-muted tnum">{a.companyName} &middot; {a.status === "form_review" ? "form filled" : "resume ready"}{a.atsScore != null && <> &middot; ATS {a.atsScore}</>}</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a.applicationId, "approved")} className={cx(small, "bg-ink text-paper hover:bg-accent")}><span className="text-[12px]">Approve</span></button>
-                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a.applicationId, "skipped")} className={cx(small, "border border-line text-ink hover:border-ink")}><span className="text-[12px]">Skip</span></button>
+                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a, "approved")} className={cx(small, "bg-ink text-paper hover:bg-accent")}><span className="text-[12px]">{a.status === "form_review" ? "Approve form" : "Approve"}</span></button>
+                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a, "skipped")} className={cx(small, "border border-line text-ink hover:border-ink")}><span className="text-[12px]">Skip</span></button>
                   </div>
                 </li>
               ))}

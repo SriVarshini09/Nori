@@ -99,11 +99,23 @@ function placeMatches(required: string, mine: Set<string>): boolean {
   return false;
 }
 
-/** Earliest role start among graph role nodes (YYYY-MM or YYYY-MM-DD). */
+/**
+ * Internships, co-ops, student and part-time jobs are experience, but not "years of experience" as job postings mean it.
+ * Counting them made a student with a 2022 summer internship "3+ years" in 2026, so every intern and new-grad posting
+ * was skipped for exactly the people they are for.
+ */
+export function isEarlyCareerRole(title: string | undefined, employmentType?: unknown): boolean {
+  const t = String(employmentType ?? "").toLowerCase();
+  if (/intern|co-?op|part[- ]?time|student|apprentice|volunteer|seasonal/.test(t)) return true;
+  return /\b(intern(ship)?|co-?op|student|teaching assistant|research assistant|graduate assistant|apprentice|summer analyst|summer associate)\b/i.test(title ?? "");
+}
+
+/** Earliest start among graph role nodes (YYYY-MM or YYYY-MM-DD), not counting internships and student jobs. */
 export function earliestRoleStart(graph: Pick<Graph, "nodes"> | undefined): string | null {
   let best: string | null = null;
   for (const n of graph?.nodes ?? []) {
     if (n.type !== "role" || !n.startDate) continue;
+    if (isEarlyCareerRole(String(n.props?.title ?? n.label), n.props?.employmentType)) continue;
     if (!/^\d{4}/.test(n.startDate)) continue;
     if (!best || n.startDate < best) best = n.startDate;
   }
@@ -226,4 +238,21 @@ export function checkDisqualifiers(job: GateJob, requirements: JobRequirements |
   }
 
   return { ok: reasons.length === 0, reasons };
+}
+
+/**
+ * What the posting states that the profile gives no answer to. checkDisqualifiers lets an unknown profile field pass
+ * (never reject on a guess); anything that sends an application without asking must not, so Autopilot treats each of
+ * these as "cannot prove eligibility" and leaves the form for the person.
+ */
+export function unprovenConstraints(job: GateJob, requirements: JobRequirements | null | undefined, profile: GateProfile): string[] {
+  const wa = (profile.workAuth ?? {}) as WorkAuth;
+  const text = [job.descriptionText ?? "", ...(requirements?.mustHaves ?? []), ...(requirements?.disqualifiers ?? [])].join("\n");
+  const out: string[] = [];
+  if (CITIZEN_RE.test(text) && !wa.status) out.push("The posting requires US citizenship and your profile does not say your status");
+  if ((CLEARANCE_RE.test(text) || OBTAIN_CLEARANCE_RE.test(text)) && !wa.status && !hasClearance(profile.securityClearance)) {
+    out.push("The posting mentions a security clearance and your profile does not say whether you hold or can get one");
+  }
+  if (NO_SPONSOR_RE.test(text) && wa.needsSponsorship === undefined) out.push("The posting offers no visa sponsorship and your profile does not say whether you need it");
+  return out;
 }

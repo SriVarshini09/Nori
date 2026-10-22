@@ -133,7 +133,9 @@ export function hostedSpec(tier: Tier): LLMSpec | null {
     const baseUrl = process.env.HOSTED_LLM_BASE_URL ?? (mode === "cline" ? CLINE_BASE_URL : mode === "ollama" ? ollamaBaseUrl() : undefined);
     const model = (tier === "quality" ? process.env.HOSTED_LLM_QUALITY_MODEL : process.env.HOSTED_LLM_BULK_MODEL)
       ?? (tier === "quality" ? process.env.HOSTED_LLM_BULK_MODEL : process.env.HOSTED_LLM_QUALITY_MODEL)
-      ?? (mode === "cline" ? CLINE_DEFAULT_MODELS[tier] : mode === "anthropic" ? "claude-opus-5-5" : "qwen3:8b");
+      ?? (mode === "cline" ? CLINE_DEFAULT_MODELS[tier] : mode === "anthropic" ? (tier === "bulk" ? "claude-haiku-5-5" : "claude-opus-5-5")
+        // A key for OpenAI with no model named should not fall through to a local model's name.
+        : /(^|\.)openai\.com$/i.test(hostOf(baseUrl ?? "")) ? (tier === "bulk" ? "gpt-4.1-mini" : "gpt-4.1") : "qwen3:8b");
     return { mode, model, baseUrl, apiKey: process.env.HOSTED_LLM_API_KEY };
   }
   const forced = process.env.LLM_PROVIDER as Provider | undefined;
@@ -224,8 +226,19 @@ export function forgetUserModels(userId?: string) {
 
 // ---------- providers ----------
 
+/**
+ * Model endpoints may be chosen by the user. The address is checked once (presets.ts), so a redirect must never be
+ * followed: a public host answering 302 to http://169.254.169.254/ would otherwise be fetched from the server.
+ */
+const noRedirectFetch: typeof fetch = (input, init) => fetch(input, { ...init, redirect: "manual" });
+function refuseRedirect(res: Response): void {
+  if (res.status >= 300 && res.status < 400) throw new Error(`The model endpoint answered with a redirect (${res.status}); redirects are not followed. Use the provider's final URL.`);
+}
+
 function anthropicLLM(spec: LLMSpec): LLM {
-  const client = new Anthropic(spec.apiKey ? { apiKey: spec.apiKey, ...(spec.baseUrl ? { baseURL: spec.baseUrl } : {}) } : {});
+  const client = new Anthropic(spec.apiKey
+    ? { apiKey: spec.apiKey, fetch: noRedirectFetch, ...(spec.baseUrl ? { baseURL: spec.baseUrl } : {}) }
+    : { fetch: noRedirectFetch });
   const model = spec.model;
   return {
     provider: "anthropic", model, available: true, mode: "anthropic",
@@ -267,7 +280,7 @@ async function ollamaContext(baseUrl: string, model: string): Promise<number | n
   if (hit && Date.now() - hit.at < 60_000) return hit.ctx;
   let ctx: number | null = null;
   try {
-    const res = await fetch(`${baseUrl.replace(/\/v1$/, "")}/api/ps`, { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(`${baseUrl.replace(/\/v1$/, "")}/api/ps`, { signal: AbortSignal.timeout(1500), redirect: "manual" });
     const data = (await res.json()) as { models?: { name?: string; model?: string; context_length?: number }[] };
     ctx = data.models?.find((m) => m.name === model || m.model === model)?.context_length ?? null;
   } catch { ctx = null; }
@@ -278,17 +291,61 @@ async function ollamaContext(baseUrl: string, model: string): Promise<number | n
 /** Rough token count: three characters per token is conservative for English and JSON. */
 export const estimateTokens = (messages: { content: string }[]) => Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 3);
 
+const hostOf = (url: string) => { try { return new URL(url).hostname; } catch { return ""; } };
+
+/** OpenAI's own reasoning models (gpt-5 family, o-series): default temperature only, `max_completion_tokens`, `reasoning_effort`. */
+export function isOpenAIReasoningModel(baseUrl: string, model: string): boolean {
+  return /(^|\.)openai\.com$/i.test(hostOf(baseUrl)) && /^(gpt-5|o\d)/i.test(model);
+}
+
+type ChatBodyInput = {
+  model: string; messages: { role: string; content: string }[]; json: boolean; maxTokens: number;
+  effort?: "low" | "medium" | "high"; mode: LLMSpec["mode"]; baseUrl: string;
+};
+
+/** The request body for /chat/completions, shaped for what the model is known to accept. */
+export function chatBody(i: ChatBodyInput): Record<string, unknown> {
+  const reasoningModel = isOpenAIReasoningModel(i.baseUrl, i.model);
+  // gpt-5 takes minimal/low/medium/high; the o-series has no "minimal". Extraction does not need deep thought.
+  const openAIEffort = (e?: "low" | "medium" | "high") => {
+    const v = e === "high" ? "medium" : e === "medium" ? "low" : "minimal";
+    return /^o\d/i.test(i.model) && v === "minimal" ? "low" : v;
+  };
+  return {
+    model: i.model, messages: i.messages,
+    ...(reasoningModel ? {} : { temperature: 0.2 }),
+    // Reasoning models (DeepSeek V4 Pro, Kimi K3, gpt-5) spend tokens thinking first; a tiny cap yields empty content
+    // and Cline answers 500. Only send a cap when it is large enough to hold a real answer.
+    ...(i.maxTokens >= 256 ? (reasoningModel ? { max_completion_tokens: i.maxTokens } : { max_tokens: i.maxTokens }) : {}),
+    ...(i.json ? { response_format: { type: "json_object" } } : {}),
+    ...(reasoningModel ? { reasoning_effort: openAIEffort(i.effort) }
+      : i.mode === "ollama" ? { reasoning_effort: i.effort === "high" ? "medium" : i.effort === "medium" ? "low" : "none" } : {}),
+  };
+}
+
+/**
+ * When a provider answers 400 naming a parameter it does not accept, return the body adjusted for that one parameter
+ * (or null when the refusal is about something else). `max_tokens` and `max_completion_tokens` swap places.
+ */
+export function adaptBodyToRefusal(body: Record<string, unknown>, responseText: string): Record<string, unknown> | null {
+  let param: string | undefined;
+  try {
+    const j = JSON.parse(responseText) as { error?: { param?: string; message?: string } | string };
+    if (typeof j.error === "object") param = j.error.param ?? /'([a-z_]+)'/i.exec(j.error.message ?? "")?.[1];
+  } catch { /* not JSON */ }
+  if (!param || !(param in body)) return null;
+  const next = { ...body };
+  if (param === "max_tokens") { next.max_completion_tokens = next.max_tokens; delete next.max_tokens; }
+  else if (param === "max_completion_tokens") { next.max_tokens = next.max_completion_tokens; delete next.max_completion_tokens; }
+  else if (["temperature", "response_format", "reasoning_effort"].includes(param)) delete next[param];
+  else return null;
+  return next;
+}
+
 function openAICompatLLM(spec: LLMSpec): LLM {
   const baseUrl = (spec.baseUrl ?? ollamaBaseUrl()).replace(/\/$/, "");
   const apiKey = spec.apiKey || "ollama";
   const model = spec.model;
-
-  /**
-   * Thinking models served by Ollama (qwen3.5, deepseek-r1, ...) spend most of their time reasoning, which makes a
-   * structured extraction 10x slower for no gain. Turn reasoning off for extraction and down for drafting.
-   */
-  const reasoning = (effort?: "low" | "medium" | "high") =>
-    spec.mode === "ollama" ? { reasoning_effort: effort === "high" ? "medium" : effort === "medium" ? "low" : "none" } : {};
 
   async function chat(messages: { role: string; content: string }[], json: boolean, maxTokens: number, signal: AbortSignal, effort?: "low" | "medium" | "high"): Promise<string> {
     if (spec.mode === "ollama") {
@@ -299,19 +356,25 @@ function openAICompatLLM(spec: LLMSpec): LLM {
         throw new Error(`The prompt needs about ${need} tokens but ${model} runs with a ${ctx}-token context, so it would be cut off. Start Ollama with OLLAMA_CONTEXT_LENGTH=16384 (or set OLLAMA_NUM_CTX if you already did).`);
       }
     }
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model, messages, temperature: 0.2,
-        // Reasoning models (DeepSeek V4 Pro, Kimi K3) spend tokens thinking first; a tiny cap yields empty content
-        // and Cline answers 500. Only send a cap when it is large enough to hold a real answer.
-        ...(maxTokens >= 256 ? { max_tokens: maxTokens } : {}),
-        ...(json ? { response_format: { type: "json_object" } } : {}),
-        ...reasoning(effort),
-      }),
-      signal,
-    });
+    // Providers disagree about which settings a model accepts (OpenAI's gpt-5 and o-series reject `temperature` and
+    // `max_tokens`). Send the best guess, and when the provider names a parameter it refuses, fix that one and retry.
+    let body = chatBody({ model, messages, json, maxTokens, effort, mode: spec.mode, baseUrl });
+    let res!: Response;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      res = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal,
+        redirect: "manual",
+      });
+      refuseRedirect(res);
+      if (res.status !== 400) break;
+      const text = await res.text();
+      const fixed = adaptBodyToRefusal(body, text);
+      if (!fixed) throw new Error(`LLM 400: ${scrub(text.slice(0, 300), apiKey)}`);
+      body = fixed;
+    }
     if (!res.ok) throw new Error(`LLM ${res.status}: ${scrub((await res.text()).slice(0, 300), apiKey)}`);
     type Completion = { choices?: { message?: { content?: string } }[]; error?: { message?: string } | string };
     const raw = (await res.json()) as Completion & { data?: Completion };
@@ -382,3 +445,4 @@ export async function withFallback<T>(call: () => Promise<T>, fallback: () => T 
 }
 
 export * from "./credentials.js";
+export * from "./presets.js";

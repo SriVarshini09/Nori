@@ -1,79 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import { Check, KeyRound, Zap } from "lucide-react";
+import { Check, KeyRound, ListRestart, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { ModelMode, ModelProvider, ModelSettings, ModelTestResult } from "@/lib/types";
-import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, TextLink, cx, idx, inputClass } from "./ui";
-
-type ProviderDef = {
-  id: ModelProvider;
-  name: string;
-  line: string;
-  recommended?: boolean;
-  needsKey: boolean;
-  needsUrl: boolean;
-  baseUrl: string;
-  quality: string;
-  bulk: string;
-};
-
-const PROVIDERS: ProviderDef[] = [
-  { id: "cline", name: "Cline", line: "Uses your Cline credits, open models", recommended: true, needsKey: true, needsUrl: false, baseUrl: "https://api.cline.bot/api/v1", quality: "deepseek/deepseek-v4-pro", bulk: "qwen/qwen3.7-plus" },
-  { id: "ollama", name: "Local Ollama", line: "Runs on your machine, no key", needsKey: false, needsUrl: true, baseUrl: "http://localhost:11434", quality: "qwen3:14b", bulk: "qwen3:4b" },
-  { id: "openai-compatible", name: "Any OpenAI-compatible endpoint", line: "Your own gateway or provider", needsKey: true, needsUrl: true, baseUrl: "", quality: "", bulk: "" },
-  { id: "anthropic", name: "Anthropic", line: "Claude models with your API key", needsKey: true, needsUrl: false, baseUrl: "", quality: "claude-sonnet-4-5", bulk: "claude-haiku-4-5" },
-];
+import type { ModelMode, ModelPreset, ModelPresetsInfo, ModelSettings, ModelTestResult } from "@/lib/types";
+import { Button, Field, Frame, Icon, IndexLabel, Notice, TextLink, cx, idx, inputClass } from "./ui";
 
 const MODE_LINE: Record<ModelMode, string> = {
   cline: "Running on open models via Cline",
-  ollama: "Running locally on Ollama",
-  "openai-compatible": "Running on your own endpoint",
+  ollama: "Running locally",
+  "openai-compatible": "Running on your own provider",
   anthropic: "Running on Anthropic",
   heuristic: "No model: heuristics only",
 };
 
-const def = (id: ModelProvider) => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
+/**
+ * Model and keys. Pick a provider, paste your own key, choose models from the provider's own list, test the connection.
+ * Used in Settings and in onboarding (compact). Keys are sent to the server once and never shown again.
+ */
+export function ModelPanel({ initial, presets: info, compact }: { initial: ModelSettings | null; presets: ModelPresetsInfo; compact?: boolean }) {
+  // Local models cannot be reached from a shared server, and LOCAL_ONLY forbids cloud ones: show only what can work.
+  const offered = info.presets.filter((p) => (info.localOnly ? p.local : info.strictUrls ? !p.local : true));
+  const byId = (id: string | null | undefined) => offered.find((p) => p.id === id);
+  const startPreset = byId(initial?.preset) ?? offered[0];
 
-/** Model & keys. One numbered radio list, per-provider fields, Save and Test connection. Used in Settings and onboarding. */
-export function ModelPanel({ initial, compact }: { initial: ModelSettings | null; compact?: boolean }) {
   const [saved, setSaved] = useState<ModelSettings | null>(initial);
-  const start = initial?.provider ?? "cline";
-  const [provider, setProvider] = useState<ModelProvider>(start);
+  const [preset, setPreset] = useState<ModelPreset | undefined>(startPreset);
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? def(start).baseUrl);
-  const [quality, setQuality] = useState(initial?.qualityModel ?? def(start).quality);
-  const [bulk, setBulk] = useState(initial?.bulkModel ?? def(start).bulk);
-  const [busy, setBusy] = useState<"save" | "test" | null>(null);
+  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? startPreset?.baseUrl ?? "");
+  const [quality, setQuality] = useState(initial?.qualityModel ?? startPreset?.defaults?.quality ?? "");
+  const [bulk, setBulk] = useState(initial?.bulkModel ?? startPreset?.defaults?.bulk ?? "");
+  const [models, setModels] = useState<string[]>([]);
+  const [busy, setBusy] = useState<"save" | "test" | "models" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [test, setTest] = useState<ModelTestResult | null>(null);
 
-  const p = def(provider);
-  const hasKey = !!saved?.hasKey && saved.provider === provider;
+  if (!preset) return <Frame className="p-5 sm:p-6"><p className="text-body-sm text-muted">No model provider can be configured on this server.</p></Frame>;
 
-  function pick(id: ModelProvider) {
-    if (id === provider) return;
-    const d = def(id);
-    setProvider(id);
-    setApiKey("");
-    setTest(null);
-    setError(null);
-    if (saved && saved.provider === id) {
-      setBaseUrl(saved.baseUrl ?? d.baseUrl);
-      setQuality(saved.qualityModel ?? d.quality);
-      setBulk(saved.bulkModel ?? d.bulk);
-    } else {
-      setBaseUrl(d.baseUrl);
-      setQuality(d.quality);
-      setBulk(d.bulk);
-    }
+  const hasKey = !!saved?.hasKey && saved.preset === preset.id;
+  const fail = (e: unknown) => setError(e instanceof ApiError ? e.detail : (e as Error).message);
+
+  function pick(p: ModelPreset) {
+    if (p.id === preset?.id) return;
+    setPreset(p);
+    setApiKey(""); setTest(null); setError(null); setNote(null); setModels([]);
+    const same = saved?.preset === p.id;
+    setBaseUrl(same ? saved?.baseUrl ?? p.baseUrl ?? "" : p.baseUrl ?? "");
+    setQuality(same ? saved?.qualityModel ?? p.defaults?.quality ?? "" : p.defaults?.quality ?? "");
+    setBulk(same ? saved?.bulkModel ?? p.defaults?.bulk ?? "" : p.defaults?.bulk ?? "");
   }
+
+  const urlToSend = () => (preset!.provider === "anthropic" ? undefined : (preset!.editableUrl ? baseUrl.trim() : preset!.baseUrl) ?? undefined);
 
   async function persist(): Promise<ModelSettings> {
     const next = await api.saveModelSettings({
-      provider,
+      provider: preset!.provider,
       ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
-      ...(p.needsUrl || provider === "cline" ? { baseUrl: baseUrl.trim() } : {}),
+      ...(urlToSend() ? { baseUrl: urlToSend() } : {}),
       qualityModel: quality.trim(),
       bulkModel: bulk.trim(),
     });
@@ -82,29 +66,27 @@ export function ModelPanel({ initial, compact }: { initial: ModelSettings | null
     return next;
   }
 
-  const fail = (e: unknown) => setError(e instanceof ApiError ? e.detail : (e as Error).message);
-
   async function save() {
-    setBusy("save");
-    setError(null);
-    try { await persist(); } catch (e) { fail(e); } finally { setBusy(null); }
+    setBusy("save"); setError(null); setNote(null);
+    try { await persist(); setNote("Saved."); } catch (e) { fail(e); } finally { setBusy(null); }
   }
 
   async function runTest() {
-    setBusy("test");
-    setError(null);
-    setTest(null);
+    setBusy("test"); setError(null); setNote(null); setTest(null);
+    try { await persist(); setTest(await api.testModel()); } catch (e) { fail(e); } finally { setBusy(null); }
+  }
+
+  async function loadModels() {
+    setBusy("models"); setError(null); setNote(null);
     try {
-      await persist();
-      setTest(await api.testModel());
-    } catch (e) {
-      fail(e);
-    } finally {
-      setBusy(null);
-    }
+      const r = await api.listModels({ provider: preset!.provider, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), baseUrl: urlToSend() ?? null });
+      setModels(r.models);
+      setNote(`${r.models.length} models available. Start typing in a model box to pick one.`);
+    } catch (e) { fail(e); } finally { setBusy(null); }
   }
 
   const mode: ModelMode = saved?.mode ?? "heuristic";
+  const canList = preset.needsKey ? hasKey || apiKey.trim().length > 0 : true;
 
   return (
     <Frame className="p-5 sm:p-6">
@@ -112,52 +94,40 @@ export function ModelPanel({ initial, compact }: { initial: ModelSettings | null
         <IndexLabel marker={mode === "heuristic" ? "hollow" : "ink"} tone="ink">
           <span role="status">{MODE_LINE[mode]}</span>
         </IndexLabel>
-        {provider === "cline" && !hasKey && (
-          <TextLink href="https://cline.bot" external>Get a Cline key</TextLink>
-        )}
+        {preset.keyUrl && !hasKey && <TextLink href={preset.keyUrl} external>Get a {preset.label} key</TextLink>}
       </div>
 
-      <ol role="radiogroup" aria-label="Model provider" className="mt-5 border-t border-line">
-        {PROVIDERS.map((d, n) => {
-          const on = d.id === provider;
+      <div role="radiogroup" aria-label="Model provider" className="mt-5 border-t border-line">
+        {offered.map((d, n) => {
+          const on = d.id === preset.id;
           return (
-            <li key={d.id} className="border-b border-line">
+            <div key={d.id} className="border-b border-line">
               <button
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => pick(d.id)}
+                type="button" role="radio" aria-checked={on} onClick={() => pick(d)}
                 className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 py-3.5 text-left transition-colors duration-150 hover:bg-stone/50 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:gap-x-4"
               >
                 <span className="text-label font-medium text-faint tnum">{idx(n + 1)}</span>
                 <span className="min-w-0">
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm font-medium text-ink">
-                    {d.id === "cline" && <Icon icon={Zap} />}
-                    {d.name}
-                    {d.recommended && <Pill mark="accent" className="h-5 px-2 text-[11px]">Recommended</Pill>}
-                  </span>
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm font-medium text-ink">{d.label}</span>
                   <span className="mt-0.5 block text-meta text-muted">{d.line}</span>
                 </span>
                 <span aria-hidden="true" className={cx("flex h-4 w-4 items-center justify-center rounded-full border transition-colors duration-150", on ? "border-ink" : "border-line-strong")}>
                   {on && <span className="h-2 w-2 rounded-full bg-ink" />}
                 </span>
               </button>
-            </li>
+            </div>
           );
         })}
-      </ol>
+      </div>
+      {info.strictUrls && <p className="mt-3 text-meta text-muted">Models on your own computer (Ollama, LM Studio) are not offered here, because this server cannot reach your computer. Run Nori on your computer to use them.</p>}
 
       <div className={cx("mt-5 grid gap-x-5 gap-y-5", !compact && "sm:grid-cols-2")}>
-        {p.needsKey && (
-          <Field label="API key" hint={hasKey ? "Key saved. Type to replace it." : undefined} className={compact ? "" : "sm:col-span-2"}>
+        {preset.needsKey && (
+          <Field label="API key" hint={hasKey ? "Key saved. Type to replace it. It is stored encrypted and never shown again." : "Stored encrypted. Only used to call this provider for you."} className={compact ? "" : "sm:col-span-2"}>
             <span className="relative block">
               <input
-                className={cx(inputClass, "pr-24")}
-                type="password"
-                autoComplete="new-password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={hasKey ? "" : provider === "cline" ? "Your Cline API key" : "API key"}
+                className={cx(inputClass, "pr-24")} type="password" autoComplete="new-password" spellCheck={false}
+                value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={hasKey ? "" : "Paste your API key"}
               />
               {hasKey && !apiKey && (
                 <span className="pointer-events-none absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center gap-1.5 text-[12px] text-muted"><Icon icon={KeyRound} />key saved</span>
@@ -165,28 +135,27 @@ export function ModelPanel({ initial, compact }: { initial: ModelSettings | null
             </span>
           </Field>
         )}
-        {p.needsUrl && (
+        {preset.editableUrl && (
           <Field label="Base URL" className={compact ? "" : "sm:col-span-2"}>
-            <input className={inputClass} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={provider === "ollama" ? "http://localhost:11434" : "https://example.com/v1"} spellCheck={false} />
+            <input className={inputClass} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={preset.baseUrl ?? "https://example.com/v1"} spellCheck={false} />
           </Field>
         )}
-        <Field label="Quality model">
-          <input className={inputClass} value={quality} onChange={(e) => setQuality(e.target.value)} placeholder={p.quality || "Model id"} spellCheck={false} />
+        <Field label="Quality model" hint="Used for writing: tailoring and answers.">
+          <input className={inputClass} list="model-options" value={quality} onChange={(e) => setQuality(e.target.value)} placeholder={preset.defaults?.quality ?? "Model name"} spellCheck={false} />
         </Field>
-        <Field label="Bulk model">
-          <input className={inputClass} value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder={p.bulk || "Model id"} spellCheck={false} />
+        <Field label="Bulk model" hint="Used for fast, cheap steps like reading and scoring.">
+          <input className={inputClass} list="model-options" value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder={preset.defaults?.bulk ?? "Model name"} spellCheck={false} />
         </Field>
+        <datalist id="model-options">{models.map((m) => <option key={m} value={m} />)}</datalist>
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-5">
         <Button variant="primary" icon={Check} onClick={save} disabled={busy !== null}>{busy === "save" ? "Saving..." : "Save"}</Button>
+        <Button variant="secondary" icon={ListRestart} onClick={loadModels} disabled={busy !== null || !canList}>{busy === "models" ? "Loading..." : "Load models"}</Button>
         <Button variant="secondary" icon={Zap} onClick={runTest} disabled={busy !== null}>{busy === "test" ? "Testing..." : "Test connection"}</Button>
-        {test?.ok && (
-          <span className="text-meta text-ink tnum" role="status">
-            {test.model} answered in {test.latencyMs} ms
-          </span>
-        )}
+        {test?.ok && <span className="text-meta text-ink tnum" role="status">{test.model} answered in {test.latencyMs} ms</span>}
       </div>
+      {note && !error && <p className="mt-4 text-meta text-muted" role="status">{note}</p>}
       {test && !test.ok && <div className="mt-4"><Notice tone="red">{test.error ?? "The model did not answer."}</Notice></div>}
       {error && <div className="mt-4"><Notice tone="red">{error}</Notice></div>}
     </Frame>

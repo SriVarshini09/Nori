@@ -10,12 +10,12 @@ export function Square({ tone = "ink", size = 7, pulse, className }: { tone?: Ma
       aria-hidden="true"
       style={{ width: size, height: size }}
       className={cx(
-        "inline-block shrink-0",
-        tone === "ink" && "bg-ink",
-        tone === "accent" && "bg-accent",
+        "inline-block shrink-0 rounded-full",
+        tone === "ink" && "bg-emerald-500",
+        tone === "accent" && "bg-amber-500",
         tone === "muted" && "bg-faint",
-        tone === "hollow" && "border border-muted",
-        tone === "outline" && "border border-ink",
+        tone === "hollow" && "border-[1.5px] border-sky-500",
+        tone === "outline" && "border-[1.5px] border-rose-500",
         pulse && "animate-pulse",
         className,
       )}

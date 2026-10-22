@@ -6,7 +6,9 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { DriverContext, FormField } from "@jobgraph/core";
 import { GreenhouseDriver } from "./greenhouse.js";
-import { classifyField, phoneCountryValue, pickDriver, WebDriver } from "./index.js";
+import { chromium } from "playwright";
+import { runApplyFlow } from "./flow.js";
+import { ashbyApplyUrl, classifyField, cleanLabel, discoverFields, fillForm, leverApplyUrl, phoneCountryValue, pickDriver, WebDriver } from "./index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_URL = pathToFileURL(path.resolve(here, "../fixtures/greenhouse-form.html")).toString();
@@ -171,6 +173,27 @@ describe("routing and classification", () => {
     expect(new WebDriver().supports("http://x.test")).toBe(true);
   });
 
+  it("routes Lever, Ashby and SmartRecruiters postings to their own drivers", () => {
+    expect(pickDriver("https://jobs.lever.co/acme/5f1c2a3b-0000-4000-8000-123456789abc")?.atsType).toBe("lever");
+    expect(pickDriver("https://jobs.eu.lever.co/acme/5f1c2a3b-0000-4000-8000-123456789abc/apply")?.atsType).toBe("lever");
+    expect(pickDriver("https://jobs.lever.co/acme")?.atsType).toBe("web"); // a company index is not a posting
+    expect(pickDriver("https://jobs.ashbyhq.com/acme/5f1c2a3b-0000-4000-8000-123456789abc")?.atsType).toBe("ashby");
+    expect(pickDriver("https://jobs.ashbyhq.com/acme")?.atsType).toBe("web");
+    expect(pickDriver("https://jobs.smartrecruiters.com/Acme/743999-senior-engineer")?.atsType).toBe("smartrecruiters");
+    expect(pickDriver("https://evil.example/jobs.lever.co/acme/123")?.atsType).toBe("web"); // the host decides, not the path
+  });
+
+  it("opens the application step of a Lever or Ashby posting", () => {
+    const id = "5f1c2a3b-0000-4000-8000-123456789abc";
+    expect(leverApplyUrl(`https://jobs.lever.co/acme/${id}`)).toBe(`https://jobs.lever.co/acme/${id}/apply`);
+    expect(leverApplyUrl(`https://jobs.lever.co/acme/${id}/apply?lever-source=LinkedIn#x`)).toBe(`https://jobs.lever.co/acme/${id}/apply?lever-source=LinkedIn`);
+    expect(leverApplyUrl("https://jobs.lever.co/acme")).toBeNull();
+    expect(leverApplyUrl("not a url")).toBeNull();
+    expect(ashbyApplyUrl(`https://jobs.ashbyhq.com/acme/${id}`)).toBe(`https://jobs.ashbyhq.com/acme/${id}/application`);
+    expect(ashbyApplyUrl(`https://jobs.ashbyhq.com/acme/${id}/application`)).toBe(`https://jobs.ashbyhq.com/acme/${id}/application`);
+    expect(ashbyApplyUrl("https://example.com/acme/1")).toBeNull();
+  });
+
   it("classifies labels", () => {
     const c = (label: string, kind: FormField["kind"] = "text") => classifyField({ label, kind });
     expect(c("First Name")).toBe("first_name");
@@ -191,4 +214,102 @@ describe("routing and classification", () => {
     expect(c("Country")).toBe("country");
     expect(c("Why do you want to work here?", "textarea")).toBe("custom");
   });
+});
+
+describe("labels and what the form really holds", () => {
+  it("strips the page's required marker and helper text from labels", () => {
+    expect(cleanLabel("Full name✱")).toBe("Full name");
+    expect(cleanLabel("Resume/CV ✱ATTACH RESUME/CVCouldn't auto-read resume.Analyzing resume...Success!")).toBe("Resume/CV");
+    expect(cleanLabel("Current location ✱No location found. Try entering a different locationLoading")).toBe("Current location");
+    expect(cleanLabel("Email address *")).toBe("Email address");
+    expect(cleanLabel("  Are you   over 18?  ")).toBe("Are you over 18?");
+    expect(cleanLabel("✱")).toBe("✱"); // never returns an empty label
+    // a group label with its options' text glued on
+    expect(cleanLabel("RaceHispanic or LatinoA person of Cuban, Mexican or other Spanish cultureWhite", ["Hispanic or Latino", "White", "Asian"])).toBe("Race");
+    expect(cleanLabel("Gender", ["Male", "Female"])).toBe("Gender");
+    expect(cleanLabel("Pick a plan", ["Plan"])).toBe("Pick a plan"); // an option's text at the start never empties the label
+  });
+
+  it("does not report a field as filled when the page cleared it afterwards, and records what is really there", async () => {
+    // "Location" and "Favourite colour" are cleared by the page's own script a moment after they are set (like an autocomplete that
+    // finds no match);
+    // "Nickname" is rewritten by the page to upper case; "Name" is left alone.
+    const html = `<form id="application_form">
+      <label for="n">Name</label><input id="n" name="n" type="text">
+      <label for="l">Location</label><input id="l" name="l" type="text">
+      <label for="k">Nickname</label><input id="k" name="k" type="text">
+      <label for="r">Favourite colour (required)</label><input id="r" name="r" type="text" required>
+      <button type="submit">Submit application</button></form>
+      <script>
+        document.getElementById("l").addEventListener("change", (e) => { setTimeout(() => { e.target.value = ""; }, 120); });
+        document.getElementById("r").addEventListener("input", (e) => { setTimeout(() => { e.target.value = ""; }, 120); });
+        document.getElementById("k").addEventListener("change", (e) => { setTimeout(() => { e.target.value = e.target.value.toUpperCase(); }, 120); });
+      </script>`;
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html);
+      const fields = await discoverFields(page);
+      const events: string[] = [];
+      const { ctx } = makeCtx({ onEvent: (_s: string, m: string) => { events.push(m); }, answers: { Name: "Nori Dryrun", Location: "San Francisco, CA", Nickname: "nori", "Favourite colour (required)": "green" } });
+      const out = await fillForm(page, ctx, fields, "");
+      const byLabel = Object.fromEntries(out.filled.map((f) => [f.label, f.value]));
+      expect(byLabel.Name).toBe("Nori Dryrun");
+      expect(byLabel).not.toHaveProperty("Location"); // cleared by the page: not claimed
+      expect(byLabel.Nickname).toBe("NORI"); // the value the form actually holds
+      expect(out.pending.map((p) => p.label)).toContain("Favourite colour (required)"); // required and rejected: the person is asked
+      expect(events.some((e) => /"Location" is empty after filling/.test(e))).toBe(true);
+    } finally { await browser.close(); }
+  }, TIMEOUT);
+});
+
+describe("a site that turns automation away", () => {
+  it("hands the application to the person with a clear reason, instead of failing with 'no form'", async () => {
+    const blocked = path.join(tmp, "blocked.html");
+    await writeFile(blocked, `<html><body><h1>SmartRecruiters</h1><p>Access is temporarily restricted</p>
+      <p>We detected unusual activity from your device or network. Reasons may include: Automated (bot) activity on your network.</p></body></html>`);
+    const { ctx } = makeCtx({ applyUrl: pathToFileURL(blocked).toString() });
+    const res = await runApplyFlow(ctx, { name: "test" });
+    expect(res.outcome).toBe("needs_user");
+    if (res.outcome !== "needs_user") return;
+    expect(res.pending).toEqual([{ label: "This site blocks automated applications: open the posting and apply yourself", type: "blocked", required: true }]);
+    expect(res.receipt.fields).toEqual([]);
+    expect(res.receipt.dryRun).toBe(true);
+  }, TIMEOUT);
+
+  it("still reports an ordinary page with no form as a failure", async () => {
+    const plain = path.join(tmp, "plain.html");
+    await writeFile(plain, "<html><body><h1>Careers</h1><p>Nothing to apply to here.</p></body></html>");
+    const { ctx } = makeCtx({ applyUrl: pathToFileURL(plain).toString() });
+    const res = await runApplyFlow(ctx, { name: "test" });
+    expect(res).toMatchObject({ outcome: "failed", error: "No application form fields found" });
+  }, TIMEOUT);
+});
+
+describe("multi-page forms", () => {
+  it("never clicks a step button as submit, and never reports an unconfirmed click as submitted", async () => {
+    process.env.ALLOW_REAL_SUBMIT = "true";
+    // Page 1 of a multi-step form: its only button is a type=submit "Next" that shows page 2 in place (same URL, no thank-you).
+    const multi = path.join(tmp, "multi.html");
+    await writeFile(multi, `<html><body><h1>Apply now</h1><form id="application_form" onsubmit="event.preventDefault()">
+      <label for="fn">First name</label><input id="fn" name="fn" type="text">
+      <label for="em">Email</label><input id="em" name="em" type="email">
+      <button type="submit">Next</button></form></body></html>`);
+    const { ctx, events } = makeCtx({ applyUrl: pathToFileURL(multi).toString(), dryRun: false });
+    const res = await runApplyFlow(ctx, { name: "test" });
+    expect(res.outcome, JSON.stringify(res)).toBe("failed");
+    expect(events.some((e) => e.step === "submit" && /Next/.test(e.message))).toBe(false);
+  }, TIMEOUT);
+
+  it("reports a click that leaves the same form on screen as not confirmed, flagged as clicked", async () => {
+    process.env.ALLOW_REAL_SUBMIT = "true";
+    const silent = path.join(tmp, "silent.html");
+    await writeFile(silent, `<html><body><form id="application_form" onsubmit="event.preventDefault()">
+      <label for="fn">First name</label><input id="fn" name="fn" type="text">
+      <label for="em">Email</label><input id="em" name="em" type="email">
+      <button type="submit">Submit application</button></form></body></html>`);
+    const { ctx } = makeCtx({ applyUrl: pathToFileURL(silent).toString(), dryRun: false });
+    const res = await runApplyFlow(ctx, { name: "test" });
+    expect(res).toMatchObject({ outcome: "failed", submitClicked: true });
+  }, 90_000);
 });

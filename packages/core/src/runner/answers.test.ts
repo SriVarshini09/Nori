@@ -31,7 +31,7 @@ describe("geography inference", () => {
     eeo: { gender: "decline", race: "decline", veteran: "decline", disability: "decline" },
     securityClearance: null, over18: null, onboarding: { step: "resume" },
     preferences: { github: "https://github.com/jr" } as never, rawResumeText: null, resumeAutoApprove: false,
-    reviewBeforeSubmit: true, autoApplyDailyCap: 0, autoApplyMinScore: 0.7, updatedAt: new Date(),
+    reviewBeforeSubmit: true, autopilot: "off", autoApplyDailyCap: 0, autoApplyMinScore: 0.7, updatedAt: new Date(),
   };
 
   it("builds country and github on the ApplicantProfile (legacy preferences keys)", () => {
@@ -156,10 +156,12 @@ describe("heuristicAnswer (Greenhouse-style required questions)", () => {
   });
 
   it("where did you first hear about this role", () => {
-    expect(ans(sel("Where did you first hear about this role?", ["LinkedIn", "Job board (Indeed, etc.)", "Other"]))).toBe("Job board (Indeed, etc.)");
+    // Nori found the posting on the company's own board: never "LinkedIn" or "Indeed", which the person did not use.
+    expect(ans(sel("Where did you first hear about this role?", ["LinkedIn", "Job board (Indeed, etc.)", "Other"]))).toBe("Other");
+    expect(ans(sel("Where did you first hear about this role?", ["LinkedIn", "Company website", "Other"]))).toBe("Company website");
     expect(ans(sel("How did you hear about us?", ["Referral", "Other"]))).toBe("Other");
     expect(ans(sel("How did you hear about this job?", ["Referral", "Company website"]))).toBe("Company website");
-    expect(ans(sel("Where did you first hear about this role?", undefined, "text"))).toBe("Job board");
+    expect(ans(sel("Where did you first hear about this role?", undefined, "text"))).toBe("Company careers page");
   });
 
   it("acknowledgments and confirmations", () => {
@@ -233,5 +235,76 @@ describe("educationAnswer (graph education nodes and the job title)", () => {
     expect(await answer(sel("End date month", MONTH_OPTS), "")).toBe("May");
     expect(await answer(sel("Do you expect to graduate between December 2026 and June 2027?", ["Yes", "No"]), "")).toBe("Yes");
     expect(await answer(sel("Please confirm which term (Winter 2027 vs. Summer 2027)", ["Winter 2027", "Summer 2027"]), "")).toBe("Winter 2027");
+  });
+});
+
+describe("preferred name, pronouns and state", () => {
+  const full = (p: Partial<ApplicantProfileFull>, f: FormField) => heuristicAnswer(f, { ...base, ...p, workAuth: base.workAuth } as ApplicantProfileFull);
+  const text = (label: string): FormField => ({ label, kind: "text", required: true, selector: "#x" });
+
+  it("answers preferred name with the first name, and not other kinds of name", () => {
+    expect(full({}, text("Preferred Name"))).toBe("Jordan");
+    expect(full({}, text("What name do you go by? (nickname)"))).toBe("Jordan");
+    expect(full({}, text("Preferred first name"))).toBe("Jordan");
+    expect(full({}, text("Legal last name"))).not.toBe("Jordan");
+    expect(full({ firstName: "" }, text("Preferred Name"))).toBeNull();
+  });
+
+  it("answers pronouns only from the profile, matching the form's options", () => {
+    expect(full({ pronouns: "they/them" }, text("Pronouns"))).toBe("they/them");
+    expect(full({ pronouns: "they/them" }, sel("Pronouns", ["He/Him", "She/Her", "They/Them", "Prefer not to say"]))).toBe("They/Them");
+    expect(full({}, sel("Pronouns", ["He/Him", "She/Her", "They/Them"]))).toBeNull(); // never guessed
+    expect(full({ pronouns: "xe/xem" }, sel("Pronouns", ["He/Him", "She/Her", "They/Them"]))).toBeNull();
+  });
+
+  it("answers which state or province you live in from the profile or the location", () => {
+    const provinces = ["Alabama", "California", "Texas", "Ontario", "British Columbia"];
+    expect(full({}, sel("Which U.S. State or Canadian Province do you reside in?", provinces))).toBe("California");
+    expect(full({ state: "TX" }, sel("Which U.S. State or Canadian Province do you reside in?", provinces))).toBe("Texas");
+    expect(full({}, text("State you currently live in"))).toBe("California");
+    expect(full({ location: "London, UK" }, sel("Which state do you live in?", provinces))).toBeNull();
+    // the older "one of these states" yes/no phrasing is untouched
+    expect(full({}, sel("Do you live in one of the following states: CA, NY?", ["Yes", "No"]))).toBe("Yes");
+  });
+});
+
+describe("model-written answers to unclassified questions", () => {
+  it("are recorded as written answers, and an answer with an invented figure goes to the person", async () => {
+    const { setLLM } = await import("../llm/index.js");
+    const { numbersSupported } = await import("./answers.js");
+    let reply = "I ran Kubernetes clusters in production at Northwind.";
+    setLLM({ provider: "openai-compatible", model: "fake", available: true, async json() { throw new Error("no"); }, async text() { return reply; } } as never);
+    try {
+      const composed: Record<string, { answer: string; usedLLM: boolean }> = {};
+      const profile = { fullName: "Jordan Rivera", firstName: "Jordan", lastName: "Rivera", email: "j@example.com", workAuth: { authorizedUS: true, needsSponsorship: false } } as ApplicantProfile;
+      const ask = makeAnswerQuestion({ profile, evidence: [{ text: "Ran Kubernetes clusters at Northwind", nodeId: "n1" } as never], jobTitle: "SRE", companyName: "Acme", composed: composed as never });
+      const field: FormField = { label: "Kubernetes in production", kind: "text", required: false, selector: "#k" };
+      expect(await ask(field, "")).toBe(reply);
+      expect(composed["Kubernetes in production"]).toMatchObject({ usedLLM: true });
+      reply = "I ran 40 Kubernetes clusters serving 3M users.";
+      expect(await ask({ ...field, label: "Kubernetes scale" }, "")).toBeNull();
+      expect(numbersSupported("cut load time by 45%", "cutting page load time by 45%")).toBe(true);
+    } finally { setLLM(null); }
+  });
+});
+
+describe("work authorization in another country", () => {
+  it("is never answered from the US-only profile", () => {
+    const f = (label: string): FormField => ({ label, kind: "select", required: true, options: ["Yes", "No"], selector: "#a" });
+    expect(ans(f("Are you legally authorised to work in the UK?"))).toBeNull();
+    expect(ans(f("Will you require sponsorship to work in Canada?"))).toBeNull();
+    expect(ans(f("Are you legally authorized to work in the United States?"))).toBe("Yes");
+  });
+});
+
+describe("attestations and referral source", () => {
+  it("are recorded as written answers so the person sees them, and the source is where Nori found the job", async () => {
+    const composed: Record<string, { answer: string; kind: string }> = {};
+    const profile = { fullName: "Jordan Rivera", firstName: "Jordan", lastName: "Rivera", email: "j@example.com", workAuth: { authorizedUS: true, needsSponsorship: false } } as ApplicantProfile;
+    const ask = makeAnswerQuestion({ profile, evidence: [], jobTitle: "SRE", companyName: "Acme", composed: composed as never });
+    expect(await ask({ label: "I certify the information above is accurate and complete", kind: "checkbox", required: true, selector: "#c" }, "")).toBe("Yes");
+    expect(composed["I certify the information above is accurate and complete"]).toMatchObject({ kind: "acknowledgement" });
+    expect(await ask({ label: "How did you hear about us?", kind: "text", required: true, selector: "#h" }, "")).toBe("Company careers page");
+    expect(composed["How did you hear about us?"]).toMatchObject({ kind: "referral_source" });
   });
 });

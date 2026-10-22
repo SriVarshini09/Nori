@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { userCredentials, type LlmProviderId } from "../db/schema.js";
+import { assertModelUrlAllowed } from "./presets.js";
 import {
   CLINE_BASE_URL, CLINE_DEFAULT_MODELS, NONE_LLM, forgetUserModels, getLLM, hostedSpec, isLocalUrl, llmFromSpec, llmOverridden,
   localOnly, modeOf, ollamaSpec, probeOllama, runWithModels, boundUserId, scrub,
@@ -127,7 +128,7 @@ export function specFromCredentials(row: UserCredentialsRow, tier: Tier, apiKey:
       return { mode: "cline", baseUrl: (row.baseUrl || CLINE_BASE_URL).replace(/\/$/, ""), model: model || CLINE_DEFAULT_MODELS[tier], apiKey };
     case "anthropic":
       if (!apiKey) return null;
-      return { mode: "anthropic", model: model || "claude-opus-5-5", apiKey, ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}) };
+      return { mode: "anthropic", model: model || (tier === "bulk" ? "claude-haiku-5-5" : "claude-opus-5-5"), apiKey, ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}) };
     case "openai-compatible":
       if (!row.baseUrl || (!apiKey && !isLocalUrl(row.baseUrl))) return null;
       return { mode: isLocalUrl(row.baseUrl) ? "ollama" : "openai-compatible", baseUrl: row.baseUrl.replace(/\/$/, ""), model: model || "qwen3:8b", apiKey: apiKey ?? "none" };
@@ -143,7 +144,12 @@ export type ResolvedModels = UserModels & { source: ModelSource };
  * succeeds > none (heuristics). LOCAL_ONLY=1 skips every cloud option.
  */
 export async function resolveUserModels(db: Db, userId: string): Promise<ResolvedModels> {
-  const row = await getUserCredentials(db, userId);
+  let row = await getUserCredentials(db, userId);
+  // On a shared server a stored endpoint that points at an internal address is never called (see presets.ts).
+  if (row?.baseUrl && !(await assertModelUrlAllowed(row.baseUrl).then(() => true, () => false))) {
+    console.warn(`[credentials] ignoring the model endpoint saved by user ${userId}: this server only calls public addresses`);
+    row = null;
+  }
   if (row) {
     const key = decryptedKey(row);
     const q = specFromCredentials(row, "quality", key), b = specFromCredentials(row, "bulk", key);
@@ -215,6 +221,10 @@ export type ModelTestResult = { ok: boolean; model: string | null; mode: LLMMode
 export async function testUserModel(db: Db, userId: string, opts: { timeoutMs?: number } = {}): Promise<ModelTestResult> {
   const row = await getUserCredentials(db, userId);
   const key = row ? decryptedKey(row) : null;
+  if (row?.baseUrl) {
+    const refused = await assertModelUrlAllowed(row.baseUrl).then(() => null, (e: Error) => e.message);
+    if (refused) return { ok: false, model: null, mode: "heuristic", latencyMs: 0, sample: "", error: refused };
+  }
   const m = await resolveUserModels(db, userId);
   const llm = m.quality;
   if (!llm.available) {
@@ -250,4 +260,10 @@ export async function testUserModel(db: Db, userId: string, opts: { timeoutMs?: 
     }
     return { ok: false, model: llm.model, mode: modeOf(llm), latencyMs: Date.now() - started, sample: "", error: scrub(scrub(detail, key), process.env.HOSTED_LLM_API_KEY) };
   }
+}
+
+/** The user's saved key, decrypted, for server-side calls made on their behalf (never sent to the browser). */
+export async function savedApiKey(db: Db, userId: string): Promise<string | null> {
+  const row = await getUserCredentials(db, userId);
+  return row ? decryptedKey(row) : null;
 }

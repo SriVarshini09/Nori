@@ -13,7 +13,9 @@ export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type InboxKind =
   | "verification_code" | "recruiter_reply" | "interview" | "rejection" | "offer" | "confirmation" | "other";
 
-export type User = { id: string; email: string; name: string | null; createdAt: string };
+export type User = { id: string; email: string; name: string | null; emailVerifiedAt?: string | null; createdAt: string };
+
+export type SessionInfo = { id: string; current: boolean; device: string; createdAt: string; expiresAt: string };
 
 export type Preferences = {
   titles?: string[];
@@ -54,6 +56,8 @@ export type Profile = {
   rawResumeText?: string | null;
   resumeAutoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  /** off: you approve every form. safe: Nori sends by itself only when every check passes. written: the same, and short answers Nori wrote are allowed. */
+  autopilot?: "off" | "safe" | "written";
   autoApplyDailyCap: number;
   autoApplyMinScore: number;
   updatedAt: string;
@@ -209,25 +213,46 @@ export type Application = {
   attempts: number;
   resumeApprovedAt: string | null;
   formApprovedAt: string | null;
+  /** True when Autopilot, not the person, approved the filled form. */
+  autopilot?: boolean;
   submittedAt: string | null;
   sheetRow?: number | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type ResumeBullet = { id: string; text: string; nodeIds: string[] };
+export type ResumeBullet = { id: string; text: string; nodeIds: string[]; /** Written or changed by the user. */ edited?: boolean };
 export type ResumeChange = { bulletId: string; before: string; after: string; reason: string; nodeIds: string[] };
 export type AtsCheck = { id: string; label: string; pass: boolean; detail?: string; weight: number };
 export type ResumeContent = {
   name: string;
-  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string };
+  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string; github?: string };
   summary?: string;
   experience: { title: string; company: string; location?: string; start?: string; end?: string; bullets: ResumeBullet[] }[];
   education: { school: string; degree?: string; field?: string; start?: string; end?: string }[];
   skills: { group: string; items: string[] }[];
   projects?: { name: string; bullets: ResumeBullet[] }[];
   certifications?: string[];
+  extras?: { title: string; items: string[] }[];
+  layout?: { sections?: string[]; hidden?: string[] };
 };
+
+export type ResumeTheme = {
+  font: string; headingFont?: string; accent: string; fontSize: number; lineHeight: number; margin: number;
+  pageSize: "letter" | "a4"; headerAlign: "left" | "center"; pages: number;
+};
+export type ResumeTemplateInfo = { id: string; name: string; description: string; bestFor: string; atsSafe: boolean; columns: 1 | 2; theme: ResumeTheme };
+export type ResumeTemplates = { templates: ResumeTemplateInfo[]; fonts: { id: string; label: string; kind: "sans" | "serif" | "mono" }[]; pageSizes: { id: string; label: string }[] };
+export type ResumeDocSummary = {
+  id: string; name: string; source: "graph" | "upload" | "manual" | "copy" | "text"; templateId: string; theme: ResumeTheme; isDefault: boolean;
+  version: number; createdAt: string; updatedAt: string; headline: string; stats: { roles: number; bullets: number; words: number };
+};
+export type ResumeDoc = Omit<ResumeDocSummary, "stats" | "headline"> & { content: ResumeContent };
+export type ResumeVersion = { id: string; version: number; name: string; templateId: string; label: string | null; createdAt: string; headline: string; stats: { roles: number; bullets: number; words: number } };
+export type ResumePreview = {
+  html: string; pages: number; targetPages: number; atsScore: number; atsChecks: AtsCheck[]; density: string; steps: string[]; theme: ResumeTheme; templateId: string;
+};
+export type ResumeFormat = "pdf" | "docx" | "txt" | "json" | "html";
 
 export type Resume = {
   id: string;
@@ -241,6 +266,9 @@ export type Resume = {
   atsScore: number | null;
   atsChecks: AtsCheck[];
   keywordCoverage: number | null;
+  templateId?: string;
+  theme?: Partial<ResumeTheme>;
+  edited?: boolean;
   createdAt: string;
 };
 
@@ -266,10 +294,24 @@ export type RunEvent = {
 
 export type ApplicationListItem = { application: Application; job: Job; resume?: Resume | null };
 
+export type ReviewFinding = { id: string; severity: "high" | "medium" | "low"; title: string; detail: string; fix?: string };
+export type MustHave = { skill: string; required: boolean; status: "demonstrated" | "listed" | "missing" };
+/** A recruiter's read of the tailored resume against the job (computed by the API, see packages/core/src/tailor/recruiter.ts). */
+export type RecruiterReview = {
+  score: number;
+  verdict: "strong" | "good" | "needs_work";
+  strengths: string[];
+  concerns: ReviewFinding[];
+  musts: MustHave[];
+  stats: { bullets: number; quantifiedPct: number; strongVerbPct: number; avgBulletWords: number; years: number | null; requiredYears: number | null; skillsListed: number };
+};
+
 export type ApplicationDetail = {
   application: Application;
   job: Job;
   resume: Resume | null;
+  /** Absent on older APIs and in demo mode. */
+  recruiter?: RecruiterReview | null;
   events: RunEventRow[];
   company: Company | null;
 };
@@ -303,7 +345,8 @@ export type Channel = {
   createdAt: string;
 };
 
-export type Integration = { toolkit: string; connected: boolean; error?: string };
+/** `available: false` means this server has no connection provider configured, so Connect cannot work yet. */
+export type Integration = { toolkit: string; connected: boolean; error?: string; available?: boolean };
 
 // ---- agent (GET /api/agent/activity, /api/agent/status, POST /api/agent/tick, /api/agent/chat)
 export type AgentActivityKind =
@@ -322,6 +365,8 @@ export type AgentActivity = {
 
 export type AgentAwaitingReview = {
   applicationId: string;
+  /** resume_review: a tailored resume waits; form_review: a filled form waits (approving it sends the application). */
+  status?: "resume_review" | "form_review";
   title: string;
   companyName: string;
   atsScore: number | null;
@@ -336,6 +381,9 @@ export type AgentStatus = {
   minScore: number;
   autoApprove: boolean;
   reviewBeforeSubmit: boolean;
+  autopilot?: "off" | "safe" | "written";
+  /** How many applications you approved yourself, and how many Autopilot needs before it sends any. */
+  autopilotTrust?: { approved: number; needed: number };
   /** False: the server runs in dry-run mode, forms are filled but never sent. Absent on older APIs. */
   liveSubmit?: boolean;
   channels: { kind: string; address: string }[];
@@ -349,7 +397,15 @@ export type AgentStatus = {
 export type ModelProvider = "cline" | "ollama" | "openai-compatible" | "anthropic";
 export type ModelMode = "cline" | "openai-compatible" | "anthropic" | "ollama" | "heuristic";
 
+export type ModelPreset = {
+  id: string; label: string; line: string; provider: ModelProvider; baseUrl: string | null; editableUrl: boolean;
+  needsKey: boolean; local: boolean; keyUrl?: string; defaults?: { quality?: string; bulk?: string };
+};
+export type ModelPresetsInfo = { presets: ModelPreset[]; strictUrls: boolean; localOnly: boolean };
+
 export type ModelSettings = {
+  /** The preset the saved provider and URL correspond to (set by the server). */
+  preset?: string | null;
   provider: ModelProvider;
   baseUrl: string | null;
   qualityModel: string | null;
@@ -391,3 +447,8 @@ export type AgentTickSummary = {
   laneJobs?: number;
   note?: string;
 };
+
+export type BoardAts = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export type WatchedCompany = { id: string; name: string; atsType: BoardAts; token: string; openJobs: number; followed: boolean };
+export type CompanyList = { companies: WatchedCompany[]; total: number };
+export type DetectedCompany = { atsType: BoardAts; token: string; name: string; openJobs: number; added: number };

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeft, ArrowUpRight, Check, CircleCheck, CircleX, ExternalLink, LoaderCircle, RotateCcw, Send, SkipForward,
+  ArrowLeft, ArrowUpRight, Check, CircleCheck, CircleX, ExternalLink, LoaderCircle, Pencil, RotateCcw, Send, SkipForward,
 } from "lucide-react";
 import { api, artifactUrl, USE_MOCK } from "@/lib/api";
 import { NEEDS_YOU, STATUS_LABEL } from "@/lib/format";
@@ -14,12 +14,13 @@ import {
 import { DiffRow } from "./DiffRow";
 import { EventLog } from "./EventLog";
 import { ResearchView } from "./ResearchPanel";
+import { RecruiterView } from "./RecruiterView";
 import { ResumePreview } from "./ResumePreview";
 import { PIPELINE, Stepper } from "./Stepper";
 import { StatusPill } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
 import {
-  Accordion, Button, Frame, Icon, IndexLabel, Notice, Pill, Tag, cx, idx, inputClass,
+  Accordion, Button, Frame, Icon, IndexLabel, LinkButton, Notice, Pill, Tag, cx, idx, inputClass,
 } from "./ui";
 
 type NodeLabels = Record<string, { label: string; type: string }>;
@@ -40,6 +41,7 @@ function BlockHead({ index, label, action }: { index: string; label: ReactNode; 
 export function ApplicationReview({ initial, nodeLabels }: { initial: ApplicationDetail; nodeLabels: NodeLabels }) {
   const [app, setApp] = useState<Application>(initial.application);
   const [resume, setResume] = useState<Resume | null>(initial.resume);
+  const [recruiter, setRecruiter] = useState(initial.recruiter ?? null);
   const [events, setEvents] = useState<RunEventRow[]>(initial.events);
   const job: Job = initial.job;
   const company: Company | null = initial.company;
@@ -69,6 +71,7 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
       const d = await api.getApplication(app.id);
       setApp(d.application);
       setResume(d.resume);
+      setRecruiter(d.recruiter ?? null);
       setAnswers((prev) => (Object.keys(prev).length === 0 ? d.application.answers : { ...d.application.answers, ...prev }));
       d.events.forEach(pushEvent);
     } catch (e) {
@@ -163,6 +166,9 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
       await api.approveForm(app.id, { ...answers, ...filled });
     }, { status: "submitting", formApprovedAt: now(), pendingQuestions: [], answers: { ...answers, ...pending } });
 
+  // What Autopilot decided about this form, in its own words (see runner/autopilot.ts).
+  const autopilotEvent = [...events].reverse().find((e) => e.step === "autopilot");
+  const autopilotNote = autopilotEvent ? { sent: app.autopilot === true, text: autopilotEvent.message.replace(/^Autopilot /, "").replace(/^./, (c) => c.toUpperCase()) } : null;
   const lastStep = [...events].reverse().map((e) => e.step).find((s) => (PIPELINE as string[]).includes(s));
   const formEditable = app.status === "form_review" || app.status === "needs_user";
   const showForm = formEditable || app.status === "awaiting_code" || (Object.keys(answers).length > 0 && !app.receipt);
@@ -202,14 +208,16 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
         </figure>
 
         <aside className="col-span-12 flex flex-col gap-8 lg:col-span-4">
+          {resume && recruiter && <RecruiterView review={recruiter} />}
           {resume && (
             <div>
               <IndexLabel>ATS score</IndexLabel>
               <div className="mt-3 font-display text-[88px] font-medium leading-[0.85] tracking-[-0.05em] text-ink tnum">
                 {resume.atsScore ?? "–"}
               </div>
+              {resume.edited && <p className="mt-2"><Pill mark="accent">Edited by you</Pill></p>}
               <p className="mt-3 text-meta text-muted tnum">
-                {resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}
+                {resume.templateId ? <>{resume.templateId[0].toUpperCase() + resume.templateId.slice(1)} template &middot; </> : null}{resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}
                 {resume.keywordCoverage != null && <> &middot; keywords {Math.round(resume.keywordCoverage * 100)}%</>}
                 {failing.length > 0 && <> &middot; <span title={failing.map((c) => c.label).join("\n")} className="cursor-help underline decoration-line-strong decoration-dotted underline-offset-4">{failing.length} check{failing.length === 1 ? "" : "s"} to fix</span></>}
               </p>
@@ -220,6 +228,9 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
                   <Button variant="primary" icon={CircleCheck} onClick={approveResume} disabled={busy !== null || app.status !== "resume_review"}>
                     {busy === "resume" ? "Approving..." : "Approve resume"}
                   </Button>
+                )}
+                {!USE_MOCK && app.status === "resume_review" && (
+                  <LinkButton href={`/applications/${app.id}/resume`} variant="secondary" icon={Pencil}>Edit resume</LinkButton>
                 )}
                 {!USE_MOCK && (
                   <a href={api.resumePdfUrl(resume.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
@@ -393,9 +404,10 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
         <Stepper status={app.status} lastStep={lastStep} />
       </Frame>
 
-      {(error || app.error || NEEDS_YOU.includes(app.status)) && (
+      {(error || app.error || NEEDS_YOU.includes(app.status) || autopilotNote) && (
         <div className="mt-6 space-y-3">
           {error && <Notice tone="red">{error}</Notice>}
+          {autopilotNote && <Notice tone={autopilotNote.sent ? "green" : "amber"} label="Autopilot">{autopilotNote.text}</Notice>}
           {app.error && <Notice tone="red" label="Run error">{app.error}</Notice>}
           {NEEDS_YOU.includes(app.status) && (
             <Notice tone="amber" label="Your turn">

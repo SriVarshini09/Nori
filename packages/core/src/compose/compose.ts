@@ -109,6 +109,7 @@ function buildFacts(input: ComposeInput): Facts {
   const reqScore = new Map<string, number>();
   const roleSkills = new Map<string, string[]>();
   for (const e of evidence) {
+    if (e.inferred) continue; // a soft-skill placeholder is not something to tell an employer
     const g = byNode.get(e.nodeId);
     if (g) { g.reqs.add(e.requirement); if (e.score > g.score) { g.score = e.score; g.row = e; } }
     else byNode.set(e.nodeId, { row: e, reqs: new Set([e.requirement]), score: e.score });
@@ -514,7 +515,7 @@ function heuristicCompose(input: ComposeInput, facts: Facts): { answer: string |
       return done(`I'm open to talking about it.${loc}`);
     }
     case "referral_source":
-      return done("Job board");
+      return done("Company careers page");
     case "portfolio_link": {
       const site = profile.website ?? input.baseline.contact.website ?? profile.github;
       return done(site ?? null);

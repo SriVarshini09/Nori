@@ -9,26 +9,32 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from "drizzle-orm";
 import {
+  clearResumeNodes, deleteGraphNode,
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
-  advanceOnboarding, authenticate, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
+  advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
+  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
   agentTick, tickRunning, type TickSummary, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
-  LLM_PROVIDERS, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
+  LLM_PROVIDERS, MODEL_PRESETS, savedApiKey, UnsafeUrlError, assertModelUrlAllowed, listProviderModels, presetIdFor, strictModelUrls, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
   normalizeLanes, processLLM, queuedTodayByLane, saveUserCredentials, storedLanes, testUserModel, withUserLLM, LaneInput,
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
 import {
-  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, waitForVerificationCode, TOOLKITS,
+  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
+import { defaultMailer, mailerState, resetEmail, verifyEmail, type Mailer } from "./mailer.js";
+import { defaultRateRules, rateLimit, securityHeaders, type RateRule } from "./security.js";
+import { bad, body, describeDevice, uuidOk } from "./http.js";
+import { mountFontRoute, mountResumeRoutes } from "./resume-routes.js";
 import { MAX_RESUME_BYTES, extractResumeFile, resumeKind } from "./extract.js";
 import { SCANNED_PDF_ERROR, type ExtractedLink, type ExtractedResume } from "@jobgraph/core";
 import { ProfileBody, STEP_SCHEMAS, buildProfilePatch } from "./profile-fields.js";
@@ -50,23 +56,16 @@ export type AppOptions = {
   defaultUserEmail?: string | null;
   /** Push agent notifications (tick results, background chat work). Defaults to channels' sendToUser. */
   notify?: (userId: string, msg: OutboundMessage) => Promise<unknown>;
+  /** Rate limiting: true or unset = the default rules (off under test runners), false = off, or custom rules. */
+  rateLimit?: boolean | RateRule[];
+  /** How long approve-form waits for a resumed run to reach the form review (default 25 s, under the web proxy timeout). */
+  approveWaitMs?: number;
+  /** Sends verification and password-reset email. Defaults to Resend when RESEND_API_KEY is set, else logs to the console. */
+  mailer?: Mailer;
 };
 
 export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
   return { pickDriver, waitForCode: (db, userId, hint, timeoutMs) => waitForVerificationCode(db, userId, hint, timeoutMs), ...overrides };
-}
-
-const bad = (message: string, status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 503 = 400) => new HTTPException(status, { message });
-
-async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
-  let raw: unknown = {};
-  const text = await c.req.text();
-  if (text.trim()) {
-    try { raw = JSON.parse(text); } catch { throw bad("Body must be JSON"); }
-  }
-  const r = schema.safeParse(raw);
-  if (!r.success) throw bad(r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
-  return r.data;
 }
 
 /** GET /api/jobs scores at most this many unscored rows per request. */
@@ -135,6 +134,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   const secure = process.env.NODE_ENV === "production";
   const cookieDomain = secure ? process.env.COOKIE_DOMAIN?.trim() || undefined : undefined;
   const cookieScope = { path: "/", secure, ...(cookieDomain ? { domain: cookieDomain } : {}) };
+  const mailer = opts.mailer ?? defaultMailer();
+  const linkTo = (route: string, token: string) => `${webUrl.replace(/\/$/, "")}/${route}?token=${encodeURIComponent(token)}`;
+  /** Email is best effort: a mail failure is logged, never shown to the person (and never reveals whether an account exists). */
+  const sendMail = (to: string, mail: ReturnType<typeof verifyEmail>) =>
+    mailer({ to, ...mail }).catch((err) => console.warn(`[api] email to ${to} failed:`, (err as Error).message));
+  const sendVerification = async (user: SessionUser) => {
+    await sendMail(user.email, verifyEmail(linkTo("verify-email", await issueAuthToken(db, user.id, "verify"))));
+  };
   const setSession = (c: Context, token: string) => setCookie(c, SESSION_COOKIE, token, {
     ...cookieScope, httpOnly: true, sameSite: cookieDomain ? "None" : "Lax", maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
@@ -191,12 +198,12 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     else p.catch((err) => console.warn("[api] background run failed:", (err as Error).message));
   };
   const loadApp = async (c: Context<AppEnv>, id: string) => {
+    if (!uuidOk(id)) throw bad("Application not found", 404);
     const user = c.get("user");
     const [row] = await db.select().from(applications).where(and(eq(applications.id, id), eq(applications.userId, user.id))).limit(1);
     if (!row) throw bad("Application not found", 404);
     return row;
   };
-  const uuidOk = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
 
   app.use("*", cors({
     origin: (origin) => (!origin || origin === webUrl || /^http:\/\/(localhost|127\.0\.0\.1):3000$/.test(origin) ? origin || "*" : null),
@@ -206,17 +213,44 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     credentials: true,
   }));
 
+  // Cross-site request forgery: a page on another site can make the browser POST here with the person's cookie (a plain
+  // form needs no preflight). Browsers say where a request comes from, so state-changing requests from any other origin are
+  // refused. Requests without an Origin (scripts, the companion app, server-to-server webhooks) still need a session.
+  const ownOrigins = new Set([new URL(webUrl).origin]);
+  app.use("*", async (c, next) => {
+    const m = c.req.method;
+    if (m === "GET" || m === "HEAD" || m === "OPTIONS" || c.req.path.startsWith("/api/webhooks/")) return next();
+    const origin = c.req.header("origin");
+    const crossSite = c.req.header("sec-fetch-site") === "cross-site";
+    const allowed = !origin || ownOrigins.has(origin) || origin === new URL(c.req.url).origin
+      || (!secure && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    if (!allowed || (crossSite && !(origin && ownOrigins.has(origin)))) throw bad("Cross-site request refused", 403);
+    return next();
+  });
+
+  app.use("*", securityHeaders({ hsts: secure }));
+  // Off under test runners (they hammer signup and login), on everywhere else unless explicitly disabled.
+  const limits = opts.rateLimit ?? !(process.env.VITEST || process.env.NODE_ENV === "test");
+  if (limits) app.use("/api/*", rateLimit(Array.isArray(limits) ? limits : defaultRateRules()));
+  // Every body is read into memory, so every route gets a ceiling. The resume upload sets its own, larger one.
+  const jsonLimit = bodyLimit({ maxSize: 1024 * 1024, onError: () => { throw bad("Request too large (1 MB max)", 413); } });
+  app.use("*", async (c, next) => (c.req.path === "/api/profile/resume-file" ? next() : jsonLimit(c, next)));
+
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[api] ${c.req.method} ${c.req.path}: ${message}`);
-    if (/not set|not configured|PARALLEL_API_KEY|COMPOSIO_API_KEY/i.test(message)) return c.json({ error: message }, 503);
-    return c.json({ error: message }, 500);
+    // The full error (file paths, SQL, upstream replies) goes to the server log only; the person gets a reference to quote.
+    const ref = Math.random().toString(36).slice(2, 10);
+    console.warn(`[api] ${ref} ${c.req.method} ${c.req.path}: ${message}`, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : "");
+    if (/PARALLEL_API_KEY|Parallel/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Web job search is not set up on this server." }, 503);
+    if (/COMPOSIO_API_KEY|Composio/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Connected apps (Gmail, Sheets, Slack) are not set up on this server." }, 503);
+    if (/not set|not configured/i.test(message)) return c.json({ error: "This feature is not set up on this server." }, 503);
+    return c.json({ error: `Something went wrong on our side. If it keeps happening, quote reference ${ref}.`, ref }, 500);
   });
   app.notFound((c) => c.json({ error: `No route ${c.req.method} ${c.req.path}` }, 404));
 
   // ---------- auth ----------
-  const PUBLIC = /^\/api\/(auth\/|health$|webhooks\/)/;
+  const PUBLIC = /^\/api\/(auth\/|health$|webhooks\/|resume-fonts\/)/;
   app.use("/api/*", async (c, next) => {
     if (c.req.method === "OPTIONS" || PUBLIC.test(c.req.path)) return next();
     const r = await resolveUser(c);
@@ -236,6 +270,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const user = await createPasswordUser(db, b);
     if (!user) throw bad("An account with that email already exists", 409);
     setSession(c, await createSession(db, user.id, c.req.header("user-agent")));
+    void sendVerification(user).catch(() => undefined);
     return c.json({ user: publicUser(user) }, 201);
   });
 
@@ -267,6 +302,77 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.body(null, 204);
   });
 
+  // The signed-in person behind this request's own session cookie (not the dev fallback user).
+  const ownSession = async (c: Context) => {
+    const token = getCookie(c, SESSION_COOKIE);
+    const user = await getSessionUser(db, token);
+    if (!user || !token) throw bad("Not signed in", 401);
+    return { user, token };
+  };
+  const NewPassword = z.string().min(8, "Password must be at least 8 characters").max(200);
+
+  // Always the same answer, so the form cannot be used to find out which addresses have an account.
+  app.post("/api/auth/forgot-password", async (c) => {
+    const { email } = await body(c, z.object({ email: z.string().trim().email("Enter a valid email").max(320) }));
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    if (user?.passwordHash) void sendMail(user.email, resetEmail(linkTo("reset-password", await issueAuthToken(db, user.id, "reset"))));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/reset-password", async (c) => {
+    const b = await body(c, z.object({ token: z.string().min(10).max(200), password: NewPassword }));
+    const done = await resetPassword(db, b.token, b.password);
+    if (!done) throw bad("This reset link is invalid or has expired. Ask for a new one.", 400);
+    clearSession(c);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/change-password", async (c) => {
+    const { user, token } = await ownSession(c);
+    const b = await body(c, z.object({ current: z.string().max(200), next: NewPassword }));
+    if (b.current === b.next) throw bad("Choose a password different from the current one", 400);
+    const r = await changePassword(db, user.id, b.current, b.next, sha256(token));
+    if (r === "no_password") throw bad("This account has no password to change", 400);
+    if (r === "wrong_password") throw bad("Your current password is not right", 400);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/auth/resend-verification", async (c) => {
+    const { user } = await ownSession(c);
+    if (!user.emailVerifiedAt) await sendVerification(user);
+    return c.json({ ok: true, verified: Boolean(user.emailVerifiedAt) });
+  });
+
+  // Opened from the email link, before or without a session.
+  app.post("/api/auth/verify-email", async (c) => {
+    const { token } = await body(c, z.object({ token: z.string().min(10).max(200) }));
+    const userId = await consumeAuthToken(db, token, "verify");
+    if (!userId || !(await markEmailVerified(db, userId))) throw bad("This confirmation link is invalid or has expired. Request a new one from Settings.", 400);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/auth/sessions", async (c) => {
+    const { user, token } = await ownSession(c);
+    return c.json((await listSessions(db, user.id, token)).map((s) => ({
+      id: s.id, current: s.current, device: describeDevice(s.userAgent), createdAt: s.createdAt, expiresAt: s.expiresAt,
+    })));
+  });
+
+  app.post("/api/auth/sessions/revoke-others", async (c) => {
+    const { user, token } = await ownSession(c);
+    return c.json({ revoked: await revokeOtherSessions(db, user.id, token) });
+  });
+
+  app.delete("/api/auth/sessions/:id", async (c) => {
+    const { user, token } = await ownSession(c);
+    const id = c.req.param("id");
+    if (!uuidOk(id)) throw bad("Session not found", 404);
+    const own = (await listSessions(db, user.id, token)).find((s) => s.id === id);
+    if (own?.current) throw bad("This is the session you are using. Use Log out instead.", 400);
+    if (!(await revokeSessionById(db, user.id, id))) throw bad("Session not found", 404);
+    return c.body(null, 204);
+  });
+
   app.get("/api/auth/session", async (c) => {
     const r = await resolveUser(c);
     if (!r) throw bad("Not signed in", 401);
@@ -283,7 +389,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     })),
     localOnly: localOnly(),
     embeddedWorker: process.env.EMBED_WORKER === "1",
-    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN) },
+    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode !== "console" && !mailerState().blockedBy },
     allowRealSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
   }));
 
@@ -303,16 +409,20 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.json({ user: publicUser(u), profile });
   });
 
-  const saveResumeText = async (c: Context, userId: string, text: string, links: ExtractedLink[] = []) => {
+  const saveResumeText = async (c: Context, userId: string, text: string, links: ExtractedLink[] = [], replace = false) => {
+    // replace: this resume supersedes the earlier ones, so what they said (and this one no longer does) is forgotten.
+    if (replace) await clearResumeNodes(db, userId);
     const result = await ingestResume(db, userId, text, { links });
     await db.update(profiles).set({ rawResumeText: text, updatedAt: new Date() }).where(eq(profiles.userId, userId));
     await rescore(c, userId);
+    // The user's first resume document, so the resume studio has something to edit right away. Best effort.
+    await ensureResumeDoc(db, userId).catch((e) => console.warn(`[api] could not create the first resume document: ${(e as Error).message}`));
     return result;
   };
 
   app.post("/api/profile/resume", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text") }));
-    return c.json(await saveResumeText(c, c.get("user").id, text));
+    const { text, replace } = await body(c, z.object({ text: z.string().min(20, "Paste the full resume text").max(200_000, "That is longer than any resume: paste just the resume"), replace: z.boolean().optional() }));
+    return c.json(await saveResumeText(c, c.get("user").id, text, [], replace ?? false));
   });
 
   app.post("/api/profile/resume-file",
@@ -360,6 +470,14 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.get("/api/graph", async (c) => c.json(await getGraph(db, c.get("user").id)));
 
+  // Retract one claim: the node and its edges go, and matches are rescored without it.
+  app.delete("/api/graph/nodes/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!uuidOk(id) || !(await deleteGraphNode(db, c.get("user").id, id))) throw bad("Not found", 404);
+    await rescore(c, c.get("user").id);
+    return c.body(null, 204);
+  });
+
   app.get("/api/graph/export", async (c) => {
     const data = await exportGraph(db, c.get("user").id);
     c.header("content-disposition", `attachment; filename="jobgraph-export-${data.exportedAt.slice(0, 10)}.json"`);
@@ -371,12 +489,41 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   const ModelBody = z.object({
     provider: z.enum(LLM_PROVIDERS),
     apiKey: z.string().trim().max(1000).optional(),
-    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).nullable().optional().or(z.literal("").transform(() => null)),
+    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
     qualityModel: z.string().trim().max(200).nullable().optional(),
     bulkModel: z.string().trim().max(200).nullable().optional(),
   });
 
-  app.get("/api/settings/model", async (c) => c.json(await modelSettings(db, c.get("user").id)));
+  const savedKeyOf = (userId: string) => savedApiKey(db, userId);
+
+  // What a person can pick, plus the rules this server applies (so the screen can explain a refusal before it happens).
+  app.get("/api/settings/model/presets", (c) => c.json({
+    presets: MODEL_PRESETS, strictUrls: strictModelUrls(), localOnly: localOnly(),
+  }));
+
+  app.get("/api/settings/model", async (c) => {
+    const s = await modelSettings(db, c.get("user").id);
+    return c.json({ ...s, preset: presetIdFor(s.provider, s.baseUrl) });
+  });
+
+  // The provider's own list of model ids, using the key typed in the form or else the saved one. The key is never echoed.
+  app.post("/api/settings/model/models", async (c) => {
+    const user = c.get("user");
+    const b = await body(c, z.object({
+      provider: z.enum(LLM_PROVIDERS), apiKey: z.string().trim().max(1000).optional(),
+      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
+    }));
+    const current = await getUserCredentials(db, user.id);
+    const same = current?.provider === b.provider;
+    const apiKey = b.apiKey || (same ? await savedKeyOf(user.id) : null);
+    const baseUrl = b.baseUrl !== undefined ? b.baseUrl : same ? current?.baseUrl ?? null : null;
+    if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
+    try {
+      return c.json({ models: await listProviderModels({ provider: b.provider, baseUrl, apiKey }) });
+    } catch (err) {
+      throw bad(err instanceof Error ? err.message : "Could not list models", 422);
+    }
+  });
 
   app.put("/api/settings/model", async (c) => {
     const user = c.get("user");
@@ -385,6 +532,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const baseUrl = b.baseUrl !== undefined ? b.baseUrl : current?.provider === b.provider ? current.baseUrl : null;
     if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
     if (b.provider === "openai-compatible" && !baseUrl) throw bad("baseUrl is required for an OpenAI-compatible provider");
+    if (b.provider === "ollama" && strictModelUrls()) throw bad("This server cannot reach a model on your own computer. Add a hosted provider's key, or run Nori on your computer.", 422);
+    await assertModelUrlAllowed(baseUrl).catch((err) => { throw bad(err instanceof UnsafeUrlError ? err.message : "That model address cannot be used", 422); });
     await saveUserCredentials(db, user.id, b);
     return c.json(await modelSettings(db, user.id));
   });
@@ -416,7 +565,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.post("/api/graph/facts", async (c) => {
-    const { text } = await body(c, z.object({ text: z.string().min(1) }));
+    const { text } = await body(c, z.object({ text: z.string().min(1, "Write the fact first").max(4000, "Keep a fact under 4000 characters") }));
     const result = await addFact(db, c.get("user").id, text);
     await rescore(c, c.get("user").id);
     return c.json(result);
@@ -457,14 +606,51 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/jobs/discover", async (c) => {
     const q = await body(c, DiscoverBody);
     const res = await findAndRank(db, c.get("user").id, q);
-    return c.json({ added: res.added, jobs: res.jobs.map((r) => ({ job: slimJob(r.job), match: r.match })) });
+    return c.json({ added: res.added, heldOnly: res.heldOnly ?? false, jobs: res.jobs.map((r) => ({ job: slimJob(r.job), match: r.match })) });
   });
 
   app.post("/api/jobs/url", async (c) => {
     const { url } = await body(c, z.object({ url: z.string().url() }));
-    const { job, added } = await addJobFromUrl(db, url);
+    // Whatever is wrong with the link is the person's to fix: answer 422 with the reason rather than a 500.
+    const { job, added } = await addJobFromUrl(db, url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
     const [ranked] = await matchJobs(db, c.get("user").id, [job.id]);
     return c.json({ job: ranked?.job ?? job, match: ranked?.match ?? null, added });
+  });
+
+  // ---------- companies: the boards Nori watches, and the ones a user follows ----------
+  app.get("/api/companies", async (c) => {
+    const n = (k: string, d: number, max: number) => Math.min(max, Math.max(0, Number.parseInt(c.req.query(k) ?? "", 10) || d));
+    return c.json(await listCompanies(db, c.get("user").id, {
+      q: c.req.query("q") ?? undefined, followedOnly: c.req.query("followed") === "1", limit: n("limit", 60, 200), offset: n("offset", 0, 100_000),
+    }));
+  });
+
+  const BoardRef = z.object({ atsType: z.enum(["greenhouse", "lever", "ashby", "smartrecruiters"]), token: z.string().min(1).max(200) });
+
+  app.post("/api/companies/follow", async (c) => {
+    const { atsType, token } = await body(c, BoardRef);
+    if (!(await followCompany(db, c.get("user").id, atsType, token))) throw bad("Nori is not watching that company yet", 404);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/api/companies/follow", async (c) => {
+    const { atsType, token } = await body(c, BoardRef);
+    await unfollowCompany(db, c.get("user").id, atsType, token);
+    return c.body(null, 204);
+  });
+
+  // Paste a company's careers page or a posting link: find its job board, read it, and follow the company.
+  app.post("/api/companies/detect", async (c) => {
+    const { url } = await body(c, z.object({ url: z.string().trim().url().max(2000) }));
+    const user = c.get("user");
+    const found = await detectBoard(url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
+    if (!found) throw bad("No supported job board (Greenhouse, Lever, Ashby or SmartRecruiters) was found on that page. Try pasting a link to one of its job postings.", 422);
+    const res = await pollTenant(db, found.atsType, found.token).catch(() => { throw bad(`Found the ${found.atsType} board "${found.token}", but its job feed did not answer. Check the link and try again.`, 422); });
+    if (res.total === 0) throw bad(`The ${found.atsType} board "${found.token}" has no open jobs right now.`, 422);
+    await db.update(companies).set({ name: found.name }).where(and(eq(companies.atsType, found.atsType), eq(companies.atsToken, found.token), sql`${companies.name} = ${prettifyToken(found.token)}`));
+    await followCompany(db, user.id, found.atsType, found.token);
+    await computeMatchesForUser(db, user.id, { jobIds: res.ids, limit: Math.max(1, res.ids.length) }).catch(() => undefined);
+    return c.json({ atsType: found.atsType, token: found.token, name: found.name, openJobs: res.total, added: res.added });
   });
 
   app.post("/api/jobs/poll", async (c) => {
@@ -539,7 +725,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const d = await jobDetail(c, application.jobId);
     const resume = application.resumeId ? (await db.select().from(resumes).where(eq(resumes.id, application.resumeId)).limit(1))[0] ?? null : null;
     const events = (await db.select().from(runEvents).where(eq(runEvents.applicationId, id)).orderBy(asc(runEvents.ts))).map(toRunEvent);
-    return c.json({ application, job: d.job, resume, events, company: d.company, match: d.match });
+    // What a recruiter would see on this resume for this job (pure and cheap, so it is computed fresh after every edit).
+    const [req] = await db.select({ requirements: jobs.requirements }).from(jobs).where(eq(jobs.id, application.jobId)).limit(1);
+    const recruiter = resume ? recruiterReview(resume.content, req?.requirements ?? null, { jobTitle: d.job.title, pages: resume.pages }) : null;
+    return c.json({ application, job: d.job, resume, events, company: d.company, match: d.match, recruiter });
   });
 
   app.post("/api/applications/:id/approve-resume", async (c) => {
@@ -550,8 +739,16 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.post("/api/applications/:id/approve-form", async (c) => {
-    const a = await loadApp(c, c.req.param("id"));
+    let a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers.optional() }));
+    // Answering a question resumes the run in the background, so an approve that follows at once can find the application
+    // in the gap before it moves on: still "needs you" with no question left, then queued or filling the form. Wait for it
+    // to reach the review instead of refusing a valid request. (A "needs you" with questions still open is a real refusal.)
+    const resuming = (x: typeof a) => x.status === "filling" || x.status === "queued" || (x.status === "needs_user" && x.pendingQuestions.length === 0);
+    for (const deadline = Date.now() + (opts.approveWaitMs ?? 25_000); resuming(a) && Date.now() < deadline;) {
+      await new Promise((r) => setTimeout(r, 250));
+      a = await loadApp(c, a.id);
+    }
     if (a.status !== "form_review") throw bad(`Application is ${a.status}, not form_review`, 409);
     await kick(c, () => approveForm(db, a.id, deps, answers));
     return c.json(await loadApp(c, a.id));
@@ -560,7 +757,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.post("/api/applications/:id/answer", async (c) => {
     const a = await loadApp(c, c.req.param("id"));
     const { answers } = await body(c, z.object({ answers: Answers }));
-    await kick(c, () => answerPending(db, a.id, deps, answers));
+    // Save the answers and move the application on before replying (quick writes), then run the rest in the background.
+    // Replying first and saving later left a window where the very next request still saw the question open.
+    const { resume } = await acceptAnswers(db, a.id, answers);
+    if (resume) await kick(c, () => runApplication(db, a.id, deps));
     return c.json(await loadApp(c, a.id));
   });
 
@@ -606,6 +806,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     });
   });
 
+  // ---------- resume studio: templates, library, exports, tailored edits ----------
+  mountFontRoute(app);
+  mountResumeRoutes(app, { db, deps });
+
   // ---------- resumes + artifacts ----------
   app.get("/api/resumes/:id", async (c) => {
     const raw = c.req.param("id");
@@ -626,6 +830,10 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.get("/api/artifacts/*", async (c) => {
     const rel = decodeURIComponent(c.req.path.replace(/^\/api\/artifacts\/?/, ""));
     if (!rel || rel.includes("\0")) throw bad("File not found", 404);
+    // files live under <applicationId>/...; only the application's owner may read them
+    const appId = rel.split("/")[0];
+    const owned = uuidOk(appId) && (await db.select({ id: applications.id }).from(applications).where(and(eq(applications.id, appId), eq(applications.userId, c.get("user").id))).limit(1)).length > 0;
+    if (!owned) throw bad("File not found", 404);
     const file = path.resolve(artifactsRoot, rel);
     const inside = path.relative(artifactsRoot, file);
     if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) throw bad("File not found", 404);
@@ -636,7 +844,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.get("/api/inbox", async (c) => {
     const user = c.get("user");
     const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
-    return c.json(await db.select().from(inboxMessages).where(eq(inboxMessages.userId, user.id)).orderBy(desc(inboxMessages.receivedAt)).limit(limit));
+    // Non-job mail is kept only as an empty marker (see syncInbox); it is not the person's inbox to show.
+    return c.json(await db.select().from(inboxMessages).where(and(eq(inboxMessages.userId, user.id), ne(inboxMessages.bodyText, "")))
+      .orderBy(desc(inboxMessages.receivedAt)).limit(limit));
   });
 
   app.post("/api/inbox/sync", async (c) => {
@@ -672,10 +882,17 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     .filter((r) => r.kind !== "web")));
 
   app.post("/api/channels", async (c) => {
-    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1), meta: z.record(z.string(), z.unknown()).optional() }));
+    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1).max(320), meta: z.record(z.string(), z.unknown()).optional() }));
     const user = c.get("user");
+    // An address belongs to whoever linked it first. Re-pointing someone else's chat at this account would send their
+    // commands here and this account's notifications (resumes, job details) to their phone.
+    const [taken] = await db.select({ userId: channels.userId }).from(channels).where(and(eq(channels.kind, b.kind), eq(channels.address, b.address))).limit(1);
+    if (taken && taken.userId !== user.id) throw bad("That address is already linked to another account", 409);
+    // Email notifications go only to the account's own address.
+    if (b.kind === "email" && b.address.trim().toLowerCase() !== user.email.toLowerCase()) throw bad("Email notifications go to your account's own address", 400);
     const [row] = await db.insert(channels).values({ userId: user.id, kind: b.kind, address: b.address, meta: b.meta ?? {} })
-      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { userId: user.id, meta: b.meta ?? {} } }).returning();
+      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, where: eq(channels.userId, user.id) }).returning();
+    if (!row) throw bad("That address is already linked to another account", 409);
     return c.json(row, 201);
   });
 
@@ -688,7 +905,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   app.get("/api/integrations", async (c) => {
-    if (!composioAvailable()) return c.json(TOOLKITS.map((toolkit) => ({ toolkit, connected: false })));
+    if (!composioAvailable()) return c.json(TOOLKITS.map((toolkit) => ({ toolkit, connected: false, available: false })));
     try {
       return c.json(await listConnections(c.get("user").id));
     } catch (err) {
@@ -741,6 +958,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       tickMinutes: tickMinutes(),
       dailyCap: profile.autoApplyDailyCap, usedToday: Number(usedToday), minScore: profile.autoApplyMinScore,
       autoApprove: profile.resumeAutoApprove, reviewBeforeSubmit: profile.reviewBeforeSubmit,
+      autopilot: profile.autopilot, autopilotTrust: { approved: await countHumanApprovals(db, user.id), needed: AUTOPILOT_MIN_HUMAN_APPROVALS },
       /** False means every "submitted" application is a dry run: the form is filled and stopped, nothing is sent. */
       liveSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
       channels: chs.filter((ch) => ch.kind !== "web"),
@@ -798,7 +1016,11 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.post("/api/webhooks/whatsapp", async (c) => {
     if (!opts.router) throw bad("WhatsApp webhook not enabled", 503);
-    const payload = await c.req.json().catch(() => ({}));
+    if (!process.env.WHATSAPP_APP_SECRET) throw bad("WhatsApp webhook needs WHATSAPP_APP_SECRET", 503);
+    const raw = await c.req.text();
+    if (!verifyWhatsAppSignature(raw, c.req.header("x-hub-signature-256"))) throw bad("Bad signature", 401);
+    let payload: unknown = {};
+    try { payload = JSON.parse(raw); } catch { throw bad("Body must be JSON"); }
     const msgs = await opts.router.whatsapp.handleWebhook(payload);
     return c.json({ received: msgs.length });
   });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setLLM, type LLM } from "../llm/index.js";
-import { tailorResume, validateBullet, bulletSupport, keywordCoverage, yearsOfExperience } from "./rewrite.js";
+import { FLUFF_RE } from "./fluff.js";
+import { LEFT_OUT, tailorResume, validateBullet, bulletSupport, keywordCoverage, yearsOfExperience } from "./rewrite.js";
 import { renderHtml } from "./template.js";
 import { atsChecks } from "./ats.js";
 import { strengthenOpener, startsWithVerb } from "./verbs.js";
@@ -31,7 +32,8 @@ describe("tailorResume (heuristic, offline)", () => {
     const before = bulletsById(sampleBaseline);
     const after = bulletsById(r.content);
     const changed = [...after.values()].filter((b) => before.get(b.id)!.text !== b.text).map((b) => b.id).sort();
-    const bulletChanges = r.changes.filter((c) => before.has(c.bulletId));
+    // Bullets left out of this version are recorded too (see the next test); here only reworded bullets count.
+    const bulletChanges = r.changes.filter((c) => before.has(c.bulletId) && c.after !== LEFT_OUT);
     expect(bulletChanges.map((c) => c.bulletId).sort()).toEqual(changed);
     expect(changed.length).toBeGreaterThan(0);
     for (const c of bulletChanges) {
@@ -41,8 +43,28 @@ describe("tailorResume (heuristic, offline)", () => {
       expect(c.reason.length).toBeGreaterThan(10);
       expect(c.nodeIds).toEqual(before.get(c.bulletId)!.nodeIds);
     }
-    // untouched bullets produce no change entries
-    expect(r.changes.find((c) => c.bulletId === "b7")).toBeUndefined();
+    // a bullet that is kept and not reworded produces no change entry
+    expect(r.changes.find((c) => c.bulletId === "b6")).toBeUndefined();
+  });
+
+  it("leaves out older bullets that say nothing about the job, never the latest role, and records each one", async () => {
+    const r = await tailorResume(input);
+    const kept = bulletsById(r.content);
+    const leftOut = r.changes.filter((c) => c.after === LEFT_OUT);
+    expect(leftOut.map((c) => c.bulletId).sort()).toEqual(["b7", "b9"]);
+    for (const c of leftOut) {
+      expect(kept.has(c.bulletId)).toBe(false);
+      expect(c.before).toBe(bulletsById(sampleBaseline).get(c.bulletId)!.text);
+      expect(c.reason).toMatch(/^Left out of this version/);
+    }
+    // the latest role keeps every bullet, and no role is emptied
+    for (const id of ["b1", "b2", "b3", "b4"]) expect(kept.has(id)).toBe(true);
+    for (const role of r.content.experience) expect(role.bullets.length).toBeGreaterThan(0);
+    // a short resume is left whole: there is no padding to cut
+    const short = structuredClone(sampleBaseline);
+    short.experience = short.experience.slice(0, 2).map((x) => ({ ...x, bullets: x.bullets.slice(0, 2) }));
+    const rs = await tailorResume({ ...input, baseline: short });
+    expect(rs.changes.some((c) => c.after === LEFT_OUT)).toBe(false);
   });
 
   it("only adds skills backed by the bullet's own evidence, and fixes weak openers", async () => {
@@ -55,12 +77,15 @@ describe("tailorResume (heuristic, offline)", () => {
     expect(after.get("b6")!.text).toBe(bulletsById(sampleBaseline).get("b6")!.text);
   });
 
-  it("preserves provenance for every bullet", async () => {
+  it("preserves provenance for every bullet that is kept, and the left-out ones stay on record", async () => {
     const r = await tailorResume(input);
     const before = bulletsById(sampleBaseline);
-    expect(Object.keys(r.provenance).sort()).toEqual([...before.keys()].sort());
-    for (const [id, b] of before) expect(r.provenance[id]).toEqual(b.nodeIds);
-    for (const b of bulletsById(r.content).values()) expect(b.nodeIds).toEqual(before.get(b.id)!.nodeIds);
+    const kept = bulletsById(r.content);
+    expect(Object.keys(r.provenance).sort()).toEqual([...kept.keys()].sort());
+    for (const id of kept.keys()) expect(r.provenance[id]).toEqual(before.get(id)!.nodeIds);
+    for (const b of kept.values()) expect(b.nodeIds).toEqual(before.get(b.id)!.nodeIds);
+    const leftOut = r.changes.filter((c) => c.after === LEFT_OUT).map((c) => c.bulletId);
+    expect([...kept.keys(), ...leftOut].sort()).toEqual([...before.keys()].sort()); // nothing vanishes without a record
   });
 
   it("puts required skills first, writes a factual summary and reports coverage", async () => {
@@ -71,16 +96,19 @@ describe("tailorResume (heuristic, offline)", () => {
     expect(r.content.skills[1].items[0]).toBe("TypeScript");
     expect(r.content.skills.flatMap((g) => g.items)).toEqual(expect.arrayContaining(["React", "TypeScript", "PostgreSQL"]));
     const yrs = yearsOfExperience(sampleBaseline.experience)!;
-    expect(r.content.summary).toMatch(new RegExp(`^Senior Software Engineer with ${yrs} years of hands-on experience in React, TypeScript, Node\\.js and PostgreSQL\\.`));
-    // only one distinct recent skill (accessibility) is left after the top four, so the clause is dropped
-    expect(r.content.summary).not.toMatch(/recent work/);
+    // two plain sentences: the latest real title, real years and the skills the job asks for that the resume proves; then real results
+    expect(r.content.summary).toMatch(new RegExp(`^Senior Software Engineer with ${yrs} years of experience in React, TypeScript and Node\\.js\\. Recent results: `));
+    expect(r.content.summary).toMatch(/built the merchant dashboard used by 12,000 businesses/);
+    expect(r.content.summary).toMatch(/cut p95 API latency from 900ms to 250ms/);
+    expect(r.content.summary).not.toMatch(/Experience spans|hands-on|\(React/); // no employer list, no filler, no keyword tag
+    expect(r.content.summary).not.toMatch(FLUFF_RE);
     expect(r.content.summary).not.toMatch(/\b(I|my|we)\b/);
     expect(r.changes.some((c) => c.bulletId === "summary")).toBe(true);
     expect(r.keywordCoverage).toBeGreaterThanOrEqual(0.83);
     expect(keywordCoverage(sampleBaseline, sampleRequirements)).toBeLessThanOrEqual(r.keywordCoverage);
   });
 
-  it("summary dedupes skills case-insensitively, lists up to 3 recent skills, and never repeats the title", async () => {
+  it("summary dedupes skills case-insensitively, leads with results, and never repeats the title", async () => {
     const req = {
       ...sampleRequirements,
       skills: [{ name: "React", required: true }, { name: "Mentoring", required: true }],
@@ -91,8 +119,7 @@ describe("tailorResume (heuristic, offline)", () => {
     const r = await tailorResume({ ...input, baseline, requirements: req, jobTitle: "Senior Software Engineer" });
     const s = r.content.summary!;
     expect(s.match(/Senior Software Engineer/g)).toHaveLength(1);
-    expect(s).toMatch(/^Senior Software Engineer with \d+ years of hands-on experience in React and Mentoring\./);
-    expect(s).toMatch(/with recent work in code review, accessibility and pairing\.$/);
+    expect(s).toMatch(/^Senior Software Engineer with \d+ years of experience in React and Mentoring\. Recent results: mentored 3 engineers; /);
     expect(s).not.toMatch(/Mentoring and Mentoring|mentoring.*Mentoring/i);
     expect(yearsOfExperience([{ title: "x", company: "y", start: "2019-03", bullets: [] }], new Date(2026, 9, 1))).toBe(7);
     expect(yearsOfExperience([{ title: "x", company: "y", bullets: [] }])).toBeNull();
@@ -165,9 +192,11 @@ describe("template + ats", () => {
     expect(html).toMatch(/<h1>Jordan Rivera<\/h1>/);
     const heads = [...html.matchAll(/<h2>(.*?)<\/h2>/g)].map((m) => m[1]);
     expect(heads).toEqual(["Summary", "Experience", "Education", "Skills", "Certifications"]);
-    expect(html).toContain("@page { size: Letter; margin: 0.5in; }");
+    expect(html).toMatch(/@page \{ size: Letter; margin: [\d.]+in; \}/);
     expect(html).toContain("Apr 2021 – Present");
-    expect(renderHtml(sampleBaseline, "tight")).toContain("font-size: 10.5pt");
+    const bodySize = (h: string) => Number(/body \{[^}]*?font-size: ([\d.]+)pt/.exec(h)![1]);
+    expect(bodySize(renderHtml(sampleBaseline, "tight"))).toBeLessThan(bodySize(renderHtml(sampleBaseline, "compact")));
+    expect(bodySize(renderHtml(sampleBaseline, "compact"))).toBeLessThan(bodySize(html));
   });
 
   it("scores a clean tailored resume high and flags problems", async () => {
@@ -192,5 +221,57 @@ describe("template + ats", () => {
     expect(strengthenOpener("Responsible for juggling things")).toBe("Responsible for juggling things");
     expect(startsWithVerb("Architected a system")).toBe(true);
     expect(startsWithVerb("The system")).toBe(false);
+  });
+
+  it("shrinks the prompt until a small-window model can take it, and still checks the output against the full evidence", async () => {
+    const sizes: number[] = [];
+    // The first two sizes do not fit this window; the third does.
+    const small: LLM = {
+      provider: "openai-compatible", model: "tiny-4k", available: true,
+      async text() { return ""; },
+      async json<T>(call: { prompt: string }): Promise<T> {
+        sizes.push(call.prompt.length);
+        if (sizes.length < 3) throw new Error("The prompt needs about 5000 tokens but tiny-4k runs with a 4096-token context, so it would be cut off.");
+        const exp = sampleBaseline.experience.map((r) => ({ bullets: r.bullets.map((b) => ({ id: b.id, text: b.text, nodeIds: b.nodeIds })) }));
+        exp[0].bullets[0] = { id: "b1", text: "Built a merchant dashboard in React and TypeScript adopted by 50,000 businesses", nodeIds: ["r1", "m1"] };
+        return { experience: exp, summary: "Senior Software Engineer with hands-on experience in React, TypeScript, Node.js and PostgreSQL.", skillsOrder: ["React"] } as T;
+      },
+    };
+    setLLM(small);
+    try {
+      const r = await tailorResume(input);
+      expect(r.usedLLM).toBe(true);
+      expect(sizes.length).toBe(3); // full, compact, bullets only
+      expect(sizes[0]).toBeGreaterThan(sizes[1]);
+      expect(sizes[1]).toBeGreaterThan(sizes[2]);
+      expect(r.rejected.map((x) => x.bulletId)).toContain("b1"); // the invented number is still caught
+      expect(bulletsById(r.content).get("b1")!.text).not.toMatch(/50,000/);
+    } finally {
+      setLLM(null);
+    }
+  });
+
+  it("does not hide a failure that has nothing to do with the window", async () => {
+    let calls = 0;
+    setLLM({ provider: "openai-compatible", model: "x", available: true, async text() { return ""; }, async json() { calls++; throw new Error("LLM 500: boom"); } });
+    try {
+      const r = await tailorResume(input);
+      expect(calls).toBe(1);
+      expect(r.usedLLM).toBe(false); // heuristic fallback, as before
+    } finally {
+      setLLM(null);
+    }
+  });
+});
+
+describe("ownership and scope upgrades", () => {
+  const orig = { id: "b1", text: "Contributed to the migration of the checkout flow to React", nodeIds: ["n1"] };
+  it("rejects a rewrite that turns 'contributed to' into 'led' or adds company-wide scope", () => {
+    expect(validateBullet(orig, { text: "Led the migration of the checkout flow to React for the web team", nodeIds: ["n1"] }, "", ["React"]).ok).toBe(false);
+    expect(validateBullet(orig, { text: "Contributed to a company-wide migration of the checkout flow to React", nodeIds: ["n1"] }, "", ["React"]).ok).toBe(false);
+  });
+  it("keeps a rewrite whose wording the evidence supports", () => {
+    expect(validateBullet(orig, { text: "Contributed to moving the checkout flow to React across the storefront", nodeIds: ["n1"] }, "", ["React"]).ok).toBe(true);
+    expect(validateBullet(orig, { text: "Led the migration of the checkout flow to React for the web team", nodeIds: ["n1"] }, "Led a team of four on the checkout rewrite", ["React"]).ok).toBe(true);
   });
 });

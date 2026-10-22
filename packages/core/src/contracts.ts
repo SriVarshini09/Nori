@@ -55,6 +55,11 @@ export type Evidence = {
   roleLabel?: string;
   companyLabel?: string;
   score: number;
+  /**
+   * Not evidence of anything: a placeholder for a soft skill ("strong communication") the graph says nothing about, so it
+   * is not listed as a gap. Scoring treats the requirement as neutral, and tailoring and answers never use it as support.
+   */
+  inferred?: boolean;
 };
 
 export type IngestResult = { nodesCreated: number; edgesCreated: number; usedLLM: boolean; profilePatch: Partial<{ fullName: string; email: string; phone: string; linkedin: string; location: string; website: string }> };
@@ -116,7 +121,7 @@ export type DriverResult =
   | { outcome: "submitted"; receipt: Receipt }
   | { outcome: "filled"; receipt: Receipt; fields: FormField[] }     // dryRun or review gate: form filled, not submitted
   | { outcome: "needs_user"; pending: PendingQuestion[]; receipt: Receipt }
-  | { outcome: "failed"; error: string; screenshotPath?: string };
+  | { outcome: "failed"; error: string; screenshotPath?: string; /** Submit was clicked before it failed: the employer may have it. */ submitClicked?: boolean };
 
 export interface ApplyDriver {
   atsType: AtsType;

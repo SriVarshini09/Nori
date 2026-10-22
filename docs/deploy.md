@@ -16,6 +16,7 @@ fly secrets set \
   DATABASE_URL='postgres://...sslmode=require' \
   CREDENTIALS_KEY="$(openssl rand -base64 32)" \
   APP_SECRET="$(openssl rand -base64 32)" \
+  PROXY_SECRET="<one random value, also set on Vercel>" \
   WEB_URL=https://jobs.norinote.xyz \
   COMPOSIO_API_KEY=... PARALLEL_API_KEY=... TELEGRAM_BOT_TOKEN=... \
   HOSTED_LLM_PROVIDER=cline HOSTED_LLM_BASE_URL=https://api.cline.bot/api/v1 HOSTED_LLM_API_KEY=... \
@@ -25,12 +26,13 @@ fly deploy
 - Keep `CREDENTIALS_KEY` forever: changing it makes stored user model keys unreadable.
 - Do not set `DEFAULT_USER_EMAIL` or `ALLOW_REAL_SUBMIT` until you mean to (the first lets anonymous requests act as that user; the second lets the driver click Submit).
 - One machine only (`fly scale count 1`): the scheduler and channel listeners run inside the API process.
-- `fly.toml` sets `EMBED_WORKER=1`, `NODE_ENV=production`, `API_PORT=4000`, `ARTIFACTS_DIR=/data/artifacts`. `DATABASE_URL` is required in production (without it the API falls back to embedded PGlite under `/app/data`, which is not on the volume).
+- `fly.toml` sets `EMBED_WORKER=1`, `NODE_ENV=production`, `API_PORT=4000`, `ARTIFACTS_DIR=/data/artifacts`. `DATABASE_URL` is required in production: without it the API refuses to start and says why.
+- `PROXY_SECRET` must be the same value here and on Vercel. The dashboard's proxy signs each visitor's address with it, so login and sign-up rate limits count per visitor. Without it every request seems to come from Vercel and the limits are shared.
 
 ## 3. Dashboard (Vercel)
 1. Import the repo, **Root Directory = `apps/web`** (keep "Include source files outside the Root Directory" on). `apps/web/vercel.json` installs at the repo root.
 2. Environment variables (Production):
-   `NEXT_PUBLIC_USE_MOCK=0`, `API_URL=https://api.norinote.xyz`, `NEXT_PUBLIC_API_URL=https://api.norinote.xyz`
+   `API_URL=https://api.norinote.xyz`, `NEXT_PUBLIC_API_URL=https://api.norinote.xyz`, `PROXY_SECRET` (the same value as on Fly). Live mode is the default; never set `NEXT_PUBLIC_USE_MOCK=1` here.
 3. Deploy. Add the domain `jobs.norinote.xyz`.
 
 ## 4. DNS

@@ -28,8 +28,21 @@ export const users = pgTable("users", {
   name: text("name"),
   /** scrypt$N$r$p$salt$hash (base64); null for users created by DEFAULT_USER_EMAIL or channels. */
   passwordHash: text("password_hash"),
+  /** Set when the user proves they own the address (verification link). Null = not verified yet. */
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** One-time links for password reset and email verification. Only the sha256 of the token is stored. */
+export const authTokens = pgTable("auth_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"reset" | "verify">().notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("auth_tokens_user_idx").on(t.userId, t.kind)]);
 
 /** Login sessions. The cookie carries a random token; only its sha256 is stored. */
 export const sessions = pgTable("sessions", {
@@ -73,6 +86,8 @@ export const profiles = pgTable("profiles", {
   rawResumeText: text("raw_resume_text"),
   resumeAutoApprove: boolean("resume_auto_approve").default(false).notNull(),
   reviewBeforeSubmit: boolean("review_before_submit").default(true).notNull(),
+  /** off: every form waits for the person. safe: Nori approves a filled form itself only when every Autopilot check passes. written: the same, and short free-text answers Nori wrote are allowed. */
+  autopilot: text("autopilot").$type<"off" | "safe" | "written">().default("off").notNull(),
   /** Daily cap for auto-apply mode. 0 disables auto apply. */
   autoApplyDailyCap: integer("auto_apply_daily_cap").default(0).notNull(),
   autoApplyMinScore: real("auto_apply_min_score").default(0.7).notNull(),
@@ -263,6 +278,8 @@ export const applications = pgTable("applications", {
   /** Set by the user (or auto-approve settings) to let the runner pass a review gate. */
   resumeApprovedAt: timestamp("resume_approved_at", { withTimezone: true }),
   formApprovedAt: timestamp("form_approved_at", { withTimezone: true }),
+  /** True when Autopilot (not the person) approved the filled form. */
+  autopilot: boolean("autopilot").default(false).notNull(),
   submittedAt: timestamp("submitted_at", { withTimezone: true }),
   /** Row number in the user's Google Sheet tracker, if synced through Composio. */
   sheetRow: integer("sheet_row"),
@@ -284,6 +301,8 @@ export type Receipt = {
   submittedVia: string;
   dryRun: boolean;
   durationMs: number;
+  /** The driver clicked submit on this run, so the employer may already have the application. Never re-sent automatically. */
+  submitClicked?: boolean;
 };
 
 export const resumes = pgTable("resumes", {
@@ -302,14 +321,47 @@ export const resumes = pgTable("resumes", {
   atsScore: integer("ats_score"),
   atsChecks: jsonb("ats_checks").$type<AtsCheck[]>().default([]).notNull(),
   keywordCoverage: real("keyword_coverage"),
+  /** Template and theme the PDF was rendered with. */
+  templateId: text("template_id").default("classic").notNull(),
+  theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
+  /** True when the user changed this version by hand after tailoring. */
+  edited: boolean("edited").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-export type ResumeBullet = { id: string; text: string; nodeIds: string[] };
+/** The user's own resumes: a library of documents they edit, style and export. Tailored resumes (above) are generated from these. */
+export const resumeDocs = pgTable("resume_docs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  source: text("source").$type<"graph" | "upload" | "manual" | "copy" | "text">().default("manual").notNull(),
+  content: jsonb("content").$type<ResumeContent>().notNull(),
+  templateId: text("template_id").default("classic").notNull(),
+  theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
+  isDefault: boolean("is_default").default(false).notNull(),
+  version: integer("version").default(1).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("resume_docs_user_idx").on(t.userId, t.updatedAt)]);
+
+/** Snapshot of a resume document before each change, so any earlier state can be restored. */
+export const resumeDocVersions = pgTable("resume_doc_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  docId: uuid("doc_id").notNull().references(() => resumeDocs.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  name: text("name").notNull(),
+  content: jsonb("content").$type<ResumeContent>().notNull(),
+  templateId: text("template_id").default("classic").notNull(),
+  theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
+  label: text("label"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("resume_doc_versions_doc_idx").on(t.docId, t.version)]);
+
+export type ResumeBullet = { id: string; text: string; nodeIds: string[]; /** Written or changed by the user rather than derived from the graph. */ edited?: boolean };
 export type ResumeChange = { bulletId: string; before: string; after: string; reason: string; nodeIds: string[] };
 export type ResumeContent = {
   name: string;
-  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string };
+  contact: { email?: string; phone?: string; location?: string; linkedin?: string; website?: string; github?: string };
   summary?: string;
   experience: {
     title: string; company: string; location?: string; start?: string; end?: string;
@@ -319,6 +371,10 @@ export type ResumeContent = {
   skills: { group: string; items: string[] }[];
   projects?: { name: string; bullets: ResumeBullet[] }[];
   certifications?: string[];
+  /** Extra sections such as Awards or Languages. Titles come from a fixed safe list so ATS parsers recognise them. */
+  extras?: { title: string; items: string[] }[];
+  /** Section order and visibility. Unset means the default order with every non-empty section shown. */
+  layout?: { sections?: string[]; hidden?: string[] };
 };
 export type AtsCheck = { id: string; label: string; pass: boolean; detail?: string; weight: number };
 
@@ -410,5 +466,5 @@ export const userCredentials = pgTable("user_credentials", {
 
 export const schema = {
   users, sessions, profiles, graphNodes, graphEdges, companies, jobs, matches, applications,
-  resumes, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
+  resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
 };

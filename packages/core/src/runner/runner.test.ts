@@ -371,3 +371,62 @@ describe("runner free-text composer", () => {
     expect(ev.some((e) => e.step === "research" && /timed out/.test(e.message))).toBe(true);
   });
 });
+
+describe("review before submit off", () => {
+  it("never sends straight from the fill: the form waits unless every Autopilot check passes", async () => {
+    await db.update(profiles).set({ reviewBeforeSubmit: false, resumeAutoApprove: true, autopilot: "off" }).where(eq(profiles.userId, userId));
+    const driver = new FakeDriver();
+    const created = await createApplication(db, userId, jobId);
+    const status = await runApplication(db, created.id, deps(driver));
+    // A "web" form, no hand approvals yet: Autopilot's checks fail, so it is held instead of sent.
+    expect(status).toBe("form_review");
+    expect(driver.calls.every((c) => c.dryRun)).toBe(true);
+    const a = await app(created.id);
+    expect(a.formApprovedAt).toBeNull();
+    expect(a.submittedAt).toBeNull();
+  });
+});
+
+describe("after submit was clicked", () => {
+  /** Fills fine on dry runs; on the real run it clicks submit and then fails (no confirmation, CAPTCHA, ...). */
+  class ClickThenFail extends FakeDriver {
+    constructor(private how: "failed" | "captcha") { super(); }
+    async run(ctx: DriverContext): Promise<DriverResult> {
+      if (ctx.dryRun) return super.run(ctx);
+      this.calls.push(ctx);
+      const receipt = { fields: [], files: [], submittedVia: "fake", dryRun: false, durationMs: 1, submitClicked: true };
+      return this.how === "failed"
+        ? { outcome: "failed", error: "Clicked submit, but the form is still on the page", submitClicked: true }
+        : { outcome: "needs_user", pending: [{ label: "CAPTCHA", type: "captcha", required: true }], receipt };
+    }
+  }
+
+  for (const how of ["failed", "captcha"] as const) {
+    it(`never re-sends on retry (${how}): the form goes back to the person`, async () => {
+      const driver = new ClickThenFail(how);
+      const d = deps(driver);
+      await db.update(profiles).set({ resumeAutoApprove: true }).where(eq(profiles.userId, userId));
+      const created = await createApplication(db, userId, jobId);
+      expect(await runApplication(db, created.id, d)).toBe("form_review");
+      expect(await approveForm(db, created.id, d)).toBe(how === "failed" ? "failed" : "needs_user");
+      expect((await app(created.id)).formApprovedAt).toBeNull();
+      const realRuns = driver.calls.filter((c) => !c.dryRun).length;
+      expect(await retryApplication(db, created.id, d)).toBe("form_review");
+      expect(driver.calls.filter((c) => !c.dryRun).length).toBe(realRuns);
+    });
+  }
+});
+
+describe("an interrupted code wait", () => {
+  it("is handed back to the person instead of staying stuck, without the form approval", async () => {
+    const { recoverStuckCodeWaits } = await import("./index.js");
+    const created = await createApplication(db, userId, jobId);
+    const old = new Date(Date.now() - 60 * 60_000);
+    await db.update(applications).set({ status: "awaiting_code", formApprovedAt: old, updatedAt: old }).where(eq(applications.id, created.id));
+    expect(await recoverStuckCodeWaits(db)).toBe(1);
+    const a = await app(created.id);
+    expect(a.status).toBe("needs_user");
+    expect(a.formApprovedAt).toBeNull();
+    expect(await recoverStuckCodeWaits(db)).toBe(0);
+  });
+});

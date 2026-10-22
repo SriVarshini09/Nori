@@ -11,15 +11,15 @@ npm run companion     # from the repo root
 
 Dependencies live in `apps/companion` only (`cd apps/companion && npm install --workspaces=false`; the Electron binary is fetched by its postinstall, or run `node node_modules/electron/install.js`). `npm run companion` launches Electron with `ELECTRON_RUN_AS_NODE` unset.
 
-Environment: `WEB_URL` (default `http://localhost:3000`), `API_URL` (default `http://localhost:4000`).
+Environment: `WEB_URL` (default `http://localhost:3000`). API calls go through the web app's `/api` proxy, so the sign-in cookie works the same locally and when deployed. `COMPANION_API_URL` overrides that for unusual setups.
 
 ## What it does
 
 - Click the tray icon: a frameless 360 by 560 popover anchored to the icon, loading `WEB_URL/companion`. It hides when it loses focus.
 - Right-click menu: Open dashboard (`/agent` in your browser), Run now (`POST /api/agent/tick`), Pause / Resume agent (sets `autoApplyDailyCap` to 0 and restores the previous value), Quit.
 - Every 60 seconds it polls `GET /api/agent/status`. When applications await review the icon gets a dot, macOS shows the count next to the icon, Windows/Linux show it in the tooltip, and a native notification says "N applications are waiting for your approval" once per new item (seen ids are kept in the Electron userData folder).
-- Sign-in: the popover has its own Electron session. If `/companion` redirects to `/login` it is shown in the popover, and after signing in it returns to the compact view. The cookie persists, and the main process reuses it for the API calls (localhost cookies are shared across ports). With no cookie the API falls back to `DEFAULT_USER_EMAIL`.
-- Links to other origins open in your default browser.
+- Sign-in: the popover has its own Electron session. If `/companion` redirects to `/login` it is shown in the popover, and after signing in it returns to the compact view. The cookie persists, and the main process reuses it for the API calls through the same web origin. With no cookie the API falls back to `DEFAULT_USER_EMAIL` in local development only.
+- Links to other origins open in your default browser (http, https and mailto only).
 
 ## Icons
 

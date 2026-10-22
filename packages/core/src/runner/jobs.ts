@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { graphNodes, jobs, matches } from "../db/schema.js";
 import type { DiscoverQuery, MatchResult, NormalizedJob } from "../contracts.js";
@@ -95,8 +95,30 @@ export async function rowsForNormalized(db: Db, list: NormalizedJob[]): Promise<
 }
 
 /** Parallel search -> upsert -> match. Best match first. */
-export async function findAndRank(db: Db, userId: string, query: DiscoverQuery, discover = discoverJobs): Promise<{ added: number; jobs: RankedJob[] }> {
-  const res = await discover(db, query);
+/** Words in "find senior frontend roles, remote" that say nothing about which jobs to look at. */
+const QUERY_NOISE = new Set(["find", "search", "look", "for", "me", "my", "show", "get", "some", "any", "role", "roles", "job", "jobs", "position", "positions", "opening", "openings", "work", "remote", "remotely", "anywhere", "in", "at", "a", "an", "the", "and", "or", "with", "on", "of", "to", "new", "open", "please", "near", "based", "hybrid"]);
+
+/** The web search (Parallel) is optional. Without its key, search the jobs Nori already holds instead of failing. */
+const SEARCH_OFF = /PARALLEL_API_KEY|search\/extract\/research is unavailable/i;
+
+/** Best matches among jobs already in the database whose title, company or place mention the query. */
+async function searchHeld(db: Db, userId: string, query: DiscoverQuery): Promise<RankedJob[]> {
+  const words = [...new Set((query.objective ?? "").toLowerCase().split(/[^a-z0-9+#.]+/).filter((w) => w.length > 1 && !QUERY_NOISE.has(w)))].slice(0, 6);
+  const wantsRemote = /\bremote(ly)?\b/i.test(query.objective ?? "");
+  const text = (w: string) => { const p = `%${w.replace(/[%_\\]/g, "")}%`; return or(ilike(jobs.title, p), ilike(jobs.companyName, p), ilike(jobs.location, p)); };
+  const rows = await db.select({ id: jobs.id }).from(jobs)
+    .where(and(isNull(jobs.closedAt), wantsRemote ? eq(jobs.remote, true) : undefined, words.length ? or(...words.map(text)) : undefined))
+    .orderBy(sql`${jobs.postedAt} desc nulls last`, desc(jobs.firstSeenAt)).limit(300);
+  return matchJobs(db, userId, rows.map((r) => r.id));
+}
+
+export async function findAndRank(db: Db, userId: string, query: DiscoverQuery, discover = discoverJobs): Promise<{ added: number; jobs: RankedJob[]; heldOnly?: boolean }> {
+  let res: Awaited<ReturnType<typeof discoverJobs>>;
+  try { res = await discover(db, query); }
+  catch (e) {
+    if (!SEARCH_OFF.test((e as Error).message)) throw e;
+    return { added: 0, jobs: await searchHeld(db, userId, query), heldOnly: true };
+  }
   const rows = await rowsForNormalized(db, res.jobs);
   return { added: res.added, jobs: await matchJobs(db, userId, rows.map((r) => r.id)) };
 }

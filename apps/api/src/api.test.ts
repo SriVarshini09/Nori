@@ -4,7 +4,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  jobs, openTestDb, users, renderHtml, atsChecks,
+  jobs, applications, openTestDb, users, renderHtml, atsChecks,
   type ApplyDriver, type DriverContext, type DriverResult, type Db, type RenderFn,
 } from "@jobgraph/core";
 import { createApp } from "./app.js";
@@ -134,7 +134,9 @@ describe("api", () => {
     expect(created.json.status).toBe("resume_review");
 
     let d = await call("GET", `/api/applications/${id}`);
-    expect(Object.keys(d.json).sort()).toEqual(["application", "company", "events", "job", "match", "resume"]);
+    expect(Object.keys(d.json).sort()).toEqual(["application", "company", "events", "job", "match", "recruiter", "resume"]);
+    expect(d.json.recruiter).toMatchObject({ verdict: expect.stringMatching(/strong|good|needs_work/), stats: { bullets: expect.any(Number) } });
+    expect(d.json.recruiter.score).toBeGreaterThan(0);
     expect(d.json.resume.pdfPath).toMatch(/resume-v1\.pdf$/);
     expect(d.json.events[0]).toMatchObject({ applicationId: id, step: "created" });
     expect(typeof d.json.events[0].ts).toBe("string");
@@ -174,6 +176,64 @@ describe("api", () => {
     expect(r.status).toBe(404);
     expect(r.json).toEqual({ error: "Application not found" });
     expect((await call("GET", "/api/nope")).json.error).toMatch(/No route/);
+  });
+
+  it("approve-form waits for a run that is still resuming after an answer instead of answering 409", async () => {
+    const [job] = await db.insert(jobs).values({
+      companyName: "Beta", atsType: "web", externalId: "beta-1", title: "Platform Engineer",
+      descriptionText: "Requirements:\n- TypeScript", applyUrl: "https://example.com/jobs/2",
+    }).returning();
+    const created = await call("POST", "/api/applications?wait=1", { jobId: job.id });
+    const id = created.json.id as string;
+    expect((await call("POST", `/api/applications/${id}/approve-resume?wait=1`)).json.status).toBe("form_review");
+
+    // The state a user hits right after answering: the run is back to filling and reaches the review a moment later.
+    await db.update(applications).set({ status: "filling" }).where(eq(applications.id, id));
+    setTimeout(() => { void Promise.resolve(db.update(applications).set({ status: "form_review" }).where(eq(applications.id, id))); }, 700); // drizzle builders run only when awaited
+    const started = Date.now();
+    const approved = await call("POST", `/api/applications/${id}/approve-form?wait=1`, { answers: { "First Name": "Jo" } });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(600);
+    expect(approved.status).toBe(200);
+    expect(approved.json.status).toBe("submitted");
+
+    // A finished application still answers 409 at once.
+    const again = await call("POST", `/api/applications/${id}/approve-form?wait=1`, {});
+    expect(again.status).toBe(409);
+  });
+
+  it("answers 422 with the reason for a pasted link that is not a readable public job page", async () => {
+    const internal = await call("POST", "/api/jobs/url", { url: "http://169.254.169.254/latest/meta-data/" });
+    expect(internal.status).toBe(422);
+    expect(internal.json.error).toMatch(/not a public website/);
+    const board = await call("POST", "/api/jobs/url", { url: "https://boards.greenhouse.io/acme" });
+    expect(board.status).toBe(422);
+    expect(board.json.error).toMatch(/job board, not a single posting/);
+    expect((await call("POST", "/api/jobs/url", { url: "nope" })).status).toBe(400);
+  });
+
+  it("approve-form also waits through the gap right after an answer, when the status is still needs_user but no question is left", async () => {
+    const [job] = await db.insert(jobs).values({
+      companyName: "Gap", atsType: "web", externalId: "gap-1", title: "Backend Engineer",
+      descriptionText: "Requirements:\n- TypeScript", applyUrl: "https://example.com/jobs/3",
+    }).returning();
+    const created = await call("POST", "/api/applications?wait=1", { jobId: job.id });
+    const id = created.json.id as string;
+    expect((await call("POST", `/api/applications/${id}/approve-resume?wait=1`)).json.status).toBe("form_review");
+
+    // The moment after an answer on a real database: answers saved, questions cleared, the run not yet moved on.
+    await db.update(applications).set({ status: "needs_user", pendingQuestions: [] }).where(eq(applications.id, id));
+    setTimeout(() => { void Promise.resolve(db.update(applications).set({ status: "form_review" }).where(eq(applications.id, id))); }, 600);
+    const approved = await call("POST", `/api/applications/${id}/approve-form?wait=1`, {});
+    expect(approved.status).toBe(200);
+    expect(approved.json.status).toBe("submitted");
+
+    // With a question still open, "needs you" is a real refusal and answers at once.
+    const [job2] = await db.insert(jobs).values({ companyName: "Open", atsType: "web", externalId: "open-1", title: "Engineer", descriptionText: "Requirements:\n- TypeScript", applyUrl: "https://example.com/jobs/4" }).returning();
+    const second = (await call("POST", "/api/applications?wait=1", { jobId: job2.id })).json.id as string;
+    await db.update(applications).set({ status: "needs_user", pendingQuestions: [{ label: "Visa?", type: "select", required: true }] }).where(eq(applications.id, second));
+    const started = Date.now();
+    expect((await call("POST", `/api/applications/${second}/approve-form?wait=1`, {})).status).toBe(409);
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it("serves MCP tools over streamable HTTP", async () => {

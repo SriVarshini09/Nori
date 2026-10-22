@@ -273,17 +273,20 @@ export const FIND_SUBMIT_SCRIPT = String.raw`function () {
       .filter(function (b) { return visible(b) && !b.disabled; });
   }
   function label(b) { return clean(b.tagName === 'INPUT' ? b.value : (b.textContent || b.getAttribute('aria-label') || '')); }
+  // Step buttons of a multi-page form are often type=submit too. Clicking one is not sending the application.
+  function stepLike(b) { return /^(next|continue|save|back|previous|prev|review|cancel|add|upload|attach|skip)\b/i.test(label(b)); }
   var scopes = root === document.body ? [document.body] : [root, document.body];
   var tests = [
     function (b) { return /submit\s+(my\s+|your\s+)?application/i.test(label(b)); },
     function (b) { return /^submit\b/i.test(label(b)); },
-    function (b) { return /^(apply|apply now|send application)$/i.test(label(b)); },
+    // "Apply now" outside the form is the posting's link to the form, not a submit button.
+    function (b) { return /^(apply|apply now|send application)$/i.test(label(b)) && (root === document.body || root.contains(b)); },
     function (b) { return (b.getAttribute('type') || '').toLowerCase() === 'submit' && root.contains(b); },
-    function (b) { return /^(verify|confirm)/i.test(label(b)) && !document.querySelector('[data-jobgraph-form] input[type=password]'); }
+    function (b) { return /^(verify|confirm)\b/i.test(label(b)) && !document.querySelector('[data-jobgraph-form] input[type=password]'); }
   ];
   for (var t = 0; t < tests.length; t++) {
     for (var s = 0; s < scopes.length; s++) {
-      var found = candidates(scopes[s]).filter(tests[t])[0];
+      var found = candidates(scopes[s]).filter(function (b) { return !stepLike(b) && tests[t](b); })[0];
       if (found) { found.setAttribute('data-jobgraph-submit', '1'); return label(found) || 'submit'; }
     }
   }

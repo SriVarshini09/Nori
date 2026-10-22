@@ -6,6 +6,7 @@ import { FAILED, IN_FLIGHT, NEEDS_YOU, SUBMITTED } from "@/lib/format";
 import type { ApplicationListItem } from "@/lib/types";
 import { api, USE_MOCK } from "@/lib/api";
 import { DataTable, type Column } from "./DataTable";
+import { Monogram } from "./Monogram";
 import { StatusPill } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
 import { cx } from "./ui";
@@ -34,9 +35,12 @@ export function ApplicationsTable({ items, limit }: { items: ApplicationListItem
       key: "position",
       header: "Position",
       cell: (i) => (
-        <Link href={`/applications/${i.application.id}`} className="group block min-w-0 max-w-[190px] sm:max-w-none">
-          <span className="block truncate font-medium text-ink decoration-line-strong underline-offset-4 group-hover:underline">{i.job.title}</span>
-          <span className="block truncate text-meta text-muted">{i.job.companyName}</span>
+        <Link href={`/applications/${i.application.id}`} className="group flex min-w-0 max-w-[230px] items-center gap-3 sm:max-w-none">
+          <Monogram name={i.job.companyName} size={36} />
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-ink decoration-line-strong underline-offset-4 group-hover:underline">{i.job.title}</span>
+            <span className="block truncate text-meta text-muted">{i.job.companyName}</span>
+          </span>
         </Link>
       ),
     },

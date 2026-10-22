@@ -1,0 +1,357 @@
+# ats:token:Display name   (candidates only; scripts/verify-boards.mts keeps the ones whose public feed answers)
+greenhouse:airbnb:Airbnb
+greenhouse:stripe:Stripe
+greenhouse:coinbase:Coinbase
+greenhouse:discord:Discord
+greenhouse:dropbox:Dropbox
+greenhouse:figma:Figma
+greenhouse:databricks:Databricks
+greenhouse:cloudflare:Cloudflare
+greenhouse:datadog:Datadog
+greenhouse:gitlab:GitLab
+greenhouse:instacart:Instacart
+greenhouse:lyft:Lyft
+greenhouse:pinterest:Pinterest
+greenhouse:reddit:Reddit
+greenhouse:robinhood:Robinhood
+greenhouse:twilio:Twilio
+greenhouse:vercel:Vercel
+greenhouse:anthropic:Anthropic
+greenhouse:airtable:Airtable
+greenhouse:asana:Asana
+greenhouse:brex:Brex
+greenhouse:carta:Carta
+greenhouse:chime:Chime
+greenhouse:gusto:Gusto
+greenhouse:mongodb:MongoDB
+greenhouse:okta:Okta
+greenhouse:samsara:Samsara
+greenhouse:squarespace:Squarespace
+greenhouse:webflow:Webflow
+greenhouse:zscaler:Zscaler
+greenhouse:elastic:Elastic
+greenhouse:fastly:Fastly
+greenhouse:hubspot:HubSpot
+greenhouse:intercom:Intercom
+greenhouse:mixpanel:Mixpanel
+greenhouse:newrelic:New Relic
+greenhouse:pagerduty:PagerDuty
+greenhouse:rubrik:Rubrik
+greenhouse:sentry:Sentry
+greenhouse:toast:Toast
+greenhouse:verkada:Verkada
+greenhouse:duolingo:Duolingo
+greenhouse:flexport:Flexport
+greenhouse:faire:Faire
+greenhouse:glassdoor:Glassdoor
+greenhouse:grammarly:Grammarly
+greenhouse:nextdoor:Nextdoor
+greenhouse:opendoor:Opendoor
+greenhouse:peloton:Peloton
+greenhouse:plaid:Plaid
+greenhouse:quora:Quora
+greenhouse:roblox:Roblox
+greenhouse:scaleai:Scale AI
+greenhouse:stitchfix:Stitch Fix
+greenhouse:thumbtack:Thumbtack
+greenhouse:twitch:Twitch
+greenhouse:udemy:Udemy
+greenhouse:waymo:Waymo
+greenhouse:yelp:Yelp
+greenhouse:affirm:Affirm
+greenhouse:amplitude:Amplitude
+greenhouse:benchling:Benchling
+greenhouse:calendly:Calendly
+greenhouse:checkr:Checkr
+greenhouse:clickup:ClickUp
+greenhouse:coursera:Coursera
+greenhouse:doordash:DoorDash
+greenhouse:epicgames:Epic Games
+greenhouse:etsy:Etsy
+greenhouse:gemini:Gemini
+greenhouse:klaviyo:Klaviyo
+greenhouse:lattice:Lattice
+greenhouse:mercury:Mercury
+greenhouse:miro:Miro
+greenhouse:monzo:Monzo
+greenhouse:nerdwallet:NerdWallet
+greenhouse:oscar:Oscar Health
+greenhouse:patreon:Patreon
+greenhouse:sofi:SoFi
+greenhouse:vimeo:Vimeo
+greenhouse:warbyparker:Warby Parker
+greenhouse:wayfair:Wayfair
+greenhouse:zendesk:Zendesk
+greenhouse:pagerduty:PagerDuty
+greenhouse:cockroachlabs:Cockroach Labs
+greenhouse:confluent:Confluent
+greenhouse:contentful:Contentful
+greenhouse:crowdstrike:CrowdStrike
+greenhouse:docusign:DocuSign
+greenhouse:dbtlabs:dbt Labs
+greenhouse:fivetran:Fivetran
+greenhouse:grafanalabs:Grafana Labs
+greenhouse:hashicorp:HashiCorp
+greenhouse:honeycomb:Honeycomb
+greenhouse:launchdarkly:LaunchDarkly
+greenhouse:lucidsoftware:Lucid
+greenhouse:netlify:Netlify
+greenhouse:nuro:Nuro
+greenhouse:pendo:Pendo
+greenhouse:postman:Postman
+greenhouse:redis:Redis
+greenhouse:samsara:Samsara
+greenhouse:sendbird:Sendbird
+greenhouse:singlestore:SingleStore
+greenhouse:snyk:Snyk
+greenhouse:sumologic:Sumo Logic
+greenhouse:tailscale:Tailscale
+greenhouse:thoughtspot:ThoughtSpot
+greenhouse:unity3d:Unity
+greenhouse:vanta:Vanta
+greenhouse:wealthsimple:Wealthsimple
+greenhouse:zocdoc:Zocdoc
+greenhouse:bitly:Bitly
+greenhouse:braze:Braze
+greenhouse:cerebras:Cerebras
+greenhouse:coreweave:CoreWeave
+greenhouse:gleanwork:Glean
+greenhouse:harnessinc:Harness
+greenhouse:justworks:Justworks
+greenhouse:mailchimp:Mailchimp
+greenhouse:medallia:Medallia
+greenhouse:neuralink:Neuralink
+greenhouse:reddit:Reddit
+greenhouse:rocketlawyer:Rocket Lawyer
+greenhouse:squareup:Block
+greenhouse:strava:Strava
+greenhouse:tempus:Tempus
+greenhouse:tiktok:TikTok
+greenhouse:wikimedia:Wikimedia Foundation
+greenhouse:xai:xAI
+greenhouse:spacex:SpaceX
+greenhouse:andurilindustries:Anduril
+greenhouse:applied:Applied Intuition
+greenhouse:appliedintuition:Applied Intuition
+greenhouse:gitlab:GitLab
+greenhouse:mozilla:Mozilla
+greenhouse:khanacademy:Khan Academy
+greenhouse:npr:NPR
+greenhouse:nytimes:The New York Times
+greenhouse:betterment:Betterment
+greenhouse:wealthfront:Wealthfront
+greenhouse:marqeta:Marqeta
+greenhouse:remitly:Remitly
+greenhouse:wise:Wise
+greenhouse:revolut:Revolut
+greenhouse:klarna:Klarna
+greenhouse:gocardless:GoCardless
+greenhouse:bolt:Bolt
+greenhouse:headway:Headway
+greenhouse:ro:Ro
+greenhouse:hims:Hims & Hers
+greenhouse:lemonade:Lemonade
+greenhouse:root:Root Insurance
+greenhouse:bigcommerce:BigCommerce
+greenhouse:attentive:Attentive
+greenhouse:gong:Gong
+greenhouse:sprinklr:Sprinklr
+greenhouse:thetradedesk:The Trade Desk
+greenhouse:appian:Appian
+greenhouse:lookout:Lookout
+greenhouse:cloudera:Cloudera
+greenhouse:nutanix:Nutanix
+greenhouse:pure:Pure Storage
+greenhouse:purestorage:Pure Storage
+greenhouse:veeva:Veeva
+greenhouse:workato:Workato
+greenhouse:zuora:Zuora
+greenhouse:anaplan:Anaplan
+greenhouse:elevenlabs:ElevenLabs
+greenhouse:runwayml:Runway
+greenhouse:togetherai:Together AI
+greenhouse:fireworksai:Fireworks AI
+greenhouse:character:Character.AI
+greenhouse:descript:Descript
+greenhouse:notion:Notion
+greenhouse:loom:Loom
+greenhouse:framer:Framer
+greenhouse:typeform:Typeform
+greenhouse:wildlife:Wildlife Studios
+greenhouse:niantic:Niantic
+greenhouse:riotgames:Riot Games
+greenhouse:supercell:Supercell
+lever:spotify:Spotify
+lever:palantir:Palantir
+lever:kraken:Kraken
+lever:wealthfront:Wealthfront
+lever:zoox:Zoox
+lever:rover:Rover
+lever:outreach:Outreach
+lever:whoop:WHOOP
+lever:belvederetrading:Belvedere Trading
+lever:crowdstrike:CrowdStrike
+lever:atlassian:Atlassian
+lever:eventbrite:Eventbrite
+lever:highspot:Highspot
+lever:jumpcloud:JumpCloud
+lever:kickstarter:Kickstarter
+lever:lucid:Lucid
+lever:mattermost:Mattermost
+lever:netflix:Netflix
+lever:nianticlabs:Niantic Labs
+lever:paytm:Paytm
+lever:plaid:Plaid
+lever:quizlet:Quizlet
+lever:sonos:Sonos
+lever:sumup:SumUp
+lever:thinkific:Thinkific
+lever:vendr:Vendr
+lever:veeva:Veeva
+lever:voleon:The Voleon Group
+lever:weride:WeRide
+lever:wizeline:Wizeline
+lever:zoox:Zoox
+lever:binance:Binance
+lever:bitgo:BitGo
+lever:blockchain:Blockchain.com
+lever:cred:CRED
+lever:dapperlabs:Dapper Labs
+lever:immutable:Immutable
+lever:matchgroup:Match Group
+lever:mistral:Mistral AI
+lever:hive:Hive
+lever:jobandtalent:Jobandtalent
+lever:sofar:Sofar Sounds
+lever:swile:Swile
+lever:ledger:Ledger
+lever:getyourguide:GetYourGuide
+lever:trustpilot:Trustpilot
+lever:dnb:Dun & Bradstreet
+lever:shieldai:Shield AI
+lever:anyscale:Anyscale
+lever:ironclad:Ironclad
+lever:pachama:Pachama
+ashby:openai:OpenAI
+ashby:notion:Notion
+ashby:ramp:Ramp
+ashby:linear:Linear
+ashby:supabase:Supabase
+ashby:posthog:PostHog
+ashby:replit:Replit
+ashby:retool:Retool
+ashby:vanta:Vanta
+ashby:deel:Deel
+ashby:zapier:Zapier
+ashby:mercor:Mercor
+ashby:cursor:Cursor
+ashby:perplexity:Perplexity
+ashby:elevenlabs:ElevenLabs
+ashby:sierra:Sierra
+ashby:harvey:Harvey
+ashby:clay:Clay
+ashby:watershed:Watershed
+ashby:runway:Runway
+ashby:modal:Modal
+ashby:cohere:Cohere
+ashby:neon:Neon
+ashby:planetscale:PlanetScale
+ashby:temporal:Temporal
+ashby:pinecone:Pinecone
+ashby:wandb:Weights & Biases
+ashby:anyscale:Anyscale
+ashby:lovable:Lovable
+ashby:cognition:Cognition
+ashby:sourcegraph:Sourcegraph
+ashby:resend:Resend
+ashby:render:Render
+ashby:railway:Railway
+ashby:fly:Fly.io
+ashby:clerk:Clerk
+ashby:descript:Descript
+ashby:ashby:Ashby
+ashby:attio:Attio
+ashby:hex:Hex
+ashby:mux:Mux
+ashby:vapi:Vapi
+ashby:cal:Cal.com
+ashby:dub:Dub
+ashby:trigger:Trigger.dev
+ashby:inngest:Inngest
+ashby:granola:Granola
+ashby:character:Character.AI
+ashby:midjourney:Midjourney
+ashby:stability:Stability AI
+ashby:photoroom:Photoroom
+ashby:lemonade:Lemonade
+ashby:alan:Alan
+ashby:pennylane:Pennylane
+ashby:qonto:Qonto
+ashby:payfit:PayFit
+ashby:mollie:Mollie
+ashby:wise:Wise
+ashby:n8n:n8n
+ashby:zeroheight:zeroheight
+ashby:gamma:Gamma
+ashby:suno:Suno
+ashby:decagon:Decagon
+ashby:glean:Glean
+ashby:writer:Writer
+ashby:abnormal:Abnormal Security
+ashby:ironclad:Ironclad
+ashby:rippling:Rippling
+ashby:mercury:Mercury
+ashby:column:Column
+ashby:lithic:Lithic
+ashby:moderntreasury:Modern Treasury
+ashby:vercel:Vercel
+ashby:stainless:Stainless
+ashby:codeium:Codeium
+ashby:windsurf:Windsurf
+ashby:anysphere:Anysphere
+ashby:together:Together AI
+ashby:baseten:Baseten
+ashby:lambda:Lambda
+ashby:crusoe:Crusoe
+ashby:coreweave:CoreWeave
+ashby:helsing:Helsing
+ashby:shield-ai:Shield AI
+smartrecruiters:visa:Visa
+smartrecruiters:bosch:Bosch
+smartrecruiters:ubisoft:Ubisoft
+smartrecruiters:skechers:Skechers
+smartrecruiters:boschgroup:Bosch Group
+smartrecruiters:mcdonalds:McDonald's
+smartrecruiters:ikea:IKEA
+smartrecruiters:lvmh:LVMH
+smartrecruiters:sodexo:Sodexo
+smartrecruiters:siemens:Siemens
+smartrecruiters:foursquare:Foursquare
+smartrecruiters:canva:Canva
+smartrecruiters:wppfinance:WPP
+smartrecruiters:linkedin3:LinkedIn
+smartrecruiters:experian:Experian
+smartrecruiters:servicenow:ServiceNow
+smartrecruiters:square:Square
+smartrecruiters:atlassian:Atlassian
+smartrecruiters:capgemini:Capgemini
+smartrecruiters:eurofins:Eurofins
+smartrecruiters:nvidia:NVIDIA
+smartrecruiters:adidas:adidas
+smartrecruiters:h-and-m:H&M
+smartrecruiters:deloitte:Deloitte
+smartrecruiters:publicisgroupe:Publicis Groupe
+smartrecruiters:zalando:Zalando
+smartrecruiters:delivery-hero:Delivery Hero
+smartrecruiters:wolt:Wolt
+smartrecruiters:bookingcom:Booking.com
+smartrecruiters:celonis:Celonis
+smartrecruiters:n26:N26
+smartrecruiters:trivago:trivago
+smartrecruiters:sap:SAP
+smartrecruiters:blablacar:BlaBlaCar
+smartrecruiters:doctolib:Doctolib
+smartrecruiters:criteo:Criteo
+smartrecruiters:contentsquare:Contentsquare
+smartrecruiters:deezer:Deezer
+smartrecruiters:backmarket:Back Market

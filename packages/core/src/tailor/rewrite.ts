@@ -3,7 +3,9 @@ import { getLLM, withFallback } from "../llm/index.js";
 import type { Evidence, TailorInput, TailorResult } from "../contracts.js";
 import type { ResumeBullet, ResumeChange, ResumeContent } from "../db/schema.js";
 import { joinList, mentionsSkill, norm, numbersIn, sameSkill, wordCount } from "../match/text.js";
+import { FLUFF_RE } from "./fluff.js";
 import { startsWithVerb, strengthenOpener } from "./verbs.js";
+import { isEarlyCareerRole } from "../agent/gate.js";
 
 export type TailorOutcome = TailorResult & { rejected: { bulletId: string; reason: string }[] };
 
@@ -26,6 +28,8 @@ type Ctx = {
   byNode: Map<string, Evidence[]>;
   baselineText: string;
   allEvidenceText: string;
+  /** Whole years from the earliest dated role, or null when the dates cannot say. */
+  years: number | null;
 };
 
 function buildCtx(input: TailorInput): Ctx {
@@ -36,7 +40,8 @@ function buildCtx(input: TailorInput): Ctx {
   const keywords = uniq(req.keywords);
   const vocab = uniq([...required, ...nice, ...keywords, ...input.baseline.skills.flatMap((g) => g.items)]);
   const byNode = new Map<string, Evidence[]>();
-  for (const e of input.evidence) {
+  const real = input.evidence.filter((e) => !e.inferred);
+  for (const e of real) {
     const list = byNode.get(e.nodeId) ?? [];
     list.push(e);
     byNode.set(e.nodeId, list);
@@ -45,7 +50,8 @@ function buildCtx(input: TailorInput): Ctx {
   return {
     input, required, nice, niceSkills, keywords, vocab, byNode,
     baselineText: contentText(input.baseline),
-    allEvidenceText: input.evidence.map((e) => `${e.label}. ${e.text}`).join("\n"),
+    allEvidenceText: real.map((e) => `${e.label}. ${e.text}`).join("\n"),
+    years: yearsOfExperience(input.baseline.experience),
   };
 }
 
@@ -60,7 +66,7 @@ function sectionsOf(c: ResumeContent): Section[] {
 export function bulletSupport(bullet: ResumeBullet, evidence: Evidence[] | Map<string, Evidence[]>): string {
   const byNode = evidence instanceof Map ? evidence : groupByNode(evidence);
   const parts = [bullet.text];
-  for (const id of bullet.nodeIds) for (const e of byNode.get(id) ?? []) parts.push(e.label, e.text);
+  for (const id of bullet.nodeIds) for (const e of byNode.get(id) ?? []) if (!e.inferred) parts.push(e.label, e.text);
   return parts.join("\n");
 }
 
@@ -80,6 +86,7 @@ export type Verdict = { ok: true } | { ok: false; reason: string };
  *  - every number must already appear in the original text or its evidence
  *  - no known skill/tool may appear unless the original text or evidence mentions it
  *  - must be non-empty, a sane length, and free of first-person pronouns
+ *  - may not upgrade ownership ("contributed to" -> "led") or scope ("company-wide") beyond what the original or evidence says
  */
 export function validateBullet(original: ResumeBullet, candidate: { text: string; nodeIds: string[] }, supportText: string, vocab: string[] = []): Verdict {
   const text = (candidate.text ?? "").trim();
@@ -94,9 +101,39 @@ export function validateBullet(original: ResumeBullet, candidate: { text: string
   const newSkills = vocab.filter((v) => mentionsSkill(text, v) && !mentionsSkill(support, v));
   if (newSkills.length > 0) return { ok: false, reason: `mentions ${newSkills.join(", ")} without evidence` };
   if (/\b(I|me|my|mine|we|our|us)\b/.test(text.replace(/\bU\.?S\.?\b/g, ""))) return { ok: false, reason: "first-person pronoun" };
+  const fluff = FLUFF_RE.exec(text)?.[0];
+  if (fluff && !FLUFF_RE.test(original.text)) return { ok: false, reason: `filler "${fluff}" the original did not use` };
+  const inflated = inflationIn(text, support);
+  if (inflated) return { ok: false, reason: `claims "${inflated}", which the original and evidence do not` };
   const wc = wordCount(text);
   if (wc < 6 || wc > 34) return { ok: false, reason: `length ${wc} words` };
   return { ok: true };
+}
+
+/**
+ * Ownership and scope words a rewrite may not add. "Contributed to a migration" rewritten as "Led the migration" or
+ * "drove a company-wide migration" passes the number and skill checks but tells the employer something untrue.
+ * Each entry: the claim word(s), and the words in the source that justify it.
+ */
+const INFLATION: { claim: RegExp; justified: RegExp }[] = [
+  { claim: /\b(led|lead|leading)\b/i, justified: /\b(led|lead|leading|leader|headed|managed|directed|ran|owned|tech lead|team lead)\b/i },
+  { claim: /\b(spearhead(ed|ing)?|architect(ed|ing)?|head(ed|ing)|direct(ed|ing)|found(ed|ing)|pioneer(ed|ing)?)\b/i, justified: /\b(spearhead|architect|head|direct|found|pioneer|led|lead|design(ed)? the|owned)/i },
+  { claim: /\b(own(ed|ing)?|ownership)\b/i, justified: /\b(own(ed|ing)?|ownership|led|lead|responsible for|in charge)\b/i },
+  { claim: /\b(managed|managing|manager of)\b/i, justified: /\b(manag(ed|ing|er)|led|lead|supervis|direct reports?)\b/i },
+  { claim: /\b(mentor(ed|ing)?|coach(ed|ing)?)\b/i, justified: /\b(mentor|coach|train(ed|ing)? (new|junior)|onboard)/i },
+  { claim: /\b(company|organi[sz]ation|org|enterprise|cross[- ]company)[- ]wide\b/i, justified: /\b(company|organi[sz]ation|org|enterprise|cross[- ]company)[- ]wide\b|\ball (teams|engineers|employees|departments)\b/i },
+  { claim: /\b(global(ly)?|worldwide|industry[- ]leading|world[- ]class)\b/i, justified: /\b(global|worldwide|international|countries|regions|industry[- ]leading|world[- ]class)\b/i },
+  { claim: /\b(large|entire|whole) (team|organi[sz]ation|org|department|company)\b/i, justified: /\b(large|entire|whole) (team|organi[sz]ation|org|department|company)\b/i },
+  { claim: /\bsingle[- ]handedly|\bsole(ly)?\b|\bindependently\b/i, justified: /\bsingle[- ]handedly|\bsole(ly)?\b|\bindependently\b|\bby myself\b|\balone\b/i },
+];
+
+/** The first ownership or scope claim in `text` that `support` does not justify, or null. */
+export function inflationIn(text: string, support: string): string | null {
+  for (const r of INFLATION) {
+    const m = r.claim.exec(text);
+    if (m && !r.justified.test(support)) return m[0];
+  }
+  return null;
 }
 
 function validateSummary(summary: string, ctx: Ctx): Verdict {
@@ -104,12 +141,25 @@ function validateSummary(summary: string, ctx: Ctx): Verdict {
   if (!s) return { ok: false, reason: "empty" };
   const support = `${ctx.baselineText}\n${ctx.allEvidenceText}`;
   const known = new Set(numbersIn(support));
+  // The candidate's real years of experience (computed from the dates) may appear: the model is given that figure.
+  if (ctx.years !== null) known.add(String(ctx.years));
   const nums = numbersIn(s).filter((n) => !known.has(n));
   if (nums.length) return { ok: false, reason: `numbers ${nums.join(", ")}` };
   const skills = ctx.vocab.filter((v) => mentionsSkill(s, v) && !mentionsSkill(support, v));
   if (skills.length) return { ok: false, reason: `unsupported ${skills.join(", ")}` };
+  // An entry-level posting: a summary that opens with "Senior" or counts years reads as overqualified.
+  const r = ctx.input.requirements;
+  const entry = r.seniority === "junior" || r.seniority === "intern" || (r.yearsMin != null && r.yearsMin <= 2);
+  if (entry && /\b(senior|sr|staff|principal|lead|[0-9]+\+? years)\b/i.test(s)) return { ok: false, reason: "seniority or years in an entry-level summary" };
+  // Years are the real figure or nothing: "12 years" for a 10-year career is a lie even though 12 appears elsewhere.
+  const claimed = /\b([0-9]+)\+?\s+years?\b/i.exec(s);
+  if (claimed && ctx.years !== null && Number(claimed[1]) > ctx.years) return { ok: false, reason: `claims ${claimed[1]} years, the dates show ${ctx.years}` };
   if (/\b(I|me|my|we|our)\b/.test(s)) return { ok: false, reason: "first person" };
-  if (wordCount(s) > 60) return { ok: false, reason: "too long" };
+  const fluff = FLUFF_RE.exec(s)?.[0];
+  if (fluff) return { ok: false, reason: `filler "${fluff}"` };
+  const inflated = inflationIn(s, support);
+  if (inflated) return { ok: false, reason: `claims "${inflated}" without evidence` };
+  if (wordCount(s) > 55) return { ok: false, reason: "too long" };
   return { ok: true };
 }
 
@@ -198,6 +248,7 @@ function tailorSkills(baseline: ResumeContent["skills"], ctx: Ctx, preferredOrde
 export function yearsOfExperience(roles: ResumeContent["experience"], now: Date = new Date()): number | null {
   let earliest: number | null = null;
   for (const r of roles) {
+    if (isEarlyCareerRole(r.title)) continue; // an internship is not a year of experience in a summary
     const m = /^(\d{4})(?:-(\d{1,2}))?/.exec((r.start ?? "").trim());
     if (!m) continue;
     const t = Number(m[1]) * 12 + (m[2] ? Number(m[2]) - 1 : 0);
@@ -218,30 +269,65 @@ function distinctTerms(xs: string[]): string[] {
   return out;
 }
 
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
+/** The lead clause of a bullet: its result, cut before the "how" (" by ...", " with ...") so it reads as a highlight. */
+function leadClause(text: string, maxWords = 20): string {
+  let t = text.trim().replace(/[.;]+$/, "");
+  // A trailing "(React, TypeScript)" is the keyword tag the bullet rewrite adds; it does not belong in a summary.
+  const tag = t.lastIndexOf(" (");
+  if (t.endsWith(")") && tag > 0) t = t.slice(0, tag);
+  let end = t.length;
+  // Never cut where the result would be lost (the number sits after the cut) or the clause would end on a dangling word
+  // ("... dashboard used" before "by 12,000 businesses").
+  const dangling = new Set(["used", "adopted", "followed", "owned", "run", "built", "handled", "by", "for", "to", "of", "in", "on", "and", "the", "a", "an", "at", "from"]);
+  const hasNumber = /\d/.test(t);
+  for (const m of [" by ", " with ", " using ", " via ", " through ", " to bring ", " that "]) {
+    const i = t.indexOf(m, 18);
+    if (i <= 0 || i >= end) continue;
+    const head = t.slice(0, i);
+    const last = head.split(" ").pop()?.toLowerCase() ?? "";
+    if ((hasNumber && !/\d/.test(head)) || dangling.has(last)) continue;
+    end = i;
+  }
+  const clause = t.slice(0, end);
+  const words = clause.split(" ");
+  return words.length > maxWords ? words.slice(0, maxWords).join(" ") : clause;
+}
+
+/**
+ * Two plain sentences a hiring manager can use: who this is for the role (latest real title, the skills the job asks for
+ * that the resume proves, real years only when they help), then one or two real results with their numbers. No filler,
+ * no employer list, no claims beyond the resume. For an entry-level posting the years and seniority claims are left out.
+ */
 function heuristicSummary(content: ResumeContent, ctx: Ctx, now: Date = new Date()): string {
   const roles = content.experience;
-  // The most recent title opens the summary once; the job title is only a fallback, never repeated.
+  const req = ctx.input.requirements;
   const title = roles[0]?.title?.trim() || ctx.input.jobTitle?.trim() || "Professional";
   const flat = content.skills.flatMap((g) => g.items);
   const allText = contentText(content);
-  const top = distinctTerms([...ctx.required, ...ctx.niceSkills, ...flat])
-    .filter((s) => flat.some((f) => sameSkill(f, s)) || mentionsSkill(allText, s))
-    .slice(0, 4);
+  // Skills the job asks for and the resume shows in use come first; then the job's nice-to-haves; then the person's own list.
+  const inBullets = (sk: string) => roles.some((r) => r.bullets.some((b) => mentionsSkill(b.text, sk)));
+  const top = distinctTerms([...ctx.required.filter(inBullets), ...ctx.niceSkills.filter(inBullets), ...ctx.required, ...ctx.niceSkills, ...flat])
+    .filter((sk) => flat.some((f) => sameSkill(f, sk)) || mentionsSkill(allText, sk))
+    .slice(0, 3);
   const years = yearsOfExperience(roles, now);
-  const lead = years ? `${title} with ${years} year${years === 1 ? "" : "s"} of hands-on experience` : `${title} with hands-on experience`;
-  const line1 = top.length > 0 ? `${lead} in ${joinList(top)}.` : `${lead} shipping production work.`;
-  let line2 = "";
-  if (roles.length >= 2) {
-    const companies = distinctTerms(roles.map((r) => r.company).filter(Boolean));
-    line2 = companies.length >= 2 ? `Experience spans ${roles.length} roles at ${joinList(companies.slice(0, 3))}` : `Most recently at ${companies[0] ?? roles[0].company}`;
-  } else if (roles[0]?.company) line2 = `Most recently at ${roles[0].company}`;
-  if (line2) {
-    const recent = (roles[0]?.bullets ?? []).map((b) => b.text).join(" ");
-    const focus = distinctTerms([...ctx.required, ...ctx.keywords])
-      .filter((k) => !top.some((t) => sameSkill(t, k)) && !sameSkill(k, title) && mentionsSkill(recent, k))
-      .slice(0, 3);
-    line2 += focus.length >= 2 ? `, with recent work in ${joinList(focus)}.` : ".";
+  const entry = req.seniority === "junior" || req.seniority === "intern" || (req.yearsMin != null && req.yearsMin <= 2);
+  const useYears = years !== null && !entry;
+  const skillPhrase = top.length ? ` in ${joinList(top)}` : "";
+  let line1: string;
+  if (entry) {
+    // No seniority and no years for an entry-level posting: lead with what the person can do.
+    const plain = title.replace(/^(senior|sr\.?|staff|principal|lead)\s+/i, "");
+    line1 = `${plain} experienced${skillPhrase || " in shipping production work"}.`;
+  } else {
+    line1 = `${title}${useYears ? ` with ${years} years of experience` : " with production experience"}${skillPhrase}.`;
   }
+
+  // Results: the two most relevant bullets that carry a number, from the latest two roles.
+  const pool = roles.slice(0, 2).flatMap((r) => r.bullets).filter((b) => numbersIn(b.text).length > 0);
+  const best = pool.map((b, i) => ({ b, i, r: relevance(b.text, ctx) })).sort((x, y) => y.r - x.r || x.i - y.i).slice(0, 2).map((x) => leadClause(x.b.text));
+  const line2 = best.length ? `Recent results: ${best.map(lowerFirst).join("; ")}.` : "";
   return [line1, line2].filter(Boolean).join(" ");
 }
 
@@ -252,7 +338,38 @@ type Draft = {
   reasons: Map<string, string>;
   rejected: { bulletId: string; reason: string }[];
   skillsAdded: string[];
+  /** Bullets left out of this version because nothing in them speaks to the job. */
+  omitted?: { id: string; text: string; nodeIds: string[] }[];
 };
+
+/** What a left-out bullet shows as its "after" in the change list. */
+export const LEFT_OUT = "(left out of this version)";
+
+/** Most bullets kept per role, by recency: the latest role gets the most room. */
+const ROLE_CAPS = [7, 4, 3];
+
+/**
+ * A recruiter reads the top of the latest role and skims the rest, so older roles keep only what speaks to this job.
+ * The latest role is never cut. In an older role a bullet stays when it touches something the job asks for, or when it
+ * is the role's best number-bearing bullet (so no role is left empty). Only applies once the resume has enough bullets
+ * for padding to matter. The original resume is untouched: this is the version for this job.
+ */
+function selectBullets(content: ResumeContent, ctx: Ctx): { id: string; text: string; nodeIds: string[] }[] {
+  const total = content.experience.reduce((n, r) => n + r.bullets.length, 0);
+  const omitted: { id: string; text: string; nodeIds: string[] }[] = [];
+  if (total < 7 || ctx.required.length + ctx.niceSkills.length === 0) return omitted;
+  content.experience.forEach((r, i) => {
+    if (i === 0) return;
+    const cap = ROLE_CAPS[Math.min(i, ROLE_CAPS.length - 1)];
+    const scored = r.bullets.map((b, idx) => ({ b, idx, rel: relevance(b.text, ctx), num: numbersIn(b.text).length > 0 ? 1 : 0 }));
+    const keepIds = new Set(scored.filter((x) => x.rel > 0).slice(0, cap).map((x) => x.b.id));
+    if (keepIds.size === 0) keepIds.add([...scored].sort((x, y) => y.num - x.num || x.idx - y.idx)[0].b.id);
+    const kept = r.bullets.filter((b) => keepIds.has(b.id));
+    for (const b of r.bullets) if (!keepIds.has(b.id)) omitted.push({ id: b.id, text: b.text, nodeIds: [...b.nodeIds] });
+    r.bullets = kept;
+  });
+  return omitted;
+}
 
 function heuristicDraft(ctx: Ctx): Draft {
   const base = structuredClone(ctx.input.baseline);
@@ -266,10 +383,11 @@ function heuristicDraft(ctx: Ctx): Draft {
   }
   base.experience = base.experience.map((r) => ({ ...r, bullets: sortByRelevance(r.bullets, ctx) }));
   if (base.projects) base.projects = base.projects.map((p) => ({ ...p, bullets: sortByRelevance(p.bullets, ctx) }));
+  const omitted = selectBullets(base, ctx);
   const { skills, added } = tailorSkills(base.skills, ctx);
   base.skills = skills;
   base.summary = heuristicSummary(base, ctx);
-  return { content: base, reasons, rejected: [], skillsAdded: added };
+  return { content: base, reasons, rejected: [], skillsAdded: added, omitted };
 }
 
 const LlmSchema = z.object({
@@ -281,50 +399,79 @@ const LlmSchema = z.object({
 });
 type LlmOut = z.infer<typeof LlmSchema>;
 
-export const TAILOR_SYSTEM = `You tailor resume bullets to a specific job. You are editing a real person's resume, so accuracy beats persuasion.
+export const TAILOR_SYSTEM = `You are an experienced recruiter and resume editor. You tailor one real person's resume to one specific job, the way a careful professional would, so a hiring manager sees quickly why this person fits. You are editing facts that belong to someone else, so accuracy beats persuasion every time.
 
 Hard rules:
 1. Never invent facts, numbers, percentages, dollar amounts, team sizes, employers, titles, dates, tools or technologies.
-2. Use only the original bullet and the evidence listed under it. If the evidence does not support a job keyword, leave it out.
+2. Use only the original bullet and the evidence listed under it. If the evidence does not support a job keyword, leave it out. A gap is better left visible than faked.
 3. Keep each bullet 12 to 24 words, one sentence, no trailing period required.
 4. Start every bullet with a strong past-tense action verb (Built, Led, Reduced, Shipped). No "Responsible for", no "Helped".
-5. Work in the job's required keywords only where the evidence genuinely supports them, using the job's exact spelling.
-6. Preserve the original meaning and scope. Do not upgrade "contributed to" into "led".
-7. Return every bullet of every role, in role order, with its id and nodeIds exactly as given. You may reorder bullets within a role, most relevant first.
-8. No first-person pronouns. No buzzword filler ("synergy", "results-driven").
-9. summary: two lines (25 to 45 words) built from the most recent title and the strongest supported skills. No invented claims.
+5. Use the job's exact wording for a skill only where the evidence genuinely supports it, and only where it reads naturally. Never repeat the same keyword in many bullets.
+6. Preserve the original meaning and scope. Do not upgrade "contributed to" into "led", and do not change who did the work.
+7. Return every bullet of every role, in role order, with its id and nodeIds exactly as given. You may reorder bullets within a role, most relevant to this job first. The first bullet of the latest role is read first: it should be the strongest match.
+8. No first-person pronouns. No filler a recruiter skims past: never use "robust", "scalable", "large-scale", "performant", "passionate", "dynamic", "results-driven", "expertise in", "proven track record", "seasoned", "cutting-edge", "world-class", "detail-oriented", "team player".
+9. summary: exactly two sentences, 28 to 45 words, in plain declarative language.
+   - Sentence 1: the most recent real job title, plus the two or three skills the job asks for that the evidence proves (the job's spelling). State years of experience only if the posting asks for a number of years, and use the candidate's real figure from "candidateYears".
+   - Sentence 2: one concrete result taken from the evidence, with its real number.
+   - Do not name employers. Do not describe qualities ("strong", "excellent", "extensive"). If jobLevel is junior or entry, do not mention seniority or years.
 10. skillsOrder: the candidate's existing skills, most relevant to this job first. Do not add skills that are not in the list.`;
 
-function buildPrompt(ctx: Ctx): string {
+/**
+ * The tailoring prompt at one of three sizes, for models with small context windows (Ollama ships with 4096 tokens):
+ *   0 full evidence (up to 8 lines per bullet), indented
+ *   1 at most 3 evidence lines per bullet, cut to 160 characters, compact JSON, no nice-to-haves
+ *   2 bullets only, no evidence text
+ * Shrinking never weakens the truthfulness check: the model's output is validated against the full evidence
+ * locally (validateBullet), whatever the prompt carried.
+ */
+export function buildPrompt(ctx: Ctx, level: 0 | 1 | 2 = 0): string {
   const { input } = ctx;
+  const cut = (t: string) => (t.length > 160 ? `${t.slice(0, 157)}...` : t);
+  const evidenceOf = (nodeIds: string[]) => {
+    if (level === 2) return undefined;
+    const lines = nodeIds.flatMap((id) => (ctx.byNode.get(id) ?? []).map((e) => `${e.label}: ${e.text}`));
+    return level === 0 ? lines.slice(0, 8) : lines.slice(0, 3).map(cut);
+  };
   const roles = sectionsOf(input.baseline).map((sec, i) => {
     const role = sec.key.startsWith("exp:") ? input.baseline.experience[Number(sec.key.slice(4))] : undefined;
     const proj = sec.key.startsWith("proj:") ? input.baseline.projects?.[Number(sec.key.slice(5))] : undefined;
     return {
       index: i,
       heading: role ? `${role.title} at ${role.company}` : `Project: ${proj?.name ?? ""}`,
-      bullets: sec.bullets.map((b) => ({
-        id: b.id, text: b.text, nodeIds: b.nodeIds,
-        evidence: b.nodeIds.flatMap((id) => (ctx.byNode.get(id) ?? []).map((e) => `${e.label}: ${e.text}`)).slice(0, 8),
-      })),
+      bullets: sec.bullets.map((b) => ({ id: b.id, text: b.text, nodeIds: b.nodeIds, evidence: evidenceOf(b.nodeIds) })),
     };
   });
-  return JSON.stringify({
-    job: { title: input.jobTitle, company: input.companyName, summary: input.requirements.summary },
+  const payload = {
+    job: { title: input.jobTitle, company: input.companyName, summary: level === 0 ? input.requirements.summary : cut(input.requirements.summary ?? "") },
+    jobLevel: { seniority: input.requirements.seniority, yearsAsked: input.requirements.yearsMin },
+    candidateYears: yearsOfExperience(input.baseline.experience),
     requiredSkills: ctx.required,
-    niceToHave: ctx.nice,
-    keywords: ctx.keywords,
-    mustHaves: input.requirements.mustHaves,
+    niceToHave: level === 0 ? ctx.nice : undefined,
+    keywords: level === 0 ? ctx.keywords : ctx.keywords.slice(0, 12),
+    mustHaves: level === 0 ? input.requirements.mustHaves : input.requirements.mustHaves?.slice(0, 5),
     candidateSkills: input.baseline.skills.flatMap((g) => g.items),
     roles,
     note: "Return experience[] with one entry per item in roles[], same order (projects included at the end).",
-  }, null, 1);
+  };
+  return level === 0 ? JSON.stringify(payload, null, 1) : JSON.stringify(payload);
 }
 
+/** The model could not take the prompt at this size (Ollama's window guard throws this); a smaller one may fit. */
+const isWindowError = (e: unknown) => /would be cut off|context (length|window)|maximum context/i.test(e instanceof Error ? e.message : String(e));
+
 async function llmDraft(ctx: Ctx): Promise<Draft> {
-  const out: LlmOut = await getLLM().json({
-    name: "tailored_resume", system: TAILOR_SYSTEM, prompt: buildPrompt(ctx), schema: LlmSchema, maxTokens: 8000, effort: "medium",
-  });
+  let out: LlmOut | undefined;
+  for (const level of [0, 1, 2] as const) {
+    try {
+      out = await getLLM().json({
+        name: "tailored_resume", system: TAILOR_SYSTEM, prompt: buildPrompt(ctx, level), schema: LlmSchema, maxTokens: level === 0 ? 8000 : 4000, effort: "medium",
+      });
+      break;
+    } catch (e) {
+      if (level === 2 || !isWindowError(e)) throw e;
+    }
+  }
+  if (!out) throw new Error("the model returned nothing");
   const base = structuredClone(ctx.input.baseline);
   const reasons = new Map<string, string>();
   const rejected: Draft["rejected"] = [];
@@ -346,7 +493,8 @@ async function llmDraft(ctx: Ctx): Promise<Draft> {
           b.text = t;
         }
       } else {
-        rejected.push({ bulletId: b.id, reason: verdict.ok ? "invalid" : verdict.reason });
+        // A bullet the model simply left out is not a truthfulness failure: the original stays and the selection rules judge it.
+        if (cand) rejected.push({ bulletId: b.id, reason: verdict.ok ? "invalid" : verdict.reason });
         const edit = heuristicBullet(b, ctx, usage);
         if (edit.text !== b.text) { b.text = edit.text; if (edit.reason) reasons.set(b.id, edit.reason); }
       }
@@ -357,12 +505,13 @@ async function llmDraft(ctx: Ctx): Promise<Draft> {
     const ordered = same ? ids.map((id) => sec.bullets.find((b) => b.id === id)!) : sortByRelevance(sec.bullets, ctx);
     sec.bullets.splice(0, sec.bullets.length, ...ordered);
   });
+  const omitted = selectBullets(base, ctx);
   const { skills, added } = tailorSkills(base.skills, ctx, out.skillsOrder);
   base.skills = skills;
   const sv = validateSummary(out.summary, ctx);
   base.summary = sv.ok ? out.summary.trim() : heuristicSummary(base, ctx);
   if (!sv.ok) rejected.push({ bulletId: "summary", reason: sv.reason });
-  return { content: base, reasons, rejected, skillsAdded: added };
+  return { content: base, reasons, rejected, skillsAdded: added, omitted };
 }
 
 // ---------------------------------------------------------------- public
@@ -395,6 +544,10 @@ function finalize(ctx: Ctx, draft: Draft, usedLLM: boolean): TailorOutcome {
         changes.push({ bulletId: b.id, before: orig.text, after: b.text, reason: draft.reasons.get(b.id) ?? "Reworded for this role", nodeIds: [...b.nodeIds] });
       }
     }
+  }
+
+  for (const o of draft.omitted ?? []) {
+    changes.push({ bulletId: o.id, before: o.text, after: LEFT_OUT, reason: "Left out of this version: nothing in it speaks to what this role asks for", nodeIds: o.nodeIds });
   }
 
   const baseSummary = ctx.input.baseline.summary ?? "";
