@@ -471,7 +471,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   const ModelBody = z.object({
     provider: z.enum(LLM_PROVIDERS),
     apiKey: z.string().trim().max(1000).optional(),
-    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).nullable().optional().or(z.literal("").transform(() => null)),
+    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
     qualityModel: z.string().trim().max(200).nullable().optional(),
     bulkModel: z.string().trim().max(200).nullable().optional(),
   });
@@ -493,7 +493,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const user = c.get("user");
     const b = await body(c, z.object({
       provider: z.enum(LLM_PROVIDERS), apiKey: z.string().trim().max(1000).optional(),
-      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).nullable().optional().or(z.literal("").transform(() => null)),
+      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
     }));
     const current = await getUserCredentials(db, user.id);
     const same = current?.provider === b.provider;
