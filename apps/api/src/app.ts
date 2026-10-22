@@ -891,7 +891,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     // Email notifications go only to the account's own address.
     if (b.kind === "email" && b.address.trim().toLowerCase() !== user.email.toLowerCase()) throw bad("Email notifications go to your account's own address", 400);
     const [row] = await db.insert(channels).values({ userId: user.id, kind: b.kind, address: b.address, meta: b.meta ?? {} })
-      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, where: eq(channels.userId, user.id) }).returning();
+      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, setWhere: eq(channels.userId, user.id) }).returning();
     if (!row) throw bad("That address is already linked to another account", 409);
     return c.json(row, 201);
   });

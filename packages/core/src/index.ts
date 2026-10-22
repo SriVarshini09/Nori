@@ -11,3 +11,4 @@ export * from "./match/index.js";
 export * from "./tailor/index.js";
 export * from "./runner/index.js";
 export * from "./agent/index.js";
+export * from "./runtime/lease.js";

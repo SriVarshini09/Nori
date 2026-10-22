@@ -430,3 +430,24 @@ describe("an interrupted code wait", () => {
     expect(await recoverStuckCodeWaits(db)).toBe(0);
   });
 });
+
+describe("a long-running step", () => {
+  it("keeps its row fresh while it runs, so another process never takes it over", async () => {
+    let seen: Date[] = [];
+    class SlowDriver extends FakeDriver {
+      async run(ctx: DriverContext): Promise<DriverResult> {
+        const at = async () => (await db.select({ u: applications.updatedAt }).from(applications).where(eq(applications.id, id)))[0].u;
+        seen.push(await at());
+        await new Promise((r) => setTimeout(r, 250));
+        seen.push(await at());
+        return super.run(ctx);
+      }
+    }
+    await db.update(profiles).set({ resumeAutoApprove: true }).where(eq(profiles.userId, userId));
+    const id = (await createApplication(db, userId, jobId)).id;
+    seen = [];
+    expect(await runApplication(db, id, { ...deps(new SlowDriver()), heartbeatMs: 40 })).toBe("form_review");
+    expect(seen).toHaveLength(2);
+    expect(seen[1].getTime()).toBeGreaterThan(seen[0].getTime()); // refreshed during the driver run
+  });
+});

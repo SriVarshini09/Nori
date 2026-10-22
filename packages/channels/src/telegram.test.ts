@@ -77,3 +77,30 @@ describe("telegram", () => {
     expect(bodies.length).toBe(2);
   });
 });
+
+describe("telegram after a restart", () => {
+  beforeEach(() => { vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:SECRET"); });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  it("asks from the saved offset and saves the new one before handling, so a command never runs twice", async () => {
+    let saved = 100;
+    const asked: (number | undefined)[] = [];
+    let handledAt: number | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      asked.push(body.offset);
+      if (asked.length === 1) {
+        return okJson({ ok: true, result: [{ update_id: 100, message: { message_id: 1, chat: { id: 7, type: "private" }, from: { id: 7, is_bot: false }, text: "approve all" } }] });
+      }
+      await new Promise((r) => setTimeout(r, 50));
+      return okJson({ ok: true, result: [] });
+    }));
+    const ch = new TelegramChannel({ offsets: { load: async () => saved, save: async (n) => { saved = n; } } });
+    const stop = await ch.listen(async () => { handledAt = saved; });
+    await vi.waitFor(() => expect(handledAt).toBeDefined());
+    stop();
+    expect(asked[0]).toBe(100); // resumed from the stored position
+    expect(handledAt).toBe(101); // offset already saved when the command ran
+    expect(saved).toBe(101);
+  });
+});

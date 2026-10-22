@@ -468,3 +468,21 @@ export const schema = {
   users, sessions, profiles, graphNodes, graphEdges, companies, jobs, matches, applications,
   resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
 };
+
+/**
+ * Which process runs a scheduled job or the chat listeners right now. When the API (with EMBED_WORKER) and a separate
+ * worker share one Postgres, each job runs in exactly one of them; a lease that is not renewed expires and another
+ * process takes over.
+ */
+export const runtimeLeases = pgTable("runtime_leases", {
+  name: text("name").primaryKey(),
+  owner: text("owner").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/** Small durable values a process needs after a restart (for example Telegram's last acknowledged update). */
+export const runtimeState = pgTable("runtime_state", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

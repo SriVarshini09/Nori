@@ -16,6 +16,7 @@
 import { and, eq, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import {
   applications, channels, companies, FEEDS, MAX_ATTEMPTS, STALE_MS, ensureDefaultUser, createAgent, computeMatchesForUser, usersWithGraph,
+  acquireLease, releaseLease, withLease,
   agentTick, announceInbox, seedBoardRegistry, pruneAuthTokens, pruneSessions, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, pruneArtifacts, recoverStuckCodeWaits, retryApplication, runApplication, withUserLLM,
   type AtsType, type Db, type OutboundMessage, type RunnerDeps,
 } from "@jobgraph/core";
@@ -65,13 +66,22 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
 
   let stopping = false;
   const timers: NodeJS.Timeout[] = [];
-  /** Run `fn` soon and then every `ms`, never overlapping with itself. */
+  const leases = new Set<string>();
+  /**
+   * Run `fn` soon and then every `ms`, never overlapping with itself, and in one process only: with the API's embedded
+   * scheduler and a separate worker on one database, the job's lease decides who runs it (the other skips), so ticks,
+   * feed polls, briefs and inbox announcements are not done twice. The lease outlives one interval by a minute, so the
+   * holder keeps it from tick to tick, and another process takes over about a minute after the holder stops.
+   */
   const every = (label: string, ms: number, fn: () => Promise<void>) => {
     let busy = false;
+    const lease = `job:${label}`;
     const tick = async () => {
       if (busy || stopping) return;
       busy = true;
-      try { await fn(); } catch (e) { log(`${label} failed: ${errMsg(e)}`); } finally { busy = false; }
+      try {
+        if (await withLease(db, lease, ms + 60_000, fn)) leases.add(lease);
+      } catch (e) { log(`${label} failed: ${errMsg(e)}`); } finally { busy = false; }
     };
     setTimeout(() => void tick(), 0);
     timers.push(setInterval(tick, ms));
@@ -178,7 +188,23 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   });
 
   const router = createChannelRouter(db, { onMessage: createAgent(db, { runner, notify }) });
-  const stopRouter = await router.start();
+  // Chat listeners (Telegram long-polling, Slack triggers) run in one process: two pollers on one bot token make
+  // Telegram answer 409 forever and can hand one message to both. Whoever holds the lease listens; the other process
+  // checks every 30 seconds and takes over if the holder stops renewing.
+  const LISTEN_LEASE = "channels:listeners";
+  let stopRouter: (() => void) | null = null;
+  const watchListeners = async () => {
+    if (stopping) return;
+    try {
+      const mine = await acquireLease(db, LISTEN_LEASE, 90_000);
+      if (mine && !stopRouter) { stopRouter = await router.start(); leases.add(LISTEN_LEASE); log("chat listeners started here"); }
+      if (!mine && stopRouter) { stopRouter(); stopRouter = null; log("chat listeners moved to another process"); }
+    } catch (e) { log(`chat listener lease failed: ${errMsg(e)}`); }
+  };
+  // WhatsApp is a webhook, not a poller: whichever process serves the route must handle it, lease or not.
+  await router.whatsapp.listen((m) => router.handleInbound(m).then(() => {}));
+  await watchListeners();
+  timers.push(setInterval(() => void watchListeners(), 30_000));
   let stopConsole = () => {};
   if (consoleChannel.available) {
     stopConsole = await consoleChannel.listen(async (m) => {
@@ -194,7 +220,9 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
       if (stopping) return;
       stopping = true;
       timers.forEach(clearInterval);
-      try { stopRouter(); stopConsole(); } catch { /* ignore */ }
+      try { stopRouter?.(); stopConsole(); } catch { /* ignore */ }
+      // Hand the jobs over at once instead of letting another process wait for the leases to expire.
+      for (const l of leases) void releaseLease(db, l).catch(() => {});
     },
   };
 }

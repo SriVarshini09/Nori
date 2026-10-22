@@ -38,6 +38,8 @@ export type RunnerDeps = {
   render?: RenderFn;
   /** Bullet tailoring; defaults to tailorResume. */
   tailor?: (input: TailorInput) => Promise<TailorOutcome>;
+  /** How often a running step refreshes updatedAt so no other process thinks it stalled. Default STALE_MS / 10. */
+  heartbeatMs?: number;
   /** Root for artifacts; default data/artifacts (or ARTIFACTS_DIR). Files land under <root>/<applicationId>/. */
   artifactsRoot?: string;
   /** How many hand-approved applications Autopilot needs before it sends any; default AUTOPILOT_MIN_HUMAN_APPROVALS (tests lower it). */
@@ -523,7 +525,14 @@ export async function stepApplication(db: Db, applicationId: string, deps: Runne
   const app = await load(db, applicationId);
   const active = async (fn: (a: Application) => Promise<ApplicationStatus>) => {
     if (!owned.has(app.id) && !(await claimStale(db, app))) return app.status;
-    return fn(await load(db, applicationId));
+    // A step can legitimately run longer than STALE_MS (model calls with retries, a slow site, a code wait). Without a
+    // heartbeat another process saw it as stalled and ran the same step at the same time: two resume versions, two
+    // browsers on one form. While the step runs, updatedAt is refreshed as long as the row is still in this status.
+    const beat = setInterval(() => {
+      void db.update(applications).set({ updatedAt: new Date() })
+        .where(and(eq(applications.id, app.id), eq(applications.status, app.status))).catch(() => {});
+    }, deps.heartbeatMs ?? Math.floor(STALE_MS / 10));
+    try { return await fn(await load(db, applicationId)); } finally { clearInterval(beat); }
   };
   const gate = async (to: ApplicationStatus, message: string) =>
     (await condTransition(db, app, to, {}, message)) ? to : (await load(db, applicationId)).status;
