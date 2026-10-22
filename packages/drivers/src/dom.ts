@@ -282,7 +282,7 @@ export const FIND_SUBMIT_SCRIPT = String.raw`function () {
     // "Apply now" outside the form is the posting's link to the form, not a submit button.
     function (b) { return /^(apply|apply now|send application)$/i.test(label(b)) && (root === document.body || root.contains(b)); },
     function (b) { return (b.getAttribute('type') || '').toLowerCase() === 'submit' && root.contains(b); },
-    function (b) { return /^(verify|confirm)/i.test(label(b)) && !document.querySelector('[data-jobgraph-form] input[type=password]'); }
+    function (b) { return /^(verify|confirm)\b/i.test(label(b)) && !document.querySelector('[data-jobgraph-form] input[type=password]'); }
   ];
   for (var t = 0; t < tests.length; t++) {
     for (var s = 0; s < scopes.length; s++) {

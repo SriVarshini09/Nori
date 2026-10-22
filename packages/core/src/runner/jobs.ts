@@ -104,7 +104,7 @@ const SEARCH_OFF = /PARALLEL_API_KEY|search\/extract\/research is unavailable/i;
 /** Best matches among jobs already in the database whose title, company or place mention the query. */
 async function searchHeld(db: Db, userId: string, query: DiscoverQuery): Promise<RankedJob[]> {
   const words = [...new Set((query.objective ?? "").toLowerCase().split(/[^a-z0-9+#.]+/).filter((w) => w.length > 1 && !QUERY_NOISE.has(w)))].slice(0, 6);
-  const wantsRemote = /remote(ly)?/i.test(query.objective ?? "");
+  const wantsRemote = /\bremote(ly)?\b/i.test(query.objective ?? "");
   const text = (w: string) => { const p = `%${w.replace(/[%_\\]/g, "")}%`; return or(ilike(jobs.title, p), ilike(jobs.companyName, p), ilike(jobs.location, p)); };
   const rows = await db.select({ id: jobs.id }).from(jobs)
     .where(and(isNull(jobs.closedAt), wantsRemote ? eq(jobs.remote, true) : undefined, words.length ? or(...words.map(text)) : undefined))

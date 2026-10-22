@@ -285,3 +285,12 @@ describe("model-written answers to unclassified questions", () => {
     } finally { setLLM(null); }
   });
 });
+
+describe("work authorization in another country", () => {
+  it("is never answered from the US-only profile", () => {
+    const f = (label: string): FormField => ({ label, kind: "select", required: true, options: ["Yes", "No"], selector: "#a" });
+    expect(ans(f("Are you legally authorised to work in the UK?"))).toBeNull();
+    expect(ans(f("Will you require sponsorship to work in Canada?"))).toBeNull();
+    expect(ans(f("Are you legally authorized to work in the United States?"))).toBe("Yes");
+  });
+});

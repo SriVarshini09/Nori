@@ -3,6 +3,7 @@ import { getLLM, withFallback } from "../llm/index.js";
 import type { CompanyResearch, Eeo, ResumeContent, SalaryExpectation, WorkAuth, profiles } from "../db/schema.js";
 import { FREE_TEXT_KINDS, NEVER_COMPOSE, classifyQuestion, isFreeTextField, type QuestionKind } from "../compose/classify.js";
 import { composeAnswer, type ComposeInput, type ComposeJob } from "../compose/compose.js";
+import { foreignWorkCountry } from "./work-country.js";
 
 type ProfileRow = typeof profiles.$inferSelect;
 
@@ -325,6 +326,9 @@ export function heuristicAnswer(field: FormField, profile: ApplicantProfile | Ap
   if (ADULT_RE.test(l)) return full.over18 === undefined ? null : yesNo(field, full.over18);
 
   if (RELOCATE_RE.test(l) && full.willingToRelocate !== undefined && (!opts.length || hasYesNo(opts))) return yesNo(field, full.willingToRelocate);
+
+  // The profile's work authorization is about the US: a question about another country goes to the person.
+  if ((/sponsor/.test(l) || AUTH_RE.test(l)) && foreignWorkCountry(field.label)) return null;
 
   if (/sponsor/.test(l)) {
     if (wa.needsSponsorship !== undefined) return yesNo(field, wa.needsSponsorship);

@@ -5,6 +5,7 @@
 import path from "node:path";
 import type { Locator, Page } from "playwright";
 import type { DriverContext, FormField, PendingQuestion, Receipt, ApplicantProfile } from "@jobgraph/core";
+import { foreignWorkCountry } from "@jobgraph/core";
 import {
   runScript, DISCOVER_SCRIPT, SELECT_OPTIONS_SCRIPT, CHOICE_LABELS_SCRIPT, FORCE_VALUE_SCRIPT,
   FIND_SUBMIT_SCRIPT, CAPTCHA_SCRIPT, FIELD_ERROR_SCRIPT,
@@ -393,7 +394,9 @@ export async function fillForm(page: Page, ctx: DriverContext, fields: FormField
     let value: string | null | undefined = answers.get(norm(field.label));
     let source = "answers";
     if (value === undefined || value === "") {
-      value = profileValue(cls, ctx.profile, ctx.resumePdfPath);
+      // The profile's work authorization is US-only; "authorised to work in the UK?" is not answered from it.
+      const foreign = (cls === "work_auth" || cls === "sponsorship") && foreignWorkCountry(field.label);
+      value = foreign ? undefined : profileValue(cls, ctx.profile, ctx.resumePdfPath);
       source = "profile";
     }
     const mayAsk = cls !== "resume" && !(field.kind === "file" && !field.required) && !(BLANK_WHEN_ABSENT.has(cls) && !field.required);
