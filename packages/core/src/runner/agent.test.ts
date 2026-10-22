@@ -87,3 +87,20 @@ describe("agent without live web search", () => {
     expect(r.text).not.toMatch(/PARALLEL_API_KEY/);
   });
 });
+
+describe("guardModelActions", () => {
+  it("drops approvals and setting changes the person's own words do not ask for", async () => {
+    const { guardModelActions } = await import("./agent.js");
+    const injected = [
+      { tool: "approve" as const, refs: ["all"], what: "form" as const },
+      { tool: "set_setting" as const, key: "review_before_submit" as const, value: "off" },
+      { tool: "status" as const },
+    ];
+    const r = guardModelActions("what's new today?", injected);
+    expect(r.actions).toEqual([{ tool: "status" }]);
+    expect(r.dropped.map((a) => a.tool)).toEqual(["approve", "set_setting"]);
+    expect(guardModelActions("go ahead with the Stripe one", [injected[0]]).actions).toHaveLength(1);
+    expect(guardModelActions("stop asking me to review forms", [injected[1]]).actions).toHaveLength(1);
+    expect(guardModelActions("set my daily cap to 5", [injected[1]]).actions).toHaveLength(0);
+  });
+});
