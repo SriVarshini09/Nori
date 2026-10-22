@@ -1,5 +1,5 @@
 import path from "node:path";
-import { and, count, desc, eq, gte, inArray, isNull, ne, notExists, notInArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lt, ne, notExists, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import {
   applications, companies, jobs, matches, profiles, resumes, runEvents, users,
@@ -345,7 +345,9 @@ function codeWaiter(db: Db, app: Application, deps: RunnerDeps) {
     } catch (err) {
       await emit(db, app.id, "verification", `Code lookup failed: ${(err as Error).message}`, {}, "warn");
     }
-    await patch(db, app.id, { status: app.status });
+    // Back to the step that asked, unless the person skipped (or anything else moved it) while we waited.
+    await db.update(applications).set({ status: app.status, updatedAt: new Date() })
+      .where(and(eq(applications.id, app.id), eq(applications.status, "awaiting_code")));
     await emit(db, app.id, "verification", code ? "Verification code received" : "No verification code arrived in time",
       { found: !!code, to: app.status }, code ? "info" : "warn");
     return code;
@@ -496,6 +498,24 @@ async function stepSubmitting(db: Db, app: Application, deps: RunnerDeps): Promi
     case "failed":
       return failDriver(db, app, res, root);
   }
+}
+
+/**
+ * An application left in awaiting_code by a process that stopped mid-wait: nothing picks it up again (it is a waiting
+ * status) and only Skip worked. The code wait starts after a submit click, so it goes to the person with the form approval
+ * dropped: no automatic second submit. Returns how many were recovered.
+ */
+export async function recoverStuckCodeWaits(db: Db, olderThanMs = 15 * 60_000): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const stuck = await db.update(applications)
+    .set({
+      status: "needs_user", formApprovedAt: null, updatedAt: new Date(),
+      pendingQuestions: [{ label: "Verification code", type: "verification_code", required: true }],
+      error: "The wait for a verification code was interrupted. Nori may already have clicked submit: check your email for a confirmation before you approve it again.",
+    })
+    .where(and(eq(applications.status, "awaiting_code"), lt(applications.updatedAt, cutoff))).returning();
+  for (const r of stuck) await emit(db, r.id, "status", "Recovered from an interrupted code wait; waiting for you", { to: "needs_user" }, "warn");
+  return stuck.length;
 }
 
 /** Advance exactly one step. Returns the status after the step (unchanged when another process owns it). */

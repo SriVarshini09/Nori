@@ -416,3 +416,17 @@ describe("after submit was clicked", () => {
     });
   }
 });
+
+describe("an interrupted code wait", () => {
+  it("is handed back to the person instead of staying stuck, without the form approval", async () => {
+    const { recoverStuckCodeWaits } = await import("./index.js");
+    const created = await createApplication(db, userId, jobId);
+    const old = new Date(Date.now() - 60 * 60_000);
+    await db.update(applications).set({ status: "awaiting_code", formApprovedAt: old, updatedAt: old }).where(eq(applications.id, created.id));
+    expect(await recoverStuckCodeWaits(db)).toBe(1);
+    const a = await app(created.id);
+    expect(a.status).toBe("needs_user");
+    expect(a.formApprovedAt).toBeNull();
+    expect(await recoverStuckCodeWaits(db)).toBe(0);
+  });
+});
