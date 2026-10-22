@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { api } from "@/lib/api";
 import { ArrowRight, GitBranch, Sparkles, Star, UserRound, Zap } from "lucide-react";
 import { NoriLogo } from "@/components/Logo";
 import { AuthCard } from "@/components/landing/AuthCard";
@@ -17,7 +18,11 @@ export const metadata: Metadata = {
 const STUDIO = ["Seven templates, from a plain one-column classic to an executive serif", "Fonts, accent colour, size, spacing and margins; Letter or A4", "Live preview, section reordering, version history", "PDF, Word, plain text and JSON export", "An ATS check that tells you when a layout could scramble in an applicant system"];
 
 export default async function LandingPage() {
-  if ((await cookies()).get("jg_session")?.value) redirect("/dashboard");
+  // Only a session the API still accepts goes to the dashboard. A stale cookie used to make the landing page unreachable.
+  if ((await cookies()).get("jg_session")?.value) {
+    const signedIn = await api.session().then(() => true, () => false);
+    if (signedIn) redirect("/dashboard");
+  }
   return (
     <>
       {/* ---------------------------------------------------------------- hero */}

@@ -76,6 +76,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       msg = j.error ?? j.message ?? msg;
     } catch { /* not json */ }
     const err = new ApiError(res.status, `${method} ${path} failed (${res.status}): ${msg}`, friendly(msg));
+    // A session that ended mid-visit (expired, signed out elsewhere, password reset): go sign in again, back to this page,
+    // instead of leaving "Unauthorized" in every panel. Sign-in calls themselves report their own 401s.
+    if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/")) {
+      window.location.assign(`/session-expired?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    }
     if (typeof window === "undefined" && res.status >= 500) console.warn(`[web] ${err.technical}`);
     throw err;
   }
