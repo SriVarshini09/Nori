@@ -26,7 +26,7 @@ import {
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
 import {
-  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, waitForVerificationCode, TOOLKITS,
+  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
@@ -974,7 +974,11 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.post("/api/webhooks/whatsapp", async (c) => {
     if (!opts.router) throw bad("WhatsApp webhook not enabled", 503);
-    const payload = await c.req.json().catch(() => ({}));
+    if (!process.env.WHATSAPP_APP_SECRET) throw bad("WhatsApp webhook needs WHATSAPP_APP_SECRET", 503);
+    const raw = await c.req.text();
+    if (!verifyWhatsAppSignature(raw, c.req.header("x-hub-signature-256"))) throw bad("Bad signature", 401);
+    let payload: unknown = {};
+    try { payload = JSON.parse(raw); } catch { throw bad("Body must be JSON"); }
     const msgs = await opts.router.whatsapp.handleWebhook(payload);
     return c.json({ received: msgs.length });
   });

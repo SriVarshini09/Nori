@@ -72,7 +72,7 @@ export function integrationReport(env: Env = process.env): IntegrationState[] {
     row("composio", "Gmail, Sheets, Calendar, Slack (Composio)", ["COMPOSIO_API_KEY"], "Inbox sync, the tracker sheet and verification-code lookup are unavailable."),
     row("parallel", "Job discovery and company research (Parallel)", ["PARALLEL_API_KEY"], "Discovery outside the public ATS feeds and company research are unavailable."),
     row("telegram", "Telegram channel", ["TELEGRAM_BOT_TOKEN"], "No Telegram chat; the web app and other channels still work."),
-    row("whatsapp", "WhatsApp channel", ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN"], "No WhatsApp chat."),
+    row("whatsapp", "WhatsApp channel", ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"], "No WhatsApp chat."),
     {
       id: "email", name: "Account email (Resend or SMTP)",
       state: (has("RESEND_API_KEY") || has("SMTP_URL")) && has("EMAIL_FROM") ? "configured" : "blocked",

@@ -49,7 +49,7 @@ describe("integrationReport", () => {
     expect(by.email).toMatchObject({ state: "blocked", needs: ["EMAIL_FROM"] });
     expect(integrationReport({ SMTP_URL: "smtp://u:p@h:587", EMAIL_FROM: "a@b.c" }).find((x) => x.id === "email")!.state).toBe("configured");
     expect(by.telegram).toMatchObject({ state: "blocked", needs: ["TELEGRAM_BOT_TOKEN"] });
-    expect(by.whatsapp.needs).toEqual(["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN"]);
+    expect(by.whatsapp.needs).toEqual(["WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"]);
     expect(by.llm.state).toBe("blocked");
     for (const x of r) expect(x.without.length).toBeGreaterThan(10);
   });
