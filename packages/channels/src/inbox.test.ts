@@ -108,3 +108,15 @@ describe("syncInbox", () => {
     expect(await waitForVerificationCode(db, user.id, "acme", 30, { intervalMs: 5, sync: async () => ({ imported: 0 }) })).toBeNull();
   });
 });
+
+describe("mail from someone who is not the company", () => {
+  it("cannot change an application's status, plant a code, or put a link in a draft", async () => {
+    const { senderSpeaksFor, safeDraft, fromAts } = await import("./inbox.js");
+    expect(senderSpeaksFor("Jane <jane@acme.com>", "Acme Inc")).toBe(true);
+    expect(senderSpeaksFor("Acme Recruiting <no-reply@greenhouse-mail.io>", "Acme")).toBe(true);
+    expect(senderSpeaksFor("Acme HR <acme.hr.team@gmail.com>", "Acme")).toBe(false);
+    expect(senderSpeaksFor("Unfortunately <news@phish.example>", "Acme")).toBe(false);
+    expect(fromAts("Lever <no-reply@hire.lever.co>")).toBe(true);
+    expect(safeDraft("Thanks! Book here: https://evil.example/x and talk soon")).toBe("Thanks! Book here:  and talk soon");
+  });
+});
