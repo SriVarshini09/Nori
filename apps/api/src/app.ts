@@ -212,6 +212,21 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     credentials: true,
   }));
 
+  // Cross-site request forgery: a page on another site can make the browser POST here with the person's cookie (a plain
+  // form needs no preflight). Browsers say where a request comes from, so state-changing requests from any other origin are
+  // refused. Requests without an Origin (scripts, the companion app, server-to-server webhooks) still need a session.
+  const ownOrigins = new Set([new URL(webUrl).origin]);
+  app.use("*", async (c, next) => {
+    const m = c.req.method;
+    if (m === "GET" || m === "HEAD" || m === "OPTIONS" || c.req.path.startsWith("/api/webhooks/")) return next();
+    const origin = c.req.header("origin");
+    const crossSite = c.req.header("sec-fetch-site") === "cross-site";
+    const allowed = !origin || ownOrigins.has(origin) || origin === new URL(c.req.url).origin
+      || (!secure && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    if (!allowed || (crossSite && !(origin && ownOrigins.has(origin)))) throw bad("Cross-site request refused", 403);
+    return next();
+  });
+
   app.use("*", securityHeaders({ hsts: secure }));
   // Off under test runners (they hammer signup and login), on everywhere else unless explicitly disabled.
   const limits = opts.rateLimit ?? !(process.env.VITEST || process.env.NODE_ENV === "test");

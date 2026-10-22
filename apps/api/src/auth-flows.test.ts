@@ -220,3 +220,15 @@ describe("linking a chat channel", () => {
     expect((await call("POST", "/api/channels", { kind: "email", address: "mallory.ch@example.com" }, mallory.cookie!)).status).toBe(201);
   });
 });
+
+describe("cross-site requests", () => {
+  it("refuses state changes from another site and JSON smuggled in a text/plain form", async () => {
+    const u = await call("POST", "/api/auth/signup", { email: "csrf@example.com", password: "first-password" });
+    const post = (headers: Record<string, string>, body = "{}") =>
+      app.request("/api/agent/tick", { method: "POST", headers: { cookie: u.cookie!, ...headers }, body });
+    expect((await post({ origin: "https://evil.example", "content-type": "application/json" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "cross-site", "content-type": "application/json" })).status).toBe(403);
+    expect((await app.request("/api/graph/facts", { method: "POST", headers: { cookie: u.cookie!, "content-type": "text/plain" }, body: '{"text":"I led NASA"}' })).status).toBe(415);
+    expect((await app.request("/api/graph/facts", { method: "POST", headers: { cookie: u.cookie!, origin: "https://nori.test", "content-type": "application/json" }, body: '{"text":"I know Rust"}' })).status).not.toBe(403);
+  });
+});
