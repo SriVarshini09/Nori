@@ -371,3 +371,18 @@ describe("runner free-text composer", () => {
     expect(ev.some((e) => e.step === "research" && /timed out/.test(e.message))).toBe(true);
   });
 });
+
+describe("review before submit off", () => {
+  it("never sends straight from the fill: the form waits unless every Autopilot check passes", async () => {
+    await db.update(profiles).set({ reviewBeforeSubmit: false, resumeAutoApprove: true, autopilot: "off" }).where(eq(profiles.userId, userId));
+    const driver = new FakeDriver();
+    const created = await createApplication(db, userId, jobId);
+    const status = await runApplication(db, created.id, deps(driver));
+    // A "web" form, no hand approvals yet: Autopilot's checks fail, so it is held instead of sent.
+    expect(status).toBe("form_review");
+    expect(driver.calls.every((c) => c.dryRun)).toBe(true);
+    const a = await app(created.id);
+    expect(a.formApprovedAt).toBeNull();
+    expect(a.submittedAt).toBeNull();
+  });
+});

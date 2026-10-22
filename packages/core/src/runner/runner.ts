@@ -5,7 +5,7 @@ import {
   applications, companies, jobs, matches, profiles, resumes, runEvents, users,
   type ApplicationStatus, type CompanyResearch, type JobRequirements, type PendingQuestion, type Receipt, type ResumeContent,
 } from "../db/schema.js";
-import type { ApplyDriver, DriverContext, DriverResult, RenderResult, TailorInput } from "../contracts.js";
+import type { ApplyDriver, DriverContext, DriverResult, FormField, RenderResult, TailorInput } from "../contracts.js";
 import { ensureRequirements } from "../feeds/requirements.js";
 import { parallelAvailable } from "../feeds/parallel.js";
 import { researchCompany } from "../research/company.js";
@@ -367,7 +367,14 @@ export async function countHumanApprovals(db: Db, userId: string): Promise<numbe
 }
 
 /** Autopilot's decision for a freshly filled form. Records the checks on the timeline and returns whether it may approve. */
-async function judgeByAutopilot(db: Db, app: Application, deps: RunnerDeps, setup: DriveSetup, writtenLabels: string[]): Promise<boolean> {
+/** Required fields (other than file uploads) that the receipt shows empty after the fill. */
+export function unansweredRequired(fields: FormField[], receipt: Receipt): string[] {
+  const filled = new Set(receipt.fields.filter((f) => f.value.trim()).map((f) => f.label.trim().toLowerCase()));
+  return fields.filter((f) => f.required && f.kind !== "file" && !filled.has(f.label.trim().toLowerCase())).map((f) => f.label);
+}
+
+async function judgeByAutopilot(db: Db, app: Application, deps: RunnerDeps, setup: DriveSetup, writtenLabels: string[],
+  opts: { mode: AutopilotMode; unanswered: string[] }): Promise<boolean> {
   const { job, requirements, profileRow } = setup;
   const [m] = await db.select({ score: matches.score }).from(matches).where(and(eq(matches.userId, app.userId), eq(matches.jobId, job.id))).limit(1);
   const [resume] = app.resumeId ? await db.select({ atsScore: resumes.atsScore }).from(resumes).where(eq(resumes.id, app.resumeId)).limit(1) : [];
@@ -379,7 +386,7 @@ async function judgeByAutopilot(db: Db, app: Application, deps: RunnerDeps, setu
     notInArray(applications.status, ["failed", "skipped"] as ApplicationStatus[]),
     sql`lower(${jobs.companyName}) = ${job.companyName.trim().toLowerCase()}`));
   const verdict = autopilotVerdict({
-    mode: profileRow.autopilot as AutopilotMode,
+    mode: opts.mode,
     atsType: setup.driver.atsType,
     submitLockOpen: deps.allowRealSubmit ?? process.env.ALLOW_REAL_SUBMIT === "true",
     score: m?.score ?? null,
@@ -387,7 +394,7 @@ async function judgeByAutopilot(db: Db, app: Application, deps: RunnerDeps, setu
     gate: checkDisqualifiers(job, requirements, profileRow, { graph }),
     unproven: unprovenConstraints(job, requirements, profileRow),
     filled: true,
-    pendingQuestions: 0,
+    pendingQuestions: opts.unanswered.length,
     writtenAnswers: writtenLabels,
     atsScore: resume?.atsScore ?? null,
     humanApprovals,
@@ -413,9 +420,9 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
   }
   ctx.answers = { ...pre, ...user };
 
-  const allowReal = deps.allowRealSubmit ?? process.env.ALLOW_REAL_SUBMIT === "true";
-  const dryRun = reviewBeforeSubmit ? true : !allowReal;
-  const res = await runDriver(db, app, driver, { ...ctx, dryRun, waitForCode: codeWaiter(db, app, deps) });
+  // The fill is always a dry run. Sending happens only in stepSubmitting, after a person or every Autopilot check approved the
+  // filled form. Turning "review before submit" off used to fill with dryRun false and send with no check at all.
+  const res = await runDriver(db, app, driver, { ...ctx, dryRun: true, waitForCode: codeWaiter(db, app, deps) });
   const stored = (r: Receipt) => storeReceipt(r, root, collectAuto(pre, r, user, composed), sourcesOf(composed));
   const composedLabels = Object.keys(composed);
   if (composedLabels.length) {
@@ -426,19 +433,22 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
   switch (res.outcome) {
     case "filled": {
       const receipt = stored(res.receipt);
-      if (reviewBeforeSubmit) {
-        // Autopilot may approve the form itself, but only when every check passes (see autopilot.ts); otherwise it waits as always.
-        // Nori pre-writes answers to questions most forms ask, whether or not this form does: only the ones it used count.
-        const used = new Set(receipt.fields.map((f) => f.label.trim().toLowerCase()));
-        const written = Object.keys(composed).filter((label) => used.has(label.trim().toLowerCase()));
-        const approved = setup.profileRow.autopilot !== "off" ? await judgeByAutopilot(db, app, deps, setup, written) : false;
-        if (approved) {
-          return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null, formApprovedAt: new Date(), autopilot: true },
-            `Form filled (${receipt.fields.length} fields); approved by Autopilot`);
-        }
-        return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null }, `Form filled (${receipt.fields.length} fields); waiting for review`);
+      // Autopilot may approve the form itself, but only when every check passes (see autopilot.ts); otherwise it waits as always.
+      // With "review before submit" off the person has asked not to be asked, so the checks run at least in "safe" mode: that
+      // setting skips the question, never the safeguards.
+      // Nori pre-writes answers to questions most forms ask, whether or not this form does: only the ones it used count.
+      const used = new Set(receipt.fields.map((f) => f.label.trim().toLowerCase()));
+      const written = Object.keys(composed).filter((label) => used.has(label.trim().toLowerCase()));
+      const profileMode = setup.profileRow.autopilot as AutopilotMode;
+      const mode: AutopilotMode = !reviewBeforeSubmit && profileMode === "off" ? "safe" : profileMode;
+      const approved = mode !== "off"
+        ? await judgeByAutopilot(db, app, deps, setup, written, { mode, unanswered: unansweredRequired(res.fields, res.receipt) })
+        : false;
+      if (approved) {
+        return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null, formApprovedAt: new Date(), autopilot: true },
+          `Form filled (${receipt.fields.length} fields); approved by Autopilot`);
       }
-      return transition(db, app, "submitting", { receipt, pendingQuestions: [], error: null }, "Form filled; submitting (review before submit is off)");
+      return transition(db, app, "form_review", { receipt, pendingQuestions: [], error: null }, `Form filled (${receipt.fields.length} fields); waiting for review`);
     }
     case "submitted":
       return finishSubmitted(db, app, stored(res.receipt));
