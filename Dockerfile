@@ -40,9 +40,11 @@ ENV NODE_ENV=production \
     API_PORT=4000 \
     ARTIFACTS_DIR=/data/artifacts
 
-RUN mkdir -p /data/artifacts && chown -R pwuser:pwuser /data /app
+RUN mkdir -p /data/artifacts && chown -R pwuser:pwuser /data /app && chmod 755 /app/scripts/docker/entrypoint.sh
 VOLUME ["/data"]
-USER pwuser
+# No USER line: the entrypoint starts as root only to hand a freshly mounted /data volume to pwuser, then runs the app
+# as pwuser (scripts/docker/entrypoint.sh).
+ENTRYPOINT ["/app/scripts/docker/entrypoint.sh"]
 
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
