@@ -249,7 +249,8 @@ function anthropicLLM(spec: LLMSpec): LLM {
         system: call.system,
         output_config: { format: zodOutputFormat(call.schema as z.ZodType), effort: call.effort ?? "medium" },
         messages: [{ role: "user", content: call.prompt }],
-      }, { timeout: call.timeoutMs ?? llmTimeoutMs() }).catch((e: unknown) => { throw isTimeout(e) ? timeoutError(model, call.timeoutMs ?? llmTimeoutMs()) : e; });
+      // maxRetries 0: the SDK's own retries would run the deadline up to three times; withFallback decides what follows.
+      }, { timeout: call.timeoutMs ?? llmTimeoutMs(), maxRetries: 0 }).catch((e: unknown) => { throw isTimeout(e) ? timeoutError(model, call.timeoutMs ?? llmTimeoutMs()) : e; });
       if (res.stop_reason === "refusal") throw new Error(`Model refused (${res.stop_details?.category ?? "unknown"})`);
       if (res.parsed_output == null) throw new Error("Structured output failed to parse");
       return call.schema.parse(res.parsed_output);
