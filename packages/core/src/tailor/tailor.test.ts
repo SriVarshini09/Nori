@@ -265,7 +265,7 @@ describe("template + ats", () => {
 });
 
 describe("ownership and scope upgrades", () => {
-  const orig = { text: "Contributed to the migration of the checkout flow to React", nodeIds: ["n1"] };
+  const orig = { id: "b1", text: "Contributed to the migration of the checkout flow to React", nodeIds: ["n1"] };
   it("rejects a rewrite that turns 'contributed to' into 'led' or adds company-wide scope", () => {
     expect(validateBullet(orig, { text: "Led the migration of the checkout flow to React for the web team", nodeIds: ["n1"] }, "", ["React"]).ok).toBe(false);
     expect(validateBullet(orig, { text: "Contributed to a company-wide migration of the checkout flow to React", nodeIds: ["n1"] }, "", ["React"]).ok).toBe(false);

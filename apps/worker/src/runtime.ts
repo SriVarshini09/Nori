@@ -20,7 +20,7 @@ import {
   type AtsType, type Db, type OutboundMessage, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
-import { composioAvailable, createChannelRouter, sendToUser, syncInbox, waitForVerificationCode, type ChannelRouter } from "@jobgraph/channels";
+import { composioAvailable, createChannelRouter, pruneInbox, sendToUser, syncInbox, waitForVerificationCode, type ChannelRouter } from "@jobgraph/channels";
 import { CONSOLE_ADDRESS, ConsoleChannel } from "./console.js";
 
 export type Notify = (userId: string, msg: OutboundMessage) => Promise<unknown>;
@@ -139,8 +139,8 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   });
 
   every("housekeeping", 60 * 60_000, async () => {
-    const [sessions, tokens] = [await pruneSessions(db), await pruneAuthTokens(db)];
-    if (sessions || tokens) log(`housekeeping: removed ${sessions} expired session(s) and ${tokens} spent account link(s)`);
+    const [sessions, tokens, mail] = [await pruneSessions(db), await pruneAuthTokens(db), await pruneInbox(db)];
+    if (sessions || tokens || mail) log(`housekeeping: removed ${sessions} expired session(s), ${tokens} spent account link(s), ${mail} non-job mail marker(s)`);
   });
 
   every("inbox", INBOX_EVERY, async () => {

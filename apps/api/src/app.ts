@@ -9,7 +9,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from "drizzle-orm";
 import {
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
   APPLICATION_STATUSES, ATS_TYPES,
@@ -811,7 +811,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   app.get("/api/inbox", async (c) => {
     const user = c.get("user");
     const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
-    return c.json(await db.select().from(inboxMessages).where(eq(inboxMessages.userId, user.id)).orderBy(desc(inboxMessages.receivedAt)).limit(limit));
+    // Non-job mail is kept only as an empty marker (see syncInbox); it is not the person's inbox to show.
+    return c.json(await db.select().from(inboxMessages).where(and(eq(inboxMessages.userId, user.id), ne(inboxMessages.bodyText, "")))
+      .orderBy(desc(inboxMessages.receivedAt)).limit(limit));
   });
 
   app.post("/api/inbox/sync", async (c) => {

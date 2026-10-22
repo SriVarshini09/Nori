@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { z } from "zod";
 import {
   applications, getLLM, inboxMessages, jobs, withFallback,
@@ -282,10 +282,14 @@ export async function syncInbox(db: Db, userId: string, deps: SyncDeps = {}): Pr
     if (existing.has(email.externalId)) continue;
     const c = await classify(email);
     const app = linkApplication(appRows, email, c);
+    // Only mail about the job search is kept. Everything else (bank, medical, personal) is recorded as an empty marker so
+    // it is not read again on the next sync, and the marker is pruned after a week (pruneInbox).
+    const keep = c.kind !== "other" || Boolean(app);
     const inserted = await db.insert(inboxMessages).values({
       userId, applicationId: app?.id ?? null, externalId: email.externalId,
-      fromAddress: email.from, subject: email.subject, bodyText: email.text, receivedAt: email.receivedAt,
-      kind: c.kind, code: c.code ?? null, draftReply: c.draftReply ?? null, source: "composio_gmail",
+      fromAddress: keep ? email.from : "", subject: keep ? email.subject : "", bodyText: keep ? email.text.slice(0, INBOX_BODY_MAX) : "",
+      receivedAt: email.receivedAt,
+      kind: c.kind, code: c.code ?? null, draftReply: keep ? c.draftReply ?? null : null, source: "composio_gmail",
     }).onConflictDoNothing().returning();
     if (!inserted.length) continue;
     imported++;
@@ -299,6 +303,17 @@ export async function syncInbox(db: Db, userId: string, deps: SyncDeps = {}): Pr
     }
   }
   return { imported };
+}
+
+/** Longest stored body of a job email. */
+export const INBOX_BODY_MAX = 20_000;
+
+/** Drop the empty markers for non-job mail once they are older than the sync window. */
+export async function pruneInbox(db: Db, olderThanDays = 7): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
+  const gone = await db.delete(inboxMessages)
+    .where(and(eq(inboxMessages.kind, "other"), eq(inboxMessages.bodyText, ""), lt(inboxMessages.receivedAt, cutoff))).returning();
+  return gone.length;
 }
 
 export type WaitOpts = { intervalMs?: number; sync?: (db: Db, userId: string) => Promise<{ imported: number }> };

@@ -77,6 +77,8 @@ describe("syncInbox", () => {
     const rows = await db.select().from(inboxMessages).where(eq(inboxMessages.userId, user.id));
     expect(rows.find((r) => r.externalId === "e1")).toMatchObject({ kind: "interview", applicationId: app.id });
     expect(rows.find((r) => r.externalId === "e2")?.applicationId).toBeNull();
+    // Mail that is not about the job search is not kept: only an empty marker so it is not read again.
+    expect(rows.find((r) => r.externalId === "e2")).toMatchObject({ kind: "other", fromAddress: "", subject: "", bodyText: "" });
     const [a] = await db.select().from(applications).where(eq(applications.id, app.id));
     expect(a.status).toBe("interview");
     expect((await syncInbox(db, user.id, { fetchEmails })).imported).toBe(0);
