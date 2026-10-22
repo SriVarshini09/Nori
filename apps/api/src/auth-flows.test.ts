@@ -207,3 +207,16 @@ async function vi_waitFor(cond: () => boolean, ms = 3000) {
     await new Promise((r) => setTimeout(r, 20));
   }
 }
+
+describe("linking a chat channel", () => {
+  it("cannot take over an address another account linked, and email goes only to the account's own address", async () => {
+    const alice = await call("POST", "/api/auth/signup", { email: "alice.ch@example.com", password: "first-password" });
+    const mallory = await call("POST", "/api/auth/signup", { email: "mallory.ch@example.com", password: "first-password" });
+    expect((await call("POST", "/api/channels", { kind: "telegram", address: "555001" }, alice.cookie!)).status).toBe(201);
+    expect((await call("POST", "/api/channels", { kind: "telegram", address: "555001" }, alice.cookie!)).status).toBe(201); // own re-link is fine
+    expect((await call("POST", "/api/channels", { kind: "telegram", address: "555001" }, mallory.cookie!)).status).toBe(409);
+    expect((await call("GET", "/api/channels", undefined, alice.cookie!)).json.map((r: { address: string }) => r.address)).toEqual(["555001"]);
+    expect((await call("POST", "/api/channels", { kind: "email", address: "victim@example.com" }, mallory.cookie!)).status).toBe(400);
+    expect((await call("POST", "/api/channels", { kind: "email", address: "mallory.ch@example.com" }, mallory.cookie!)).status).toBe(201);
+  });
+});

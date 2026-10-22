@@ -849,10 +849,17 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     .filter((r) => r.kind !== "web")));
 
   app.post("/api/channels", async (c) => {
-    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1), meta: z.record(z.string(), z.unknown()).optional() }));
+    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1).max(320), meta: z.record(z.string(), z.unknown()).optional() }));
     const user = c.get("user");
+    // An address belongs to whoever linked it first. Re-pointing someone else's chat at this account would send their
+    // commands here and this account's notifications (resumes, job details) to their phone.
+    const [taken] = await db.select({ userId: channels.userId }).from(channels).where(and(eq(channels.kind, b.kind), eq(channels.address, b.address))).limit(1);
+    if (taken && taken.userId !== user.id) throw bad("That address is already linked to another account", 409);
+    // Email notifications go only to the account's own address.
+    if (b.kind === "email" && b.address.trim().toLowerCase() !== user.email.toLowerCase()) throw bad("Email notifications go to your account's own address", 400);
     const [row] = await db.insert(channels).values({ userId: user.id, kind: b.kind, address: b.address, meta: b.meta ?? {} })
-      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { userId: user.id, meta: b.meta ?? {} } }).returning();
+      .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, where: eq(channels.userId, user.id) }).returning();
+    if (!row) throw bad("That address is already linked to another account", 409);
     return c.json(row, 201);
   });
 
