@@ -69,8 +69,9 @@ describe("checkDisqualifiers", () => {
       { id: "r2", type: "role", label: "Intern", props: {}, startDate: "2022-01", endDate: "2022-08" },
     ] };
     const r = checkDisqualifiers(job("x"), req({ yearsMin: 8 }), citizen, { graph, now: NOW });
-    expect(r.reasons[0]).toMatch(/Asks for 8\+ years of experience; you have about 4/);
-    expect(checkDisqualifiers(job("x"), req({ yearsMin: 5 }), citizen, { graph, now: NOW }).ok).toBe(true); // 4.7 years, one year grace
+    // The 2022 internship does not count: experience starts with the 2023-06 role (about 3.4 years).
+    expect(r.reasons[0]).toMatch(/Asks for 8\+ years of experience; you have about 3/);
+    expect(checkDisqualifiers(job("x"), req({ yearsMin: 4 }), citizen, { graph, now: NOW }).ok).toBe(true); // 3.4 years, one year grace
     expect(checkDisqualifiers(job("x"), req({ yearsMin: 8 }), citizen, { now: NOW }).ok).toBe(true); // unknown history never disqualifies
   });
 
@@ -110,5 +111,17 @@ describe("checkDisqualifiers", () => {
     const fresh = { nodes: [{ id: "r2", type: "role", label: "Intern", props: {}, startDate: "2026-01" }] as never };
     expect(checkDisqualifiers(job("x", { title: "Software Engineering Intern" }), req(), citizen, { graph: fresh, now: NOW }).ok).toBe(true);
     expect(checkDisqualifiers(job("x", { title: "Software Engineering Intern" }), req(), citizen, { now: NOW }).ok).toBe(true);
+  });
+});
+
+describe("years of experience", () => {
+  it("do not count internships or student jobs, so new-grad roles stay open to students", async () => {
+    const { earliestRoleStart, isEarlyCareerRole } = await import("./gate.js");
+    const node = (label: string, startDate: string, employmentType?: string) => ({ id: label, type: "role", label, startDate, props: { title: label, employmentType } });
+    const student = { nodes: [node("Software Engineering Intern", "2022-06", "internship"), node("Teaching Assistant", "2023-01"), node("Junior Developer", "2025-07", "full-time")] } as never;
+    expect(earliestRoleStart(student)).toBe("2025-07");
+    expect(earliestRoleStart({ nodes: [node("Summer Intern", "2022-06")] } as never)).toBeNull();
+    expect(isEarlyCareerRole("Senior Engineer", "full-time")).toBe(false);
+    expect(isEarlyCareerRole("Barista", "part-time")).toBe(true);
   });
 });

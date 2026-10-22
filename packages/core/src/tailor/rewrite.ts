@@ -5,6 +5,7 @@ import type { ResumeBullet, ResumeChange, ResumeContent } from "../db/schema.js"
 import { joinList, mentionsSkill, norm, numbersIn, sameSkill, wordCount } from "../match/text.js";
 import { FLUFF_RE } from "./fluff.js";
 import { startsWithVerb, strengthenOpener } from "./verbs.js";
+import { isEarlyCareerRole } from "../agent/gate.js";
 
 export type TailorOutcome = TailorResult & { rejected: { bulletId: string; reason: string }[] };
 
@@ -247,6 +248,7 @@ function tailorSkills(baseline: ResumeContent["skills"], ctx: Ctx, preferredOrde
 export function yearsOfExperience(roles: ResumeContent["experience"], now: Date = new Date()): number | null {
   let earliest: number | null = null;
   for (const r of roles) {
+    if (isEarlyCareerRole(r.title)) continue; // an internship is not a year of experience in a summary
     const m = /^(\d{4})(?:-(\d{1,2}))?/.exec((r.start ?? "").trim());
     if (!m) continue;
     const t = Number(m[1]) * 12 + (m[2] ? Number(m[2]) - 1 : 0);
