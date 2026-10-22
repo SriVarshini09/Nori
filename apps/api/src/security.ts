@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 
@@ -18,10 +19,25 @@ export function securityHeaders(opts: { hsts?: boolean } = {}): MiddlewareHandle
   };
 }
 
-/** Best-effort client address behind Fly and Vercel proxies: first X-Forwarded-For hop, else Fly-Client-IP. */
-export function clientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
-  return xff || c.req.header("fly-client-ip") || c.req.header("x-real-ip") || "local";
+function sameSecret(a: string, b: string): boolean {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
+/**
+ * The client address rate limits are keyed on. Never the first X-Forwarded-For hop on its own: the client writes that
+ * one, so a fresh fake address per request used to give a fresh bucket (unlimited password guesses).
+ *  1. The web app's proxy (apps/web/src/proxy.ts) passes the visitor's address in x-nori-client-ip, signed with
+ *     PROXY_SECRET. Only then is a forwarded address trusted.
+ *  2. Otherwise the address of the nearest hop: Fly-Client-IP (set by Fly's edge from the connection), else the LAST
+ *     X-Forwarded-For entry (appended by the proxy in front of us), else X-Real-IP.
+ */
+export function clientIp(c: Context, secret = process.env.PROXY_SECRET): string {
+  const signed = c.req.header("x-nori-proxy");
+  const forwarded = c.req.header("x-nori-client-ip")?.trim();
+  if (secret && signed && forwarded && sameSecret(signed, secret)) return forwarded;
+  const hops = c.req.header("x-forwarded-for")?.split(",").map((h) => h.trim()).filter(Boolean) ?? [];
+  return c.req.header("fly-client-ip")?.trim() || hops[hops.length - 1] || c.req.header("x-real-ip")?.trim() || "local";
 }
 
 export type RateRule = {

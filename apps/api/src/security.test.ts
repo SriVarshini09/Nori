@@ -69,8 +69,17 @@ describe("rate limiting", () => {
   it("reads the client address from proxy headers", async () => {
     const a = new Hono();
     a.get("/", (c) => c.text(clientIp(c)));
-    expect(await (await a.request("/", { headers: { "x-forwarded-for": "3.3.3.3, 10.0.0.1" } })).text()).toBe("3.3.3.3");
-    expect(await (await a.request("/", { headers: { "fly-client-ip": "4.4.4.4" } })).text()).toBe("4.4.4.4");
+    // The first hop is whatever the client wrote; the nearest proxy's entry (last) or Fly's own header is what counts.
+    expect(await (await a.request("/", { headers: { "x-forwarded-for": "3.3.3.3, 10.0.0.1" } })).text()).toBe("10.0.0.1");
+    expect(await (await a.request("/", { headers: { "fly-client-ip": "4.4.4.4", "x-forwarded-for": "6.6.6.6" } })).text()).toBe("4.4.4.4");
     expect(await (await a.request("/")).text()).toBe("local");
+  });
+
+  it("trusts a forwarded address only when the web proxy signed it", async () => {
+    const a = new Hono();
+    a.get("/", (c) => c.text(clientIp(c, "proxy-secret")));
+    const via = (sig: string) => a.request("/", { headers: { "x-nori-proxy": sig, "x-nori-client-ip": "5.5.5.5", "fly-client-ip": "7.7.7.7" } });
+    expect(await (await via("proxy-secret")).text()).toBe("5.5.5.5");
+    expect(await (await via("guess")).text()).toBe("7.7.7.7");
   });
 });
