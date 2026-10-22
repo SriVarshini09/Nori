@@ -378,8 +378,10 @@ export function heuristicAnswer(field: FormField, profile: ApplicantProfile | Ap
         ?? opts.find((o) => { const head = o.split(/[(,/]/)[0].trim(); return head.length > 2 && hasWord(h, head); });
       if (hit) return out(hit);
     }
-    if (!opts.length) return "Job board";
-    return out(pick(opts, [/job board/i, /\bother\b/i, /website|careers? (page|site)|company site/i]) ?? null);
+    // Nori found the posting on the company's own job board (its ATS feed or careers page): say exactly that, never a
+    // channel the person did not use. makeAnswerQuestion records it as written so the person sees it at review.
+    if (!opts.length) return "Company careers page";
+    return out(pick(opts, [/careers? (page|site)|company (web)?site|company'?s? (web)?site|\bwebsite\b/i, /\bother\b/i]) ?? null);
   }
 
   if (ACK_RE.test(l)) {
@@ -566,6 +568,15 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
       if (edu !== undefined) return edu;
     }
     const fromProfile = heuristicAnswer(field, ctx.profile);
+    if (fromProfile !== null && ctx.composed) {
+      // Not facts from the profile: an attestation or consent Nori ticked, or a referral source the person never gave.
+      // Recorded as written answers, so they are listed at review and Autopilot (in safe mode) waits for the person.
+      const l = field.label.toLowerCase().replace(/\s+/g, " ");
+      const full = ctx.profile as ApplicantProfileFull;
+      const kind: QuestionKind | null = ACK_RE.test(l) && field.kind !== "email" && !/email/.test(l) ? "acknowledgement"
+        : HEAR_RE.test(l) && !full.heardAbout ? "referral_source" : null;
+      if (kind) ctx.composed[field.label] = { answer: fromProfile, kind, sources: [], usedLLM: false };
+    }
     if (fromProfile !== null || field.kind === "file") return fromProfile;
     const kind = classifyQuestion(field.label, field);
     if (NEVER_COMPOSE.has(kind)) return null;

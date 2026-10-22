@@ -156,10 +156,12 @@ describe("heuristicAnswer (Greenhouse-style required questions)", () => {
   });
 
   it("where did you first hear about this role", () => {
-    expect(ans(sel("Where did you first hear about this role?", ["LinkedIn", "Job board (Indeed, etc.)", "Other"]))).toBe("Job board (Indeed, etc.)");
+    // Nori found the posting on the company's own board: never "LinkedIn" or "Indeed", which the person did not use.
+    expect(ans(sel("Where did you first hear about this role?", ["LinkedIn", "Job board (Indeed, etc.)", "Other"]))).toBe("Other");
+    expect(ans(sel("Where did you first hear about this role?", ["LinkedIn", "Company website", "Other"]))).toBe("Company website");
     expect(ans(sel("How did you hear about us?", ["Referral", "Other"]))).toBe("Other");
     expect(ans(sel("How did you hear about this job?", ["Referral", "Company website"]))).toBe("Company website");
-    expect(ans(sel("Where did you first hear about this role?", undefined, "text"))).toBe("Job board");
+    expect(ans(sel("Where did you first hear about this role?", undefined, "text"))).toBe("Company careers page");
   });
 
   it("acknowledgments and confirmations", () => {
@@ -292,5 +294,17 @@ describe("work authorization in another country", () => {
     expect(ans(f("Are you legally authorised to work in the UK?"))).toBeNull();
     expect(ans(f("Will you require sponsorship to work in Canada?"))).toBeNull();
     expect(ans(f("Are you legally authorized to work in the United States?"))).toBe("Yes");
+  });
+});
+
+describe("attestations and referral source", () => {
+  it("are recorded as written answers so the person sees them, and the source is where Nori found the job", async () => {
+    const composed: Record<string, { answer: string; kind: string }> = {};
+    const profile = { fullName: "Jordan Rivera", firstName: "Jordan", lastName: "Rivera", email: "j@example.com", workAuth: { authorizedUS: true, needsSponsorship: false } } as ApplicantProfile;
+    const ask = makeAnswerQuestion({ profile, evidence: [], jobTitle: "SRE", companyName: "Acme", composed: composed as never });
+    expect(await ask({ label: "I certify the information above is accurate and complete", kind: "checkbox", required: true, selector: "#c" }, "")).toBe("Yes");
+    expect(composed["I certify the information above is accurate and complete"]).toMatchObject({ kind: "acknowledgement" });
+    expect(await ask({ label: "How did you hear about us?", kind: "text", required: true, selector: "#h" }, "")).toBe("Company careers page");
+    expect(composed["How did you hear about us?"]).toMatchObject({ kind: "referral_source" });
   });
 });

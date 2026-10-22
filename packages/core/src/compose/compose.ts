@@ -515,7 +515,7 @@ function heuristicCompose(input: ComposeInput, facts: Facts): { answer: string |
       return done(`I'm open to talking about it.${loc}`);
     }
     case "referral_source":
-      return done("Job board");
+      return done("Company careers page");
     case "portfolio_link": {
       const site = profile.website ?? input.baseline.contact.website ?? profile.github;
       return done(site ?? null);
