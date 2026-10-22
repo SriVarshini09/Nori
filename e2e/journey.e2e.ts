@@ -74,7 +74,8 @@ describe("1. visitors and accounts", () => {
     for (let i = 0; i < 12 && !/\/dashboard/.test(page.url()); i++) {
       await settle(700);
       const next = page.getByRole("button", { name: /^(continue|finish|go to dashboard|open (my )?dashboard|done|skip for now)/i }).first();
-      if (await next.count()) { await next.scrollIntoViewIfNeeded(); await next.click().catch(() => {}); }
+      // The step can move on (and its button vanish) between count() and the click: try briefly, then look again.
+      if (await next.count()) await next.click({ timeout: 5_000 }).catch(() => {});
     }
     await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
     await expect(page.getByText(/maya/i).first()).toBeVisible();
@@ -141,7 +142,8 @@ describe("2. resume studio", () => {
 
   it("hides and reorders sections", async () => {
     await page.getByRole("button", { name: "Hide Projects" }).click();
-    await expect.poll(async () => /PROJECTS|>Projects</.test(await previewHtml(page)), { timeout: 20_000 }).toBe(false);
+    // A preview that is mid-reload ("") must not count as "projects are gone".
+    await expect.poll(async () => { const h = await previewHtml(page); return h ? /PROJECTS|>Projects</.test(h) : "loading"; }, { timeout: 20_000 }).toBe(false);
     await page.getByRole("button", { name: "Show Projects" }).click();
     await page.getByRole("button", { name: "Move Skills up" }).click();
     await page.getByRole("button", { name: "Move Skills up" }).click();

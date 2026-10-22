@@ -26,7 +26,14 @@ export async function newSession(browser: Browser): Promise<{ ctx: BrowserContex
 
 /** Text of the preview iframe's document. */
 export async function previewHtml(page: Page): Promise<string> {
+  // The preview reloads whenever the resume or its design changes, and for a moment the frame has no document. Read it
+  // through the frame locator (which waits for the current document), and answer "" while it is mid-reload, so callers
+  // polling for a change try again instead of failing on a frame that was simply reloading (seen on slower CI runners).
   const frame = page.frameLocator('iframe[title="Resume preview"]');
-  await frame.locator("h1").first().waitFor({ timeout: 30_000 });
-  return page.evaluate(() => (document.querySelector('iframe[title="Resume preview"]') as HTMLIFrameElement).contentDocument!.documentElement.outerHTML);
+  try {
+    await frame.locator("h1").first().waitFor({ timeout: 30_000 });
+    return await frame.locator("html").evaluate((el) => (el as HTMLElement).outerHTML, undefined, { timeout: 10_000 });
+  } catch {
+    return "";
+  }
 }
