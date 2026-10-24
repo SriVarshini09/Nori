@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../db/client.js";
-import { llmUsage, userCredentials } from "../db/schema.js";
+import { llmUsage } from "../db/schema.js";
 import { ensureDefaultUser } from "../users.js";
 import {
   LLMCapExceededError, addUsage, dailyTokenCap, getLLM, meterForUser, meteredLLM, modelSettings, newUsage, recordUsage,
@@ -48,7 +48,6 @@ beforeEach(async () => {
   reported = { prompt_tokens: 100, completion_tokens: 50 };
   calls = 0;
   await db.delete(llmUsage);
-  await db.delete(userCredentials);
 });
 afterEach(() => {
   for (const k of ENV_KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
@@ -111,10 +110,10 @@ describe("daily token cap", () => {
     expect((await usageView(db, userId, "hosted")).capTokens).toBeNull();
   });
 
-  it("an own key is counted but never capped", async () => {
+  it("a local model is counted but never capped", async () => {
     process.env.HOSTED_LLM_DAILY_TOKEN_CAP = "10";
     await addUsage(db, userId, { promptTokens: 1000, completionTokens: 0, calls: 1 });
-    const meter = meterForUser(db, userId, "own");
+    const meter = meterForUser(db, userId, "local");
     await expect(Promise.resolve(meter.before?.())).resolves.toBeUndefined();
     const fake: LLM = {
       provider: "openai-compatible", model: "mine", available: true, mode: "openai-compatible",
@@ -123,7 +122,7 @@ describe("daily token cap", () => {
     };
     expect(await meteredLLM(fake, meter).text({ system: "s", prompt: "p" })).toBe("ok");
     expect(await usageToday(db, userId)).toMatchObject({ totalTokens: 1010, calls: 2 });
-    const view = await usageView(db, userId, "own");
+    const view = await usageView(db, userId, "local");
     expect(view).toMatchObject({ shared: false, capTokens: null, exhausted: false });
   });
 

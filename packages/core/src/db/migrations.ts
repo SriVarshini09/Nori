@@ -299,4 +299,9 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 )
 `,
   },
+  {
+    id: "0010_no_user_keys",
+    // People no longer bring their own model keys: Nori's hosted model serves every account.
+    sql: `DROP TABLE IF EXISTS user_credentials`,
+  },
 ];

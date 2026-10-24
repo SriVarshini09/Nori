@@ -1,5 +1,3 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { expect } from "@playwright/test";
 import type { Browser, BrowserContext, Page } from "playwright";
@@ -16,8 +14,6 @@ let browser: Browser;
 let ctx: BrowserContext;
 let page: Page;
 let errors: string[];
-let fakeProvider: Server;
-let providerUrl: string;
 
 const api = async (p: string, init?: { method?: string; data?: unknown }) => {
   const r = await ctx.request.fetch(`${WEB}${p}`, { method: init?.method ?? "GET", data: init?.data });
@@ -26,19 +22,6 @@ const api = async (p: string, init?: { method?: string; data?: unknown }) => {
 };
 
 beforeAll(async () => {
-  // A stand-in model provider on loopback: lists two models for "good-key" and answers any chat with "ready".
-  fakeProvider = createServer((req, res) => {
-    const ok = req.headers.authorization === "Bearer good-key";
-    if (req.method === "GET" && req.url === "/v1/models") {
-      if (!ok) { res.writeHead(401).end("no"); return; }
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ data: [{ id: "tiny-writer" }, { id: "tiny-reader" }] }));
-    } else if (req.method === "POST" && req.url === "/v1/chat/completions") {
-      req.resume();
-      res.writeHead(ok ? 200 : 401, { "content-type": "application/json" }).end(JSON.stringify({ choices: [{ message: { content: "ready" } }] }));
-    } else res.writeHead(404).end();
-  });
-  await new Promise<void>((r) => fakeProvider.listen(0, "127.0.0.1", r));
-  providerUrl = `http://127.0.0.1:${(fakeProvider.address() as AddressInfo).port}/v1`;
   stack = await startStack();
   seed = await seedUser(stack);
   browser = await launchBrowser();
@@ -50,7 +33,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await stack?.stop();
-  await new Promise<void>((r) => fakeProvider?.close(() => r()));
 });
 
 const cards = () => page.locator("main article");
@@ -315,49 +297,6 @@ describe("companies", () => {
     await page.goto(`${WEB}/jobs`);
     await page.getByRole("link", { name: "Browse and follow companies" }).click();
     await page.waitForURL(/\/companies$/);
-  });
-});
-
-describe("settings: model and keys", () => {
-  it("offers real providers, each with a link to get a key", async () => {
-    await page.goto(`${WEB}/settings`);
-    const group = page.getByRole("radiogroup", { name: "Model provider" });
-    for (const name of ["OpenAI", "Anthropic", "Google Gemini", "OpenRouter", "Ollama (on this computer)", "Other OpenAI-compatible endpoint"]) {
-      // an option's name starts with its list number ("01 OpenAI ..."), so match the label right after it
-      await expect(group.getByRole("radio").filter({ has: page.locator("span", { hasText: new RegExp(`^${name.replace(/[()]/g, (c) => `\\${c}`)}$`) }) })).toBeVisible();
-    }
-    await group.getByRole("radio", { name: "OpenRouter" }).click();
-    await expect(page.getByRole("link", { name: "Get a OpenRouter key" })).toHaveAttribute("href", "https://openrouter.ai/keys");
-  });
-
-  it("loads the provider's model list with the typed key, saves, tests, and keeps the key secret", async () => {
-    await page.goto(`${WEB}/settings`);
-    await page.getByRole("radiogroup", { name: "Model provider" }).getByRole("radio", { name: "Other OpenAI-compatible endpoint" }).click();
-    await page.getByLabel("Base URL").fill(providerUrl);
-    await page.getByLabel(/^API key/).fill("wrong-key");
-    await page.getByRole("button", { name: "Load models" }).click();
-    await expect(page.getByText(/rejected the API key/)).toBeVisible({ timeout: 20_000 });
-
-    await page.getByLabel(/^API key/).fill("good-key");
-    await page.getByRole("button", { name: "Load models" }).click();
-    await expect(page.getByText("2 models available.")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator("#model-options option")).toHaveCount(2);
-
-    await page.getByLabel(/^Quality model/).fill("tiny-writer");
-    await page.getByLabel(/^Bulk model/).fill("tiny-reader");
-    await page.getByRole("button", { name: "Test connection" }).click();
-    await expect(page.getByText(/tiny-writer answered in \d+ ms/)).toBeVisible({ timeout: 30_000 });
-
-    const saved = (await api("/api/settings/model")).json;
-    expect(saved).toMatchObject({ preset: "custom", hasKey: true, qualityModel: "tiny-writer", bulkModel: "tiny-reader", baseUrl: providerUrl });
-    expect(JSON.stringify(saved)).not.toContain("good-key");
-
-    await page.reload();
-    const radio = page.getByRole("radiogroup", { name: "Model provider" }).getByRole("radio", { name: "Other OpenAI-compatible endpoint" });
-    await expect(radio).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByText("key saved", { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/^Quality model/)).toHaveValue("tiny-writer");
-    expect(await page.content()).not.toContain("good-key");
   });
 });
 

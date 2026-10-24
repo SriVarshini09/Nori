@@ -16,11 +16,11 @@ Every other auto-apply tool holds a flat resume and a prompt. jobgraph turns you
 | Parallel Task API | `packages/core/src/research/company.ts`: per-company research with citations (stage, funding, headcount, news, interview process, sponsorship signals) |
 | Composio | `packages/channels/`: Gmail (recruiter replies, verification codes), Slack (chat with the agent), Google Sheets (tracker), Google Calendar (interview holds) |
 | Cline | Built with Cline; `.clinerules/project.md`; MCP server at `/mcp` so Cline can drive the agent; `cline schedule` for the daily run |
-| Open models | `packages/core/src/llm/`: any OpenAI-compatible endpoint (Cline credits, Ollama, OpenRouter); Anthropic optional |
+| Open models | `packages/core/src/llm/`: the operator sets one model endpoint (`HOSTED_LLM_*`: any OpenAI-compatible provider, Anthropic, or a local Ollama) and every account runs on it |
 
 ## The hackathon version, in one minute
 
-- **Sign in with Cline.** Paste your Cline API key in Settings. The agent runs on open-weight models through your Cline credits. No key at all? It runs locally on Ollama, or on rules alone.
+- **Nothing to configure.** The model is part of the product: every account runs on the operator's model, with a daily allowance per person. No keys to paste. Self-hosting with no key at all runs on a local Ollama, or on rules alone.
 - **Auto apply.** Set lanes once (titles, locations, remote, minimum match) and a daily cap. The agent finds new roles, skips the ones you cannot take and says why, tailors the resume, fills the form, and asks for your OK.
 - **Talk to it anywhere.** Telegram or WhatsApp on your phone, a small companion beside your clock on the laptop (`npm run companion`), or the dashboard. "Skip the Stripe one, apply to the rest" works.
 - **Honest by construction.** Every resume line and every answer traces to a node in your career graph. It cannot invent a claim.
@@ -59,8 +59,7 @@ Everything runs with no keys at all (heuristic extraction, feed polling, PDF, dr
 
 | Env var | Get it at | Unlocks |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | console.anthropic.com | Claude for resume extraction, bullet rewriting, answer drafting, inbox classification |
-| `OPENAI_COMPAT_BASE_URL` + `OPENAI_COMPAT_API_KEY` + `OPENAI_COMPAT_MODEL` | Cline (`https://api.cline.bot/api/v1`, key from app.cline.bot), Ollama (`http://localhost:11434/v1`), OpenRouter | Same features on an open-weight model |
+| `HOSTED_LLM_PROVIDER` + `HOSTED_LLM_BASE_URL` + `HOSTED_LLM_API_KEY` (+ `HOSTED_LLM_QUALITY_MODEL`, `HOSTED_LLM_BULK_MODEL`) | any OpenAI-compatible provider (platform.openai.com, OpenRouter, Groq), Anthropic, or Ollama (`http://localhost:11434/v1`) | The model every account runs on: resume extraction, bullet rewriting, answer drafting, inbox classification. `HOSTED_LLM_DAILY_TOKEN_CAP` (default 300000) bounds one person's daily use |
 | `PARALLEL_API_KEY` | platform.parallel.ai (prepaid credit) | Intent-based job discovery, pasted-URL extraction, company research with citations |
 | `COMPOSIO_API_KEY` | dashboard.composio.dev | Gmail inbox and verification codes, Slack chat, Google Sheets tracker, Google Calendar holds. Connect each app once from Settings. |
 | `TELEGRAM_BOT_TOKEN` | @BotFather on Telegram; set `TELEGRAM_AUTOLINK=true` for single-user mode | Text the agent on your phone |

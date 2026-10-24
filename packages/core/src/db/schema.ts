@@ -448,25 +448,9 @@ export const agentEvents = pgTable("agent_events", {
   data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
 }, (t) => [index("agent_events_user_idx").on(t.userId, t.ts), index("agent_events_job_idx").on(t.userId, t.jobId)]);
 
-export const LLM_PROVIDERS = ["cline", "openai-compatible", "anthropic", "ollama"] as const;
-export type LlmProviderId = (typeof LLM_PROVIDERS)[number];
-
-/** Per-user model credentials ("Sign in with Cline", own key). The key is AES-256-GCM encrypted at rest. */
-export const userCredentials = pgTable("user_credentials", {
-  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  provider: text("provider").$type<LlmProviderId>().notNull(),
-  /** v1:iv:tag:ciphertext (base64). Null for keyless endpoints such as a local Ollama. */
-  encryptedKey: text("encrypted_key"),
-  baseUrl: text("base_url"),
-  qualityModel: text("quality_model"),
-  bulkModel: text("bulk_model"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
 export const schema = {
   users, sessions, profiles, graphNodes, graphEdges, companies, jobs, matches, applications,
-  resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
+  resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents,
 };
 
 /**

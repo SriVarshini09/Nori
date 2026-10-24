@@ -21,8 +21,8 @@ import {
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
   agentTick, tickRunning, type TickSummary, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
-  LLM_PROVIDERS, MODEL_PRESETS, savedApiKey, UnsafeUrlError, assertModelUrlAllowed, listProviderModels, presetIdFor, strictModelUrls, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
-  normalizeLanes, processLLM, queuedTodayByLane, saveUserCredentials, storedLanes, testUserModel, withUserLLM, LaneInput,
+  effectiveLanes, exportGraph, localOnly, modeOf, modelSettings,
+  normalizeLanes, processLLM, queuedTodayByLane, storedLanes, withUserLLM, LaneInput,
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
@@ -485,66 +485,9 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.body(JSON.stringify(data, null, 2), 200, { "content-type": "application/json; charset=utf-8" });
   });
 
-  // ---------- model settings (own key / Sign in with Cline) ----------
-  const ModelBody = z.object({
-    provider: z.enum(LLM_PROVIDERS),
-    apiKey: z.string().trim().max(1000).optional(),
-    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
-    qualityModel: z.string().trim().max(200).nullable().optional(),
-    bulkModel: z.string().trim().max(200).nullable().optional(),
-  });
-
-  const savedKeyOf = (userId: string) => savedApiKey(db, userId);
-
-  // What a person can pick, plus the rules this server applies (so the screen can explain a refusal before it happens).
-  app.get("/api/settings/model/presets", (c) => c.json({
-    presets: MODEL_PRESETS, strictUrls: strictModelUrls(), localOnly: localOnly(),
-  }));
-
-  app.get("/api/settings/model", async (c) => {
-    const s = await modelSettings(db, c.get("user").id);
-    return c.json({ ...s, preset: presetIdFor(s.provider, s.baseUrl) });
-  });
-
-  // The provider's own list of model ids, using the key typed in the form or else the saved one. The key is never echoed.
-  app.post("/api/settings/model/models", async (c) => {
-    const user = c.get("user");
-    const b = await body(c, z.object({
-      provider: z.enum(LLM_PROVIDERS), apiKey: z.string().trim().max(1000).optional(),
-      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
-    }));
-    const current = await getUserCredentials(db, user.id);
-    const same = current?.provider === b.provider;
-    const apiKey = b.apiKey || (same ? await savedKeyOf(user.id) : null);
-    const baseUrl = b.baseUrl !== undefined ? b.baseUrl : same ? current?.baseUrl ?? null : null;
-    if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
-    try {
-      return c.json({ models: await listProviderModels({ provider: b.provider, baseUrl, apiKey }) });
-    } catch (err) {
-      throw bad(err instanceof Error ? err.message : "Could not list models", 422);
-    }
-  });
-
-  app.put("/api/settings/model", async (c) => {
-    const user = c.get("user");
-    const b = await body(c, ModelBody);
-    const current = await getUserCredentials(db, user.id);
-    const baseUrl = b.baseUrl !== undefined ? b.baseUrl : current?.provider === b.provider ? current.baseUrl : null;
-    if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
-    if (b.provider === "openai-compatible" && !baseUrl) throw bad("baseUrl is required for an OpenAI-compatible provider");
-    if (b.provider === "ollama" && strictModelUrls()) throw bad("This server cannot reach a model on your own computer. Add a hosted provider's key, or run Nori on your computer.", 422);
-    await assertModelUrlAllowed(baseUrl).catch((err) => { throw bad(err instanceof UnsafeUrlError ? err.message : "That model address cannot be used", 422); });
-    await saveUserCredentials(db, user.id, b);
-    return c.json(await modelSettings(db, user.id));
-  });
-
-  app.delete("/api/settings/model", async (c) => {
-    await deleteUserCredentials(db, c.get("user").id);
-    return c.json(await modelSettings(db, c.get("user").id));
-  });
-
-  /** One tiny completion with the user's quality model; 15 s timeout; the key is never echoed. */
-  app.post("/api/settings/model/test", async (c) => c.json(await testUserModel(db, c.get("user").id, { timeoutMs: 15_000 })));
+  // ---------- model (Nori's hosted model serves every account; no keys to manage) ----------
+  /** Which model does the work for this user, and today's token use against the daily allowance. */
+  app.get("/api/settings/model", async (c) => c.json(await modelSettings(db, c.get("user").id)));
 
   // ---------- lanes ----------
   const lanesOf = async (userId: string) => {

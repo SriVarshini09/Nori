@@ -5,13 +5,13 @@ import { type LLMUsage, type Meter } from "./index.js";
 import type { ModelSource } from "./credentials.js";
 
 /**
- * Daily token accounting per user. Every model call made on a user's behalf is added to llm_usage for the UTC day,
- * whichever key served it. Only the shared key (HOSTED_LLM_*) is capped: a user with their own key pays their own bill.
+ * Daily token accounting per user. Every model call made on a user's behalf is added to llm_usage for the UTC day.
+ * The hosted key (HOSTED_LLM_*) is capped per user; a local Ollama used while developing is counted but not capped.
  * When the cap is reached the call is refused with LLMCapExceededError, which withFallback turns into the heuristic
  * path, so nothing stops; the writing is just rule-based until midnight UTC.
  */
 
-/** Tokens per user per UTC day on the shared key. HOSTED_LLM_DAILY_TOKEN_CAP; unset = 300000; 0 / off = no cap. */
+/** Tokens per user per UTC day on the hosted key. HOSTED_LLM_DAILY_TOKEN_CAP; unset = 300000; 0 / off = no cap. */
 export const DEFAULT_DAILY_TOKEN_CAP = 300_000;
 export function dailyTokenCap(): number | null {
   const raw = process.env.HOSTED_LLM_DAILY_TOKEN_CAP?.trim();
@@ -23,8 +23,8 @@ export function dailyTokenCap(): number | null {
 
 export class LLMCapExceededError extends Error {
   constructor(public readonly used: number, public readonly cap: number) {
-    super(`Daily model allowance used up: ${used.toLocaleString("en-US")} of ${cap.toLocaleString("en-US")} tokens today on the shared key. ` +
-      "Nori uses its rule-based fallback until midnight UTC; add your own key in Settings for no limit.");
+    super(`Daily model allowance used up: ${used.toLocaleString("en-US")} of ${cap.toLocaleString("en-US")} tokens today. ` +
+      "Nori uses its rule-based fallback until midnight UTC.");
     this.name = "LLMCapExceededError";
   }
 }
@@ -60,13 +60,13 @@ export async function usageToday(db: Db, userId: string, day = utcDay()): Promis
   return { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, calls: row?.calls ?? 0 };
 }
 
-/** Usage as shown in Settings. `capTokens` is null when this user is not capped (own key, local model, or no cap set). */
+/** Usage as shown in Settings. `capTokens` is null when this user is not capped (local model, or no cap set). */
 export type UsageView = UsageToday & {
-  /** Whether the shared key serves this user, so the cap applies. */
+  /** Whether the hosted key serves this user, so the cap applies. */
   shared: boolean;
   capTokens: number | null;
   remainingTokens: number | null;
-  /** True when the shared key's allowance is used up for today. */
+  /** True when today's allowance is used up. */
   exhausted: boolean;
   resetsAt: string;
 };
@@ -79,7 +79,7 @@ export async function usageView(db: Db, userId: string, source: ModelSource): Pr
   return { ...today, shared, capTokens: cap, remainingTokens: remaining, exhausted: cap !== null && today.totalTokens >= cap, resetsAt: nextUtcMidnight().toISOString() };
 }
 
-/** The meter for a user's LLMs: records every call; refuses calls on the shared key once today's cap is reached. */
+/** The meter for a user's LLMs: records every call; refuses calls on the hosted key once today's cap is reached. */
 export function meterForUser(db: Db, userId: string, source: ModelSource): Meter {
   return {
     before: source === "hosted" ? async () => {

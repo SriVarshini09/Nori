@@ -5,7 +5,7 @@
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, ApplicationStatus, AtsCheck, Channel, Company,
-  Graph, GraphEdge, GraphNode, InboxMessage, Integration, Job, JobDetail, JobWithMatch, Lane, Match, Me, ModelMode, ModelSettings, ModelSettingsInput, ModelTestResult,
+  Graph, GraphEdge, GraphNode, InboxMessage, Integration, Job, JobDetail, JobWithMatch, Lane, Match, Me, ModelSettings,
   IngestResult, OnboardingState, Resume, ResumeChange, ResumeContent, RunEventRow, TrackerStats,
 } from "./types";
 
@@ -565,27 +565,13 @@ export function saveLanes(next: Lane[]): Lane[] {
   return lanes();
 }
 
-let modelState: ModelSettings = {
-  provider: "cline", baseUrl: "https://api.cline.bot/api/v1", qualityModel: "deepseek/deepseek-v4-pro", bulkModel: "qwen/qwen3.7-plus", hasKey: true, mode: "cline",
+const modelState: ModelSettings = {
+  mode: "openai-compatible", source: "hosted",
+  tiers: { quality: { mode: "openai-compatible", model: "gpt-4.1" }, bulk: { mode: "openai-compatible", model: "gpt-4.1-mini" } },
+  localOnly: false,
+  usage: { promptTokens: 38_400, completionTokens: 9_100, totalTokens: 47_500, calls: 21, shared: true, capTokens: 300_000, remainingTokens: 252_500, exhausted: false, resetsAt: new Date(Date.now() + 6 * 60 * MIN).toISOString() },
 };
 export const modelSettings = (): ModelSettings => ({ ...modelState });
-export function saveModelSettings(input: ModelSettingsInput): ModelSettings {
-  const hasKey = input.provider === "ollama" ? modelState.hasKey : modelState.provider === input.provider ? modelState.hasKey || !!input.apiKey : !!input.apiKey;
-  const mode: ModelMode = input.provider === "ollama" ? "ollama" : hasKey ? input.provider : "heuristic";
-  modelState = {
-    provider: input.provider,
-    baseUrl: input.baseUrl ?? modelState.baseUrl,
-    qualityModel: input.qualityModel ?? modelState.qualityModel,
-    bulkModel: input.bulkModel ?? modelState.bulkModel,
-    hasKey,
-    mode,
-  };
-  return modelSettings();
-}
-export function testModel(): ModelTestResult {
-  if (modelState.mode === "heuristic") return { ok: false, model: "", latencyMs: 0, sample: "", error: "No key saved." };
-  return { ok: true, model: modelState.qualityModel ?? "deepseek/deepseek-v4-pro", latencyMs: 842, sample: "ok" };
-}
 
 export function agentTick(): AgentTickSummary {
   return { discovered: 6, scored: 6, queued: 2, skipped: [{}, {}, {}], awaitingReview: 2, submitted: 1, needsUser: 1 };

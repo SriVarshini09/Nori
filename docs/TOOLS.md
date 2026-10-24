@@ -21,6 +21,9 @@ Decision rule: a service stays only if it removes real work for the user and not
 Order is by value. Effort in agent-hours is rough.
 
 ### A. Models (do first)
+
+> **Changed 24 Oct 2026:** Nori is a subscription product. People do not bring their own model key; every account runs on the operator's hosted model with a daily allowance. A1, A2, A3, A5 and A7 (the bring-your-own-key presets, key UI, model list, URL rules, Sign in with ChatGPT) were removed from the product. Kept: the hosted `HOSTED_LLM_*` configuration, Ollama for self-hosting and development, and A6.
+
 - [x] A1. Provider registry: one table of presets (id, label, base URL, key help link, default quality and bulk model, supports JSON mode, context size). Presets: OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, Together, Ollama, LM Studio, custom OpenAI-compatible. (4h)
 - [x] A2. Settings UI: pick a preset, paste a key, pick models, "Test connection" shows the real result. Keys stay encrypted at rest and never reach the browser again. (4h)
 - [x] A3. Model list from the provider (`/models`) so users choose from real names instead of typing them. (2h)
