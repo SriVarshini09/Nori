@@ -431,6 +431,52 @@ function parseLooseDate(s: string, end: boolean): { y: number; m: number } | nul
   return { y, m: end ? 12 : 1 };
 }
 
+const SCHOOL_WORD = /\b(university|universit[aé]t|institute|college|school|academy|polytechnic|iit|nit|mit)\b/i;
+
+/**
+ * Split an education label into its parts. Labels come from resume ingestion as "Degree in Field, School"
+ * ("Master of Science in Artificial Intelligence, Rochester Institute of Technology") or "School, Degree";
+ * the segment that names a school is the school, the other is the degree, and the field is what follows "in".
+ */
+export function splitEducation(label?: string | null): { school: string; degree: string; field: string } | null {
+  if (!label?.trim()) return null;
+  const segs = label.split(/\s*[,|]\s*|\s+[-–—]\s+|\s+at\s+/).map((s) => s.trim()).filter(Boolean);
+  if (!segs.length) return null;
+  const schoolIdx = segs.findIndex((s) => SCHOOL_WORD.test(s));
+  const school = schoolIdx >= 0 ? segs[schoolIdx] : segs.length > 1 ? segs[segs.length - 1] : "";
+  const degreeFull = segs.find((s, i) => i !== schoolIdx && (schoolIdx >= 0 || i !== segs.length - 1)) ?? (schoolIdx >= 0 ? "" : segs[0]);
+  const m = degreeFull.match(/^(.*?)\s+(?:in|of)\s+(.+)$/i);
+  // "Master of Science in X": degree "Master of Science", field "X". "Bachelor of Technology": degree stays whole.
+  const degree = m && /\bin\b/i.test(degreeFull) ? degreeFull.replace(/\s+in\s+.+$/i, "") : degreeFull;
+  const field = /\bin\b/i.test(degreeFull) ? degreeFull.replace(/^.*?\s+in\s+/i, "") : "";
+  return { school, degree, field };
+}
+
+/** Names a form's dropdown might use for this degree, most specific first. */
+export function degreeNames(degree: string): string[] {
+  const d = degree.toLowerCase();
+  const out: string[] = [degree];
+  if (/ph\.?\s?d|doctor/.test(d)) out.push("Doctorate", "PhD", "Ph.D.", "Doctoral");
+  else if (/\bm\.?b\.?a\b/.test(d)) out.push("MBA", "Master's", "Masters", "Master of Business Administration");
+  else if (/master|\bm\.?s\.?c?\b|\bm\.?eng|\bm\.?tech|\bm\.?a\.?\b/.test(d)) out.push("Master's", "Masters", "Master's Degree", "Master of Science", "MS");
+  else if (/bachelor|\bb\.?s\.?c?\b|\bb\.?tech|\bb\.?eng|\bb\.?e\b|\bb\.?a\.?\b/.test(d)) out.push("Bachelor's", "Bachelors", "Bachelor's Degree", "Bachelor of Science", "BS");
+  else if (/associate/.test(d)) out.push("Associate's", "Associate");
+  else if (/high school|secondary|diploma/.test(d)) out.push("High School", "High School Diploma");
+  return out;
+}
+
+/** The option that best matches one of `names`: exact, then starts-with, then contains; the first name itself when the field is free text. */
+function optionFor(field: FormField, names: string[]): string | null {
+  const opts = field.options ?? [];
+  if (!opts.length) return names[0] ?? null;
+  const norm = (s: string) => s.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ").trim();
+  for (const n of names.map(norm).filter(Boolean)) {
+    const hit = opts.find((o) => norm(o) === n) ?? opts.find((o) => norm(o).startsWith(n)) ?? opts.find((o) => norm(o).includes(n));
+    if (hit) return choiceValue(field, hit);
+  }
+  return null;
+}
+
 /** The education that matters for an application: in progress or most recently finished. */
 function primaryEducation(edu: EducationFact[]): EducationFact | undefined {
   return [...edu].sort((a, b) => (b.endDate ?? "9999").localeCompare(a.endDate ?? "9999"))[0];
@@ -483,6 +529,19 @@ export function educationAnswer(field: FormField, education: EducationFact[], jo
 
   const edu = primaryEducation(education);
 
+  // School, degree and field of study, from the node's label.
+  const parts = splitEducation(edu?.label);
+  const notAbout = /start|end|graduat|email|address|phone|year|month|date|gpa|website|url/.test(l);
+  if (!notAbout && /^(school|university|college|institution)(\s+name)?(\s*\(.*\))?\s*\*?$/.test(l)) {
+    return parts?.school ? optionFor(field, [parts.school]) : null;
+  }
+  if (!notAbout && (/^(highest\s+)?degree(\s*(type|level|earned|obtained))?(\s*\(.*\))?\s*\*?$/.test(l) || /^(highest\s+)?(level of\s+)?education(\s+level)?\s*\*?$/.test(l))) {
+    return parts?.degree ? optionFor(field, degreeNames(parts.degree)) : null;
+  }
+  if (!notAbout && /^(discipline|major|field of study|area of study|concentration)(\s*\(.*\))?\s*\*?$/.test(l)) {
+    return parts?.field ? optionFor(field, [parts.field]) : parts?.degree ? optionFor(field, [parts.degree]) : null;
+  }
+
   // Graduation window.
   const win = l.match(/graduat\w*.*?between\s+(.+?)\s+and\s+(.+?)\s*\??$/);
   if (win) {
@@ -491,6 +550,14 @@ export function educationAnswer(field: FormField, education: EducationFact[], jo
     if (!end || !a || !b) return null;
     const v = end.y * 12 + (end.m ?? DEFAULT_GRAD_MONTH);
     return yesNo(field, v >= a.y * 12 + a.m && v <= b.y * 12 + b.m);
+  }
+
+  // "What is your graduation date?" / "Expected graduation": the end date as text or an option.
+  if (!win && /\b(graduation|grad)\s+date\b|\bexpected graduation\b/.test(l) && !/month|year/.test(l)) {
+    const ym = ymOf(edu?.endDate);
+    if (!ym) return null;
+    if (opts.length) return yearOption(field, ym.y) ?? null;
+    return ym.m ? `${MONTHS[ym.m - 1]} ${ym.y}` : String(ym.y);
   }
 
   // Education start / end month and year.
