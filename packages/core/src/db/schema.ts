@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, timestamp, jsonb, integer, boolean, real, uniqueIndex, index,
+  pgTable, uuid, text, timestamp, jsonb, integer, boolean, real, uniqueIndex, index, date, primaryKey,
 } from "drizzle-orm/pg-core";
 
 /** Node types in the career graph. Everything the agent knows about a person is a node. */
@@ -486,3 +486,13 @@ export const runtimeState = pgTable("runtime_state", {
   value: jsonb("value").$type<unknown>().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** Model tokens spent per user per UTC day, on whichever key served them. The shared (hosted) key is capped on it. */
+export const llmUsage = pgTable("llm_usage", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  day: date("day").notNull(),
+  promptTokens: integer("prompt_tokens").default(0).notNull(),
+  completionTokens: integer("completion_tokens").default(0).notNull(),
+  calls: integer("calls").default(0).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.day] })]);

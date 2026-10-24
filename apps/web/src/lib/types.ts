@@ -412,6 +412,22 @@ export type ModelSettings = {
   bulkModel: string | null;
   hasKey: boolean;
   mode: ModelMode;
+  /** Who serves this user: their own key, the shared (hosted) key, a local model, or nothing. */
+  source?: "own" | "hosted" | "local" | "none";
+  usage?: ModelUsage;
+};
+
+/** Today's model tokens for this user. `capTokens` is set only on the shared key. */
+export type ModelUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  calls: number;
+  shared: boolean;
+  capTokens: number | null;
+  remainingTokens: number | null;
+  exhausted: boolean;
+  resetsAt: string;
 };
 
 export type ModelSettingsInput = {

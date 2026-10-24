@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, KeyRound, ListRestart, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { ModelMode, ModelPreset, ModelPresetsInfo, ModelSettings, ModelTestResult } from "@/lib/types";
+import type { ModelMode, ModelPreset, ModelPresetsInfo, ModelSettings, ModelTestResult, ModelUsage } from "@/lib/types";
 import { Button, Field, Frame, Icon, IndexLabel, Notice, TextLink, cx, idx, inputClass } from "./ui";
 
 const MODE_LINE: Record<ModelMode, string> = {
@@ -87,6 +87,7 @@ export function ModelPanel({ initial, presets: info, compact }: { initial: Model
 
   const mode: ModelMode = saved?.mode ?? "heuristic";
   const canList = preset.needsKey ? hasKey || apiKey.trim().length > 0 : true;
+  const usageLine = usageText(saved?.usage);
 
   return (
     <Frame className="p-5 sm:p-6">
@@ -96,6 +97,7 @@ export function ModelPanel({ initial, presets: info, compact }: { initial: Model
         </IndexLabel>
         {preset.keyUrl && !hasKey && <TextLink href={preset.keyUrl} external>Get a {preset.label} key</TextLink>}
       </div>
+      {usageLine && <p className={cx("mt-2 text-meta tnum", saved?.usage?.exhausted ? "text-accent-ink" : "text-muted")} role="status">{usageLine}</p>}
 
       <div role="radiogroup" aria-label="Model provider" className="mt-5 border-t border-line">
         {offered.map((d, n) => {
@@ -160,4 +162,17 @@ export function ModelPanel({ initial, presets: info, compact }: { initial: Model
       {error && <div className="mt-4"><Notice tone="red">{error}</Notice></div>}
     </Frame>
   );
+}
+
+const fmt = (n: number) => n.toLocaleString("en-US");
+
+/** One line on today's token use. On the shared key it also says how much of the daily allowance is left. */
+function usageText(u: ModelUsage | undefined): string | null {
+  if (!u) return null;
+  if (u.shared && u.capTokens !== null) {
+    if (u.exhausted) return `Shared key: today's allowance of ${fmt(u.capTokens)} tokens is used up. Nori writes with its rule-based fallback until midnight UTC; add your own key for no limit.`;
+    return `Shared key: ${fmt(u.totalTokens)} of ${fmt(u.capTokens)} tokens used today. Resets at midnight UTC; add your own key for no limit.`;
+  }
+  if (u.totalTokens === 0) return null;
+  return `${u.shared ? "Shared key" : "Your model"}: ${fmt(u.totalTokens)} tokens used today over ${u.calls} call${u.calls === 1 ? "" : "s"}.`;
 }

@@ -224,6 +224,61 @@ export function forgetUserModels(userId?: string) {
   if (userId) userCache.delete(userId); else userCache.clear();
 }
 
+// ---------- usage metering ----------
+
+/** Tokens spent by the calls made while a collector was active. */
+export type LLMUsage = { promptTokens: number; completionTokens: number; totalTokens: number; calls: number; model?: string; estimated?: boolean };
+export const newUsage = (): LLMUsage => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 });
+/** Stack of active collectors; every provider call reports to all of them, so nested collectors each see their share. */
+const usageContext = new AsyncLocalStorage<LLMUsage[]>();
+
+/** Called by the providers after each completion. `estimated` when the provider sent no usage and lengths were used. */
+export function recordUsage(u: { promptTokens: number; completionTokens: number; model: string; estimated?: boolean }): void {
+  for (const c of usageContext.getStore() ?? []) {
+    c.promptTokens += u.promptTokens;
+    c.completionTokens += u.completionTokens;
+    c.totalTokens += u.promptTokens + u.completionTokens;
+    c.calls += 1;
+    c.model = u.model;
+    if (u.estimated) c.estimated = true;
+  }
+}
+
+/** Run `fn` with `collector` receiving the usage of every model call inside it (also when `fn` throws). */
+export function runCollectingUsage<T>(collector: LLMUsage, fn: () => Promise<T>): Promise<T> {
+  return usageContext.run([...(usageContext.getStore() ?? []), collector], fn);
+}
+
+/** Run `fn` and return what its model calls cost. */
+export async function withUsage<T>(fn: () => Promise<T>): Promise<{ value: T; usage: LLMUsage }> {
+  const usage = newUsage();
+  const value = await runCollectingUsage(usage, fn);
+  return { value, usage };
+}
+
+/** Hooks around every call of a metered LLM: `before` may throw to refuse the call, `after` receives what it cost. */
+export type Meter = { before?: () => Promise<void> | void; after?: (usage: LLMUsage) => Promise<void> | void };
+
+/** The same LLM, with `meter` run around each call. Usage is reported even when the call fails part-way. */
+export function meteredLLM(inner: LLM, meter: Meter): LLM {
+  const wrap = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (meter.before) await meter.before();
+    const usage = newUsage();
+    try {
+      return await runCollectingUsage(usage, fn);
+    } finally {
+      if (usage.calls && meter.after) {
+        try { await meter.after(usage); } catch (e) { console.warn("[llm] usage not recorded:", (e as Error).message); }
+      }
+    }
+  };
+  return {
+    provider: inner.provider, model: inner.model, available: inner.available, mode: inner.mode,
+    json: (call) => wrap(() => inner.json(call)),
+    text: (call) => wrap(() => inner.text(call)),
+  };
+}
+
 // ---------- providers ----------
 
 /**
@@ -251,6 +306,7 @@ function anthropicLLM(spec: LLMSpec): LLM {
         messages: [{ role: "user", content: call.prompt }],
       // maxRetries 0: the SDK's own retries would run the deadline up to three times; withFallback decides what follows.
       }, { timeout: call.timeoutMs ?? llmTimeoutMs(), maxRetries: 0 }).catch((e: unknown) => { throw isTimeout(e) ? timeoutError(model, call.timeoutMs ?? llmTimeoutMs()) : e; });
+      recordUsage({ model, promptTokens: res.usage?.input_tokens ?? 0, completionTokens: res.usage?.output_tokens ?? 0, estimated: !res.usage });
       if (res.stop_reason === "refusal") throw new Error(`Model refused (${res.stop_details?.category ?? "unknown"})`);
       if (res.parsed_output == null) throw new Error("Structured output failed to parse");
       return call.schema.parse(res.parsed_output);
@@ -260,6 +316,7 @@ function anthropicLLM(spec: LLMSpec): LLM {
         model, max_tokens: call.maxTokens ?? 8000, system: call.system,
         messages: [{ role: "user", content: call.prompt }],
       }, { timeout: call.timeoutMs ?? llmTimeoutMs(), ...(call.timeoutMs ? { maxRetries: 0 } : {}) });
+      recordUsage({ model, promptTokens: res.usage?.input_tokens ?? 0, completionTokens: res.usage?.output_tokens ?? 0, estimated: !res.usage });
       return res.content.filter((b) => b.type === "text").map((b) => b.text).join("");
     },
   };
@@ -377,7 +434,10 @@ function openAICompatLLM(spec: LLMSpec): LLM {
       body = fixed;
     }
     if (!res.ok) throw new Error(`LLM ${res.status}: ${scrub((await res.text()).slice(0, 300), apiKey)}`);
-    type Completion = { choices?: { message?: { content?: string } }[]; error?: { message?: string } | string };
+    type Completion = {
+      choices?: { message?: { content?: string } }[]; error?: { message?: string } | string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
     const raw = (await res.json()) as Completion & { data?: Completion };
     // Cline's gateway wraps the OpenAI-shaped body in { data: {...} }; plain OpenAI-compatible servers do not.
     const data = raw.data?.choices ? raw.data : raw;
@@ -385,7 +445,12 @@ function openAICompatLLM(spec: LLMSpec): LLM {
       const msg = typeof data.error === "string" ? data.error : data.error.message ?? "unknown";
       throw new Error(`LLM error: ${scrub(msg, apiKey)}`);
     }
-    return data.choices?.[0]?.message?.content ?? "";
+    const content = data.choices?.[0]?.message?.content ?? "";
+    const usage = data.usage ?? raw.usage;
+    recordUsage(usage && typeof usage.prompt_tokens === "number"
+      ? { model, promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens ?? 0 }
+      : { model, promptTokens: estimateTokens(messages), completionTokens: Math.ceil(content.length / 3), estimated: true });
+    return content;
   }
 
   return {
@@ -440,10 +505,13 @@ export async function withFallback<T>(call: () => Promise<T>, fallback: () => T 
   try {
     return { value: await call(), usedLLM: true };
   } catch (err) {
-    console.warn(`[llm] ${label} failed, using heuristic:`, (err as Error).message);
+    const e = err as Error;
+    if (e.name === "LLMCapExceededError") console.warn(`[llm] ${label}: ${e.message}`);
+    else console.warn(`[llm] ${label} failed, using heuristic:`, e.message);
     return { value: await fallback(), usedLLM: false };
   }
 }
 
 export * from "./credentials.js";
 export * from "./presets.js";
+export * from "./usage.js";

@@ -26,7 +26,7 @@ Order is by value. Effort in agent-hours is rough.
 - [x] A3. Model list from the provider (`/models`) so users choose from real names instead of typing them. (2h)
 - [ ] A4. Local-first path: detect Ollama and LM Studio on their default ports, list installed models, warn when the context window is under 8k, show a one-line fix. (3h)
 - [x] A5. Restrict the model-test base URL on hosted deployments (known gap, see MORNING.md): allow private addresses only when `LOCAL_ONLY` or an explicit env flag is set. (1h)
-- [ ] A6. Cost and limits: per-user daily token cap and a visible "this run used about N tokens" line. (3h)
+- [x] A6. Cost and limits: per-user daily token cap on the shared key (`HOSTED_LLM_DAILY_TOKEN_CAP`, default 300k, counted in `llm_usage`), today's use shown in Settings, and a "Model use this run" line in every application log. (3h)
 - [ ] A7. Sign in with ChatGPT provider (OAuth 2.0 / OIDC authorization-code + PKCE, token storage, refresh, revoke). Blocked on OpenAI approving the app and publishing developer terms. Build the provider interface now so it is a drop-in. (8h once unblocked)
 - [ ] A8. Re-run the tailoring quality check on three real resumes against each class of model (large hosted, small hosted, 7B local) and record where the heuristic fallback kicks in. (4h)
 

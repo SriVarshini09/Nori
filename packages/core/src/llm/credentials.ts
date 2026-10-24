@@ -5,9 +5,10 @@ import { userCredentials, type LlmProviderId } from "../db/schema.js";
 import { assertModelUrlAllowed } from "./presets.js";
 import {
   CLINE_BASE_URL, CLINE_DEFAULT_MODELS, NONE_LLM, forgetUserModels, getLLM, hostedSpec, isLocalUrl, llmFromSpec, llmOverridden,
-  localOnly, modeOf, ollamaSpec, probeOllama, runWithModels, boundUserId, scrub,
+  localOnly, meteredLLM, modeOf, ollamaSpec, probeOllama, runWithModels, boundUserId, scrub,
   type LLM, type LLMMode, type LLMSpec, type Tier, type UserModels,
 } from "./index.js";
+import { meterForUser, usageView, type UsageView } from "./usage.js";
 
 // ---------- encryption at rest ----------
 
@@ -150,14 +151,19 @@ export async function resolveUserModels(db: Db, userId: string): Promise<Resolve
     console.warn(`[credentials] ignoring the model endpoint saved by user ${userId}: this server only calls public addresses`);
     row = null;
   }
+  // Every call is counted per user and day (usage.ts); the shared key is also capped there.
+  const metered = (q: LLMSpec, b: LLMSpec, source: ModelSource): ResolvedModels => {
+    const meter = meterForUser(db, userId, source);
+    return { userId, quality: meteredLLM(llmFromSpec(q), meter), bulk: meteredLLM(llmFromSpec(b), meter), source };
+  };
   if (row) {
     const key = decryptedKey(row);
     const q = specFromCredentials(row, "quality", key), b = specFromCredentials(row, "bulk", key);
-    if (q && b) return { userId, quality: llmFromSpec(q), bulk: llmFromSpec(b), source: isLocalRow(row) ? "local" : "own" };
+    if (q && b) return metered(q, b, isLocalRow(row) ? "local" : "own");
   }
   const hq = hostedSpec("quality"), hb = hostedSpec("bulk");
-  if (hq && hb) return { userId, quality: llmFromSpec(hq), bulk: llmFromSpec(hb), source: "hosted" };
-  if (await probeOllama()) return { userId, quality: llmFromSpec(ollamaSpec("quality")), bulk: llmFromSpec(ollamaSpec("bulk")), source: "local" };
+  if (hq && hb) return metered(hq, hb, "hosted");
+  if (await probeOllama()) return metered(ollamaSpec("quality"), ollamaSpec("bulk"), "local");
   return { userId, quality: NONE_LLM, bulk: NONE_LLM, source: "none" };
 }
 
@@ -196,6 +202,8 @@ export type ModelSettings = {
   source: ModelSource;
   tiers: Record<Tier, { mode: LLMMode; model: string | null }>;
   localOnly: boolean;
+  /** Today's tokens and, on the shared key, the daily cap. */
+  usage: UsageView;
 };
 
 export async function modelSettings(db: Db, userId: string): Promise<ModelSettings> {
@@ -212,6 +220,7 @@ export async function modelSettings(db: Db, userId: string): Promise<ModelSettin
     source: m.source,
     tiers: { quality: tier(m.quality), bulk: tier(m.bulk) },
     localOnly: localOnly(),
+    usage: await usageView(db, userId, m.source),
   };
 }
 
