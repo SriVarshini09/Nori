@@ -13,9 +13,9 @@ const message = (e: unknown) => (e instanceof ApiError ? e.detail : (e as Error)
 /** What the account-link pages share (forgot, reset, verify). The sign-in layout supplies the frame around it. */
 function LinkCard({ badge, title, children }: { badge: string; title: ReactNode; children: ReactNode }) {
   return (
-    <div className="text-bark">
+    <div className="text-ink">
       <p className={chip}>{badge}</p>
-      <h1 className="mt-4 font-display text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.03em] text-bark sm:text-[2.6rem]">{title}</h1>
+      <h1 className="mt-4 text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[2rem]">{title}</h1>
       {children}
     </div>
   );
@@ -23,14 +23,14 @@ function LinkCard({ badge, title, children }: { badge: string; title: ReactNode;
 
 function ErrorLine({ children }: { children: ReactNode }) {
   return (
-    <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-[#f3c6cf] bg-berry-soft px-3.5 py-3 text-[14px] font-medium text-berry">
+    <p role="alert" className="mt-4 flex items-start gap-2 rounded-control border border-[#f3c6cf] bg-danger-tint px-3.5 py-3 text-[14px] font-medium text-danger-fg">
       <Icon icon={CircleAlert} size={18} className="mt-px shrink-0" />{children}
     </p>
   );
 }
 
 const backLink = (
-  <p className="mt-8 border-t border-rule pt-6 text-[14.5px] text-bark-2">
+  <p className="mt-8 border-t border-line pt-6 text-[14.5px] text-ink-2">
     <Link href="/login" className={textLink}>Back to sign in</Link>
   </p>
 );
@@ -50,9 +50,9 @@ export function ForgotPasswordForm() {
   if (sent) {
     return (
       <LinkCard badge="Check your email" title={<>Link on<br />its way.</>}>
-        <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-bark-2">
-          <Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-sage" />
-          <span>If an account exists for <strong className="text-bark">{email.trim()}</strong>, we have sent a link to choose a new password. It works for one hour.</span>
+        <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-ink-2">
+          <Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-accent-fg" />
+          <span>If an account exists for <strong className="text-ink">{email.trim()}</strong>, we have sent a link to choose a new password. It works for one hour.</span>
         </p>
         {backLink}
       </LinkCard>
@@ -60,12 +60,12 @@ export function ForgotPasswordForm() {
   }
   return (
     <LinkCard badge="Reset password" title={<>Forgot your<br />password?</>}>
-      <p className="mt-4 text-[15px] leading-relaxed text-bark-2">Enter the email you signed up with and we will send you a link to choose a new one.</p>
+      <p className="mt-4 text-[15px] leading-relaxed text-ink-2">Enter the email you signed up with and we will send you a link to choose a new one.</p>
       <form onSubmit={submit} className="mt-8 space-y-5">
         <label className="block">
           <span className={fieldLabel}>Email</span>
           <span className="relative block">
-            <Icon icon={Mail} size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-bark-3" />
+            <Icon icon={Mail} size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
             <input className={field} type="email" inputMode="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" maxLength={320} required />
           </span>
         </label>
@@ -90,7 +90,7 @@ export function ResetPasswordForm({ token }: { token?: string }) {
   if (!token) {
     return (
       <LinkCard badge="Reset password" title={<>That link is<br />incomplete.</>}>
-        <p className="mt-4 text-[15px] leading-relaxed text-bark-2">Open the link from the email exactly as it was sent, or ask for a new one.</p>
+        <p className="mt-4 text-[15px] leading-relaxed text-ink-2">Open the link from the email exactly as it was sent, or ask for a new one.</p>
         <p className="mt-6"><Link href="/forgot-password" className={textLink}>Send a new link</Link></p>
         {backLink}
       </LinkCard>
@@ -108,8 +108,8 @@ export function ResetPasswordForm({ token }: { token?: string }) {
   if (done) {
     return (
       <LinkCard badge="Password changed" title={<>All set.</>}>
-        <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-bark-2">
-          <Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-sage" />
+        <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-ink-2">
+          <Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-accent-fg" />
           <span>Your password is updated and every device was signed out. Taking you to sign in.</span>
         </p>
         <p className="mt-6"><Link href="/login" className={textLink}>Sign in now</Link></p>
@@ -123,10 +123,10 @@ export function ResetPasswordForm({ token }: { token?: string }) {
           <label key={label as string} className="block">
             <span className={fieldLabel}>{label as string}</span>
             <span className="relative block">
-              <Icon icon={Lock} size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-bark-3" />
+              <Icon icon={Lock} size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
               <input className={field} type="password" value={value as string} onChange={(e) => (set as (v: string) => void)(e.target.value)} autoComplete={ac as string} minLength={8} required />
             </span>
-            {i === 0 && <span className="mt-1.5 block text-[13px] text-bark-3">At least 8 characters.</span>}
+            {i === 0 && <span className="mt-1.5 block text-[13px] text-muted">At least 8 characters.</span>}
           </label>
         ))}
         {error && <ErrorLine>{error}</ErrorLine>}
@@ -154,17 +154,17 @@ export function VerifyEmailStatus({ token }: { token?: string }) {
 
   return (
     <LinkCard badge="Email" title={state === "ok" ? <>You are<br />confirmed.</> : state === "working" ? <>Confirming<br />your email.</> : <>We could not<br />confirm that.</>}>
-      {state === "working" && <p role="status" className="mt-5 flex items-center gap-2 text-[15px] leading-relaxed text-bark-2"><Icon icon={LoaderCircle} className="animate-spin" />One moment.</p>}
+      {state === "working" && <p role="status" className="mt-5 flex items-center gap-2 text-[15px] leading-relaxed text-ink-2"><Icon icon={LoaderCircle} className="animate-spin" />One moment.</p>}
       {state === "ok" && (
         <>
-          <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-bark-2"><Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-sage" />Your email address is confirmed.</p>
+          <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-ink-2"><Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-accent-fg" />Your email address is confirmed.</p>
           <p className="mt-6"><Link href="/dashboard" className={btnPrimary}>Continue to Nori<Icon icon={ArrowRight} /></Link></p>
         </>
       )}
       {state === "failed" && (
         <>
           {error && <ErrorLine>{error}</ErrorLine>}
-          <p className="mt-5 text-[15px] leading-relaxed text-bark-2">Sign in and open <strong className="text-bark">Settings</strong> to get a new link.</p>
+          <p className="mt-5 text-[15px] leading-relaxed text-ink-2">Sign in and open <strong className="text-ink">Settings</strong> to get a new link.</p>
           <p className="mt-4"><Link href="/settings" className={textLink}>Go to Settings</Link></p>
         </>
       )}

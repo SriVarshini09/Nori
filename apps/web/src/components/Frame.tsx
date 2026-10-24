@@ -3,43 +3,47 @@ import { cx } from "./cx";
 
 type FrameTag = "div" | "section" | "article" | "aside" | "li" | "figure" | "header";
 
-/** The crop marks were retired with the aurora look. Kept as a no-op so existing callers still compile. */
+/** Retired decoration. Kept as a no-op so older callers still compile. */
 export function Ticks(props: { className?: string }) {
   void props;
   return null;
 }
 
 /**
- * The base surface: a soft rounded card.
- * `surface="paper"` (default) fills with the card colour, `"none"` stays transparent on the canvas.
+ * The base surface: a flat warm card with a faint edge, no shadow.
+ * `surface="paper"` (default) is the card colour, `"stone"` a sunken tone, `"none"` a dashed outline on the page.
+ * `tone="attn"` draws the orange edge that means "you must act before Nori continues".
  */
-export function Frame({ as: Tag = "div", children, className, ticks = true, surface = "paper", pad, id, style }: {
+export function Frame({ as: Tag = "div", children, className, ticks, surface = "paper", tone, pad, id, style }: {
   as?: FrameTag;
   children?: ReactNode;
   className?: string;
+  /** Ignored; kept for older callers. */
   ticks?: boolean;
   surface?: "paper" | "none" | "stone";
-  /** Shorthand padding: "sm" 16px, "md" 24px, "lg" 32px. Omit to pad yourself. */
+  tone?: "attn";
+  /** Shorthand padding: "sm" 16px, "md" 20px, "lg" 28px. Omit to pad yourself. */
   pad?: "sm" | "md" | "lg";
   id?: string;
   style?: CSSProperties;
 }) {
+  void ticks;
   return (
     <Tag
       id={id}
       style={style}
       className={cx(
-        "relative rounded-[22px] border",
-        surface === "paper" && "border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(20,19,17,0.04),0_16px_36px_-24px_rgba(20,19,17,0.2)]",
-        surface === "stone" && "border-black/[0.05] bg-stone/70",
-        surface === "none" && "border-dashed border-black/15 bg-white/40",
+        "relative rounded-card",
+        surface === "paper" && "border border-line bg-surface",
+        surface === "stone" && "bg-sunken",
+        surface === "none" && "border border-dashed border-line",
+        tone === "attn" && "border-2 border-attn",
         pad === "sm" && "p-4",
-        pad === "md" && "p-5 sm:p-6",
-        pad === "lg" && "p-6 sm:p-8",
+        pad === "md" && "p-5",
+        pad === "lg" && "p-6 sm:p-7",
         className,
       )}
     >
-      {ticks && <Ticks />}
       {children}
     </Tag>
   );

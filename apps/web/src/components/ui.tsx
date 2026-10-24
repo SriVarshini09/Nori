@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, CircleAlert, CircleCheck, Inbox, Info, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CircleAlert, CircleCheck, Info, type LucideIcon } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { Tone } from "@/lib/format";
 import { cx } from "./cx";
 import { Frame } from "./Frame";
 import { Icon } from "./Icon";
-import { IndexLabel } from "./IndexLabel";
+import { NoriMark } from "./Logo";
 import { Pill, TONE_MARK } from "./Pill";
 import { SectionHeader } from "./SectionHeader";
 
@@ -18,29 +18,27 @@ export { NumberedList, type NumberedItem } from "./NumberedList";
 export { Accordion, SquareToggle } from "./Accordion";
 export { Icon } from "./Icon";
 
-/** Back-compat: a status-style pill keyed by legacy tone. Prefer <Pill mark> or <Tag>. */
+/** A status-style pill keyed by an older tone name. Prefer <Pill mark> or <StatusPill>. */
 export function Chip({ children, tone = "slate", className }: { children: ReactNode; tone?: Tone; className?: string }) {
   return <Pill mark={TONE_MARK[tone]} className={className}>{children}</Pill>;
 }
 
-/** Page header = SectionHeader at display-xl, no top rule. */
-export function PageHeader({ label, title, subtitle, actions, index }: {
-  label: ReactNode; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; index?: string;
+/** Page header: one title, one line of context, actions on the right. `label` and `index` are kept for older callers. */
+export function PageHeader({ label, title, subtitle, actions }: {
+  label?: ReactNode; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; index?: string;
 }) {
-  return (
-    <SectionHeader as="h1" size="xl" rule={false} index={index} label={label} title={title} description={subtitle} actions={actions} className="mb-12 sm:mb-16" />
-  );
+  return <SectionHeader as="h1" size="xl" label={label} title={title} description={subtitle} actions={actions} className="mb-6 sm:mb-8" />;
 }
 
-/** Framed card with an optional index-label header row. */
-export function Card({ children, className, title, actions, pad = true, index, id, ticks = true }: {
-  children: ReactNode; className?: string; title?: ReactNode; actions?: ReactNode; pad?: boolean; index?: string; id?: string; ticks?: boolean;
+/** Card with an optional header row: a title on the left, actions on the right. */
+export function Card({ children, className, title, actions, pad = true, id, tone }: {
+  children: ReactNode; className?: string; title?: ReactNode; actions?: ReactNode; pad?: boolean; index?: string; id?: string; ticks?: boolean; tone?: "attn";
 }) {
   return (
-    <Frame as="section" className={className} id={id} ticks={ticks}>
+    <Frame as="section" className={className} id={id} tone={tone}>
       {(title || actions) && (
         <header className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-4 py-2.5 sm:px-5">
-          <h2><IndexLabel index={index} marker tone="ink">{title}</IndexLabel></h2>
+          <h2 className="text-body-sm font-semibold text-ink">{title}</h2>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
@@ -50,14 +48,14 @@ export function Card({ children, className, title, actions, pad = true, index, i
 }
 
 const btnBase =
-  "group inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full text-[13px] font-medium tracking-[-0.005em] transition-[background-color,border-color,color,opacity] duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-40";
+  "group inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-[13px] font-semibold transition-[background-color,border-color,color,opacity] duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-45";
 const btnVariants = {
-  primary: "dash-btn px-5",
-  secondary: "border border-black/10 bg-white px-4 text-ink shadow-sm hover:-translate-y-px hover:border-black/25",
-  ghost: "px-1 text-ink underline-offset-4 decoration-line-strong hover:underline",
-  danger: "border border-black/10 bg-white px-4 text-ink hover:border-rose-400 hover:text-rose-700",
+  primary: "bg-ink px-4 text-on-ink hover:bg-ink-2",
+  secondary: "border border-control bg-surface px-4 text-ink hover:bg-sunken",
+  ghost: "px-2 text-ink hover:bg-sunken",
+  danger: "border border-danger bg-surface px-4 text-danger hover:bg-danger-tint",
 } as const;
-const btnSizes = { sm: "", md: "" } as const;
+const btnSizes = { sm: "h-8", md: "h-10", lg: "h-12 text-[14px]" } as const;
 
 export type ButtonStyle = { variant?: keyof typeof btnVariants; size?: keyof typeof btnSizes; arrow?: boolean; icon?: LucideIcon };
 
@@ -69,7 +67,7 @@ function Arrow({ external }: { external?: boolean }) {
   return <Icon icon={external ? ArrowUpRight : ArrowRight} className="transition-transform duration-150 ease-[var(--ease)] group-hover:translate-x-0.5" />;
 }
 
-/** Pill button, 36px, 13px. Primary = ink, secondary = hairline. `icon` leads, `arrow` trails and nudges on hover. */
+/** Button. Primary = warm ink, secondary = outlined, ghost = text, danger = brick outline. Label says what it does. */
 export function Button({ variant, size, arrow, icon, className, children, ...rest }: ButtonStyle & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button type="button" className={buttonClass({ variant, size }, className)} {...rest}>
@@ -90,81 +88,100 @@ export function LinkButton({ href, variant, size, arrow, icon, className, childr
   return <Link href={href} className={buttonClass({ variant, size }, className)}>{content}</Link>;
 }
 
-/** Quiet inline text link with an arrow. */
+/** Quiet inline link in the accent colour, with an arrow. */
 export function TextLink({ href, children, external, className }: { href: string; children: ReactNode; external?: boolean; className?: string }) {
-  const cls = cx("group inline-flex items-center gap-1.5 text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors duration-150 hover:decoration-ink", className);
-  const content = <>{children}<Icon icon={external ? ArrowUpRight : ArrowRight} className="transition-transform duration-150 group-hover:translate-x-0.5" /></>;
+  const cls = cx("group inline-flex items-center gap-1 text-meta font-medium text-accent underline-offset-4 hover:underline", className);
+  const content = <>{children}<Icon icon={external ? ArrowUpRight : ArrowRight} size={14} className="transition-transform duration-150 group-hover:translate-x-0.5" /></>;
   return external
     ? <a href={href} target="_blank" rel="noreferrer" className={cls}>{content}</a>
     : <Link href={href} className={cls}>{content}</Link>;
 }
 
 export const inputClass =
-  "w-full rounded-xl border border-black/10 bg-white px-3.5 py-2 text-body-sm text-ink placeholder:text-faint transition-[border-color,box-shadow] duration-150 hover:border-black/25 focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/15 disabled:border-transparent disabled:bg-stone/60 disabled:text-ink-2";
+  "w-full min-h-10 rounded-control border border-control bg-surface px-3 py-2 text-body-sm text-ink placeholder:text-muted transition-[border-color,box-shadow] duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:border-line disabled:bg-sunken disabled:text-ink-2";
 
 export function Field({ label, hint, children, className }: { label: ReactNode; hint?: string; children: ReactNode; className?: string }) {
   return (
     <label className={cx("block", className)}>
-      <span className="mb-1.5 block text-label font-medium uppercase text-muted">{label}</span>
+      <span className="mb-1.5 block text-meta font-medium text-ink-2">{label}</span>
       {children}
-      {hint && <span className="mt-1.5 block text-[12px] text-faint">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-[12px] text-muted">{hint}</span>}
     </label>
   );
 }
 
-export function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
+/** A labelled switch. The label says what "on" means. */
+export function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-6 py-4">
+    <div className="flex items-start justify-between gap-6 py-3.5">
       <div className="min-w-0">
         <div className="text-body-sm font-medium text-ink">{label}</div>
         {hint && <div className="mt-0.5 max-w-prose text-meta text-muted">{hint}</div>}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={cx("relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f9a72]", checked ? "border-[#0f9a72] bg-[#0f9a72]" : "border-line-strong bg-transparent")}
-      >
-        <span className={cx("absolute top-[3px] h-4 w-4 rounded-full shadow-sm transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[23px] bg-white" : "left-[3px] bg-faint")} />
-      </button>
+      <Switch checked={checked} onChange={onChange} label={label} disabled={disabled} />
     </div>
   );
 }
 
-export function EmptyState({ title, children, icon = Inbox }: { title: string; children?: ReactNode; icon?: LucideIcon }) {
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <Frame surface="none" className="px-6 py-14 text-center">
-      <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-line text-ink"><Icon icon={icon} /></span>
-      <p className="mt-4 font-display text-title font-medium text-ink">{title}</p>
-      {children && <div className="mx-auto mt-1 max-w-md text-body-sm text-muted">{children}</div>}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cx(
+        "relative mt-0.5 h-6 w-10 shrink-0 rounded-full border transition-colors duration-150 disabled:opacity-45",
+        checked ? "border-ink bg-ink" : "border-control bg-sunken",
+      )}
+    >
+      <span className={cx("absolute top-[3px] h-4 w-4 rounded-full transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[19px] bg-on-ink" : "left-[3px] bg-control")} />
+    </button>
+  );
+}
+
+/** Empty state: what is missing, why it matters, the one action that fixes it. Nori appears here and nowhere decorative. */
+export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; icon?: LucideIcon; action?: ReactNode }) {
+  return (
+    <Frame surface="none" className="flex flex-col items-start gap-3 px-6 py-8">
+      <NoriMark size={40} />
+      <p className="text-title font-semibold text-ink">{title}</p>
+      {children && <div className="max-w-prose text-body-sm text-muted">{children}</div>}
+      {action}
     </Frame>
   );
 }
 
-/** One-line notice: hairline box with a leading icon and an uppercase lead ("Your turn", "Error"). */
+const NOTICE_STYLE: Record<"danger" | "attn" | "good" | "neutral", string> = {
+  danger: "bg-danger-tint text-danger-fg",
+  attn: "bg-attn-tint text-attn-fg",
+  good: "bg-accent-tint text-accent-fg",
+  neutral: "bg-sunken text-ink",
+};
+
+/** One-line notice. Red: something broke. Amber/orange: you must act. Green: done. Slate: information. */
 export function Notice({ tone = "slate", children, label }: { tone?: Tone; children: ReactNode; label?: string }) {
-  const icon = tone === "red" || tone === "amber" || tone === "orange" ? CircleAlert : tone === "green" ? CircleCheck : Info;
-  const defaultLabel = tone === "red" ? "Error" : tone === "green" ? "Done" : tone === "amber" || tone === "orange" ? "Note" : undefined;
-  const l = label ?? defaultLabel;
+  const kind = tone === "red" ? "danger" : tone === "amber" || tone === "orange" ? "attn" : tone === "green" || tone === "teal" ? "good" : "neutral";
+  const icon = kind === "danger" || kind === "attn" ? CircleAlert : kind === "good" ? CircleCheck : Info;
   return (
-    <div role={tone === "red" ? "alert" : "status"} className="flex items-start gap-3 border border-line bg-paper px-4 py-3 text-body-sm text-ink">
+    <div role={kind === "danger" ? "alert" : "status"} className={cx("flex items-start gap-3 rounded-card px-4 py-3 text-body-sm", NOTICE_STYLE[kind])}>
       <Icon icon={icon} className="mt-[2px]" />
       <div className="min-w-0">
-        {l && <span className="mr-2 text-label font-medium uppercase text-muted">{l}</span>}
+        {label && <span className="mr-1.5 font-semibold">{label}.</span>}
         {children}
       </div>
     </div>
   );
 }
 
-export function Stat({ label, value, hint, index }: { label: string; value: ReactNode; hint?: string; index?: string }) {
+export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string; index?: string }) {
   return (
     <div className="min-w-0">
-      <IndexLabel index={index}>{label}</IndexLabel>
-      <div className="mt-3 font-display text-[2.5rem] font-medium leading-none tracking-[-0.04em] text-ink tnum sm:text-[3rem]">{value}</div>
-      {hint && <div className="mt-2 text-meta text-muted">{hint}</div>}
+      <div className="text-meta font-medium text-muted">{label}</div>
+      <div className="mt-1 text-display-lg font-semibold text-ink tnum">{value}</div>
+      {hint && <div className="mt-1 text-meta text-muted">{hint}</div>}
     </div>
   );
 }

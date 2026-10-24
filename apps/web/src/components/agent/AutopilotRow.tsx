@@ -1,37 +1,60 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import type { AgentStatus } from "@/lib/types";
-import { Accordion, IndexLabel, Notice, cx } from "../ui";
+import { Notice, cx } from "../ui";
 
 type Mode = NonNullable<AgentStatus["autopilot"]>;
 
 const OPTIONS: { id: Mode; label: string; line: string }[] = [
   { id: "off", label: "Off", line: "You approve every form before it is sent." },
-  { id: "safe", label: "Safe", line: "Nori sends by itself only when every check passes. Anything unusual waits for you." },
-  { id: "written", label: "Safe + short answers", line: "The same, and it may also send answers it wrote itself, such as \"why this role\"." },
+  { id: "safe", label: "On, profile answers only", line: "Nori sends by itself only when every check passes. Anything unusual waits for you." },
+  { id: "written", label: "On, short answers allowed", line: "The same, and it may send short answers it wrote, such as \"why this role\"." },
 ];
 
-const CHECKS = [
-  "The form is on a site that needs no account: Greenhouse, Lever or Ashby. Lever and Ashby usually add a CAPTCHA, which always hands the form to you.",
-  "The match is at or above your minimum score.",
-  "The posting does not need a citizenship, clearance, sponsorship, location, experience or pay you do not meet.",
+/** Checks Nori runs for each application. They depend on the job, so they are shown as rules, not as a state. */
+const PER_APPLICATION = [
+  "The form is on a site that needs no account (Greenhouse, Lever or Ashby). A CAPTCHA always hands the form to you.",
+  "The match is at or above your minimum.",
+  "No conflict with citizenship, clearance, sponsorship, location, experience or pay.",
   "Nothing in the posting depends on a profile answer you have not given.",
-  "Every required question is answered, and every answer comes from your profile (unless you chose short answers).",
+  "Every required question is answered, and every answer comes from your profile unless you allowed short answers.",
   "The resume reads cleanly for applicant systems.",
-  "You have approved a few applications yourself first.",
   "You have not applied to the same company in the last 30 days.",
-  "The server is allowed to send (ALLOW_REAL_SUBMIT).",
 ];
 
-/** Autopilot: turns the "Review before submit" wait into "review unless every check passes". */
+function CheckRow({ ok, children, detail }: { ok: boolean | null; children: React.ReactNode; detail?: string }) {
+  return (
+    <li className="flex items-start gap-2.5 py-2">
+      <span
+        aria-hidden="true"
+        className={cx(
+          "mt-1 h-3 w-3 shrink-0 rounded-full",
+          ok === true && "bg-accent",
+          ok === false && "border-2 border-attn",
+          ok === null && "border border-control",
+        )}
+      />
+      <div className="min-w-0">
+        <p className="text-meta text-ink">{children}</p>
+        {detail && <p className="text-[12px] text-muted">{detail}</p>}
+      </div>
+      <span className="sr-only">{ok === true ? "passes" : ok === false ? "does not pass yet" : "checked for each application"}</span>
+    </li>
+  );
+}
+
+/**
+ * Hands-free sending: the Autopilot mode and the checks it runs. The first three checks are this account's state
+ * right now; the rest are evaluated per application and written on that application's page when one fails.
+ */
 export function AutopilotRow({ status, onStatus, onError }: { status: AgentStatus; onStatus: (s: AgentStatus) => void; onError: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   const mode: Mode = status.autopilot ?? "off";
   const trust = status.autopilotTrust;
   const earned = !trust || trust.approved >= trust.needed;
+  const lockOpen = status.liveSubmit !== false;
 
   async function choose(next: Mode) {
     if (next === mode || busy) return;
@@ -48,35 +71,51 @@ export function AutopilotRow({ status, onStatus, onError }: { status: AgentStatu
   }
 
   return (
-    <div className="border-t border-line px-4 py-4 sm:px-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <IndexLabel>Autopilot</IndexLabel>
-        {mode !== "off" && trust && (
-          <span className={cx("text-meta tnum", earned ? "text-ink" : "text-muted")} role="status">
-            {earned ? `Active: you approved ${trust.approved} yourself` : `Starts after you approve ${trust.needed} yourself (${trust.approved} so far)`}
-          </span>
-        )}
+    <section id="checks" aria-labelledby="autopilot-h" className="scroll-mt-20 rounded-card border border-line bg-surface p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="autopilot-h" className="text-title font-semibold text-ink">Hands-free sending</h2>
+        <span className={cx("rounded-full px-2.5 py-0.5 text-[12px] font-medium", mode === "off" ? "bg-sunken text-muted" : "bg-accent-tint text-accent-fg")}>{mode === "off" ? "Off" : "On"}</span>
       </div>
-      <div role="radiogroup" aria-label="Autopilot" className="mt-3 grid gap-2 sm:grid-cols-3">
+      <p className="mt-1 text-meta text-muted">Nori may send without asking only when every check below passes. Otherwise the application waits for you, with the reason on its page.</p>
+
+      <div role="radiogroup" aria-label="Autopilot" className="mt-4 flex flex-col gap-2">
         {OPTIONS.map((o) => (
           <button
             key={o.id} type="button" role="radio" aria-checked={mode === o.id} disabled={busy} onClick={() => void choose(o.id)}
-            className={cx("rounded-xl border p-3 text-left transition-colors duration-150", mode === o.id ? "border-ink bg-ink text-paper" : "border-line hover:border-ink")}
+            className={cx("flex items-start gap-3 rounded-control border p-3 text-left transition-colors", mode === o.id ? "border-ink bg-sunken" : "border-line hover:border-control")}
           >
-            <span className="block text-body-sm font-medium">{o.label}</span>
-            <span className={cx("mt-1 block text-meta", mode === o.id ? "text-paper/80" : "text-muted")}>{o.line}</span>
+            <span aria-hidden="true" className={cx("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border", mode === o.id ? "border-ink" : "border-control")}>
+              {mode === o.id && <span className="h-2 w-2 rounded-full bg-ink" />}
+            </span>
+            <span>
+              <span className="block text-body-sm font-semibold text-ink">{o.label}</span>
+              <span className="mt-0.5 block text-meta text-muted">{o.line}</span>
+            </span>
           </button>
         ))}
       </div>
-      {mode !== "off" && status.liveSubmit === false && (
-        <div className="mt-3"><Notice tone="amber" label="Dry run">This server is in dry-run mode, so Autopilot prepares applications but nothing is sent.</Notice></div>
+
+      <h3 className="mt-5 text-body-sm font-semibold text-ink">Right now</h3>
+      <ul className="divide-y divide-line">
+        <CheckRow ok={mode !== "off"}>{mode !== "off" ? "Autopilot is on" : "Autopilot is off"}</CheckRow>
+        <CheckRow ok={lockOpen} detail={lockOpen ? undefined : "The server owner's switch. You can see it here but not change it."}>
+          {lockOpen ? "This server is allowed to send" : "This server's submit lock is off, so nothing can be sent"}
+        </CheckRow>
+        {trust && (
+          <CheckRow ok={earned}>
+            {earned ? `You approved ${trust.approved} applications yourself` : `Trust: ${trust.approved} of ${trust.needed} hand approvals so far`}
+          </CheckRow>
+        )}
+      </ul>
+
+      <h3 className="mt-4 text-body-sm font-semibold text-ink">For each application</h3>
+      <ul className="divide-y divide-line">
+        {PER_APPLICATION.map((c) => <CheckRow key={c} ok={null}>{c}</CheckRow>)}
+      </ul>
+
+      {mode !== "off" && !lockOpen && (
+        <div className="mt-3"><Notice tone="slate" label="Dry run">Autopilot prepares applications, but this server sends nothing.</Notice></div>
       )}
-      <div className="mt-3">
-        <Accordion title={<span className="inline-flex items-center gap-2"><ShieldCheck size={15} aria-hidden="true" />What Autopilot checks before it sends</span>}>
-          <ul className="list-disc space-y-1.5 pl-5 text-meta text-muted">{CHECKS.map((c) => <li key={c}>{c}</li>)}</ul>
-          <p className="mt-3 text-meta text-muted">If any check fails, the application waits for you with the reason written on its page.</p>
-        </Accordion>
-      </div>
-    </div>
+    </section>
   );
 }

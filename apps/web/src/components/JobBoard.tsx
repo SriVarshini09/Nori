@@ -1,19 +1,18 @@
 "use client";
 
-import { SearchX } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import type { ApplicationStatus, JobWithMatch } from "@/lib/types";
 import { STATUS_LABEL } from "@/lib/format";
 import { ApplyButton } from "./ApplyButton";
-import { cx, idx } from "./cx";
+import { cx } from "./cx";
+import { Icon } from "./Icon";
+import { MatchBadge } from "./MatchBadge";
 import { Monogram } from "./Monogram";
-import { Frame } from "./Frame";
-import { Square } from "./IndexLabel";
-import { MatchRing } from "./MatchRing";
 import { STATUS_MARK } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
-import { EmptyState, inputClass } from "./ui";
+import { EmptyState } from "./ui";
 import {
   DEFAULT_FILTERS, SENIORITY_ORDER, activeFilterCount, filtersToParams, placeName, postedIso,
   seniorityKey, seniorityLabel, skillChips, sourceLabel, workMode, type BoardFilters,
@@ -21,136 +20,75 @@ import {
 
 export type BoardApp = { id: string; status: ApplicationStatus };
 
-const railLabel = "flex items-center gap-2 text-label font-medium uppercase text-muted";
+const chip = (on: boolean) =>
+  cx("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium transition-colors", on ? "border-ink bg-ink text-on-ink" : "border-line bg-surface text-ink-2 hover:border-control");
 
-function RailSection({ n, title, aside, children }: { n: number; title: string; aside?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="border-t border-line py-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <span className={railLabel}><span className="text-faint tnum">{idx(n)}</span>{title}</span>
-        {aside}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** Square checkbox row: native input (visually hidden) drives an ink square. */
 function CheckRow({ checked, onChange, label, count }: { checked: boolean; onChange: (v: boolean) => void; label: string; count?: number }) {
   return (
-    <label className="group flex cursor-pointer items-center gap-2.5 py-1 text-body-sm text-ink">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
-      <span aria-hidden="true" className={cx("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors duration-150 peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink", checked ? "border-emerald-600 bg-emerald-600" : "border-line-strong group-hover:border-emerald-600")}>
-        {checked && <span className="h-1 w-1 rounded-full bg-white" />}
-      </span>
+    <label className="flex min-h-8 cursor-pointer items-center gap-2.5 text-body-sm text-ink">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4" />
       <span className="flex-1">{label}</span>
-      {count !== undefined && <span className="text-[12px] text-faint tnum">{count}</span>}
+      {count !== undefined && <span className="text-[12px] text-muted tnum">{count}</span>}
     </label>
   );
 }
 
-function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 py-1 text-left text-body-sm text-ink">
-      {label}
-      <span className={cx("relative h-[18px] w-8 shrink-0 rounded-full border transition-colors duration-150", checked ? "border-emerald-600 bg-emerald-600" : "border-line-strong")}>
-        <span className={cx("absolute top-[3px] h-2.5 w-2.5 rounded-full transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[17px] bg-paper" : "left-[3px] bg-faint")} />
-      </span>
-    </button>
-  );
-}
-
-const pillCls = "inline-flex h-[22px] max-w-full items-center rounded-full px-2 text-[11.5px] font-medium leading-none";
-
-/** One job as a framed card: monogram row, display title, meta pills, match ring + skill chips, actions. */
+/** One job as a row: who, what, where, how well it matches and why, and the one action that fits its state. */
 export function BoardCard({ item, app, href }: { item: JobWithMatch; app?: BoardApp | null; href: string }) {
   const { job, match } = item;
   const mode = workMode(job);
   const place = placeName(job.location);
   const sen = seniorityKey(job);
-  const chips = skillChips(match);
-  const matchedN = new Set(match?.explanation.matched.map((m) => m.requirement.toLowerCase())).size;
-  const totalN = matchedN + new Set(match?.explanation.missing.map((m) => m.requirement.toLowerCase())).size;
+  const chips = skillChips(match, 4);
   const status = app?.status ?? item.applicationStatus ?? null;
+  const waiting = status ? STATUS_MARK[status] === "accent" : false;
 
   return (
-    <Frame as="article" className="flex h-full flex-col p-5 transition-colors duration-150 ease-[var(--ease)] hover:border-line-strong">
-      <div className="flex items-center gap-3">
-        <Monogram name={job.companyName} size={34} />
-        <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">{job.companyName}</span>
-        <TimeAgo iso={postedIso(job)} className="shrink-0 text-[12px] text-faint" />
-      </div>
-
-      <h3 className="mt-5">
-        <Link href={href} scroll={false} className="line-clamp-3 font-display text-[20px] font-medium leading-[1.12] tracking-[-0.025em] text-ink decoration-line-strong decoration-1 underline-offset-[5px] hover:underline" title={job.title}>
-          {job.title}
-        </Link>
-      </h3>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <span className={cx(pillCls, "bg-stone text-ink-2")} title={job.location ?? undefined}>
-          <span className="truncate">{place ?? (mode === "Remote" ? "Anywhere" : "Location n/a")}</span>
-        </span>
-        <span className={cx(pillCls, "bg-stone text-ink-2")}>{mode}</span>
-        {sen && <span className={cx(pillCls, "bg-stone text-ink-2")}>{seniorityLabel(sen)}</span>}
-        <span className={cx(pillCls, "border border-line text-muted")}>{sourceLabel(job.atsType)}</span>
-      </div>
-
-      <div className="mt-5 border-t border-line pt-4">
-        <div className="flex items-center gap-3">
-          <MatchRing score={match?.score} />
-          <div className="min-w-0">
-            <div className="text-label font-medium uppercase text-muted">Match</div>
-            <div className="mt-0.5 text-meta text-ink-2 tnum">
-              {match ? (totalN ? `${matchedN} of ${totalN} requirements in your graph` : "Scored on title and level") : "Not scored yet"}
-            </div>
-          </div>
+    <article className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
+      <Monogram name={job.companyName} size={40} className="hidden sm:inline-flex" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Link href={href} scroll={false} className="min-w-0 text-body-sm font-semibold text-ink underline-offset-4 hover:underline sm:text-[15px]">{job.title}</Link>
+          <MatchBadge score={match?.score} />
         </div>
+        <p className="mt-0.5 truncate text-meta text-muted">
+          {job.companyName} · {place ?? (mode === "Remote" ? "Anywhere" : "Location not listed")} · {mode}{sen ? ` · ${seniorityLabel(sen)}` : ""} · {sourceLabel(job.atsType)} · <TimeAgo iso={postedIso(job)} />
+        </p>
         {chips.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Skills">
+          <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Skills the posting asks for">
             {chips.map((c) => (
               <li
                 key={c.name}
-                title={c.matched ? "In your career graph" : `Missing${c.required ? " (required)" : ""}`}
-                className={cx(
-                  "rounded-[var(--radius-tag)] px-1.5 py-[2px] text-[12px] leading-[1.35]",
-                  c.matched ? "bg-stone text-ink" : "border border-line text-muted line-through decoration-faint decoration-1",
-                )}
+                title={c.matched ? "In your career graph" : `Not in your graph${c.required ? " (required)" : ""}`}
+                className={cx("rounded-full px-2 py-[1px] text-[12px]", c.matched ? "bg-sunken text-ink" : "border border-dashed border-control text-muted")}
               >
-                {c.name}
+                {c.name}<span className="sr-only">{c.matched ? ", in your graph" : ", missing"}</span>
               </li>
             ))}
           </ul>
         )}
       </div>
-
-      <div className="mt-auto pt-5">
-        <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
-          <Link href={href} scroll={false} className="shrink-0 text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors duration-150 hover:decoration-ink">
-            Details
+      <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+        <Link href={href} scroll={false} className="inline-flex h-8 items-center rounded-control px-2.5 text-[13px] font-medium text-ink-2 hover:bg-sunken">Details</Link>
+        {status ? (
+          <Link
+            href={app ? `/applications/${app.id}` : href}
+            className={cx("inline-flex h-8 items-center gap-1.5 rounded-control px-3 text-[12px] font-semibold", waiting ? "bg-attn-tint text-attn-fg ring-1 ring-inset ring-attn" : "bg-sunken text-ink-2")}
+          >
+            <span className="sr-only">Applied: </span>{STATUS_LABEL[status] ?? status} <Icon icon={ArrowRight} size={13} />
           </Link>
-          {status ? (
-            <Link
-              href={app ? `/applications/${app.id}` : href}
-              title={`Applied · ${STATUS_LABEL[status] ?? status}`}
-              className="inline-flex h-9 min-w-0 items-center gap-2 whitespace-nowrap rounded-full bg-stone px-3 text-[12px] font-medium text-ink transition-colors duration-150 hover:bg-stone-2"
-            >
-              <Square tone={STATUS_MARK[status] ?? "muted"} size={6} />
-              <span className="truncate">Applied &middot; {STATUS_LABEL[status] ?? status}</span>
-            </Link>
-          ) : (
-            <ApplyButton jobId={job.id} />
-          )}
-        </div>
+        ) : (
+          <ApplyButton jobId={job.id} />
+        )}
       </div>
-    </Frame>
+    </article>
   );
 }
 
-/** Job board: filter rail on the left (sheet on phones), responsive card grid on the right. */
+/** Job list: a compact filter bar (more filters behind a disclosure), then ranked rows. */
 export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps: Record<string, BoardApp>; initial: BoardFilters }) {
   const [f, setF] = useState<BoardFilters>(initial);
-  const [railOpen, setRailOpen] = useState(false);
+  const [more, setMore] = useState(initial.seniority.length + initial.sources.length > 0);
   const set = <K extends keyof BoardFilters>(k: K, v: BoardFilters[K]) => setF((prev) => ({ ...prev, [k]: v }));
   const toggleIn = (k: "seniority" | "sources", v: string, on: boolean) =>
     setF((prev) => ({ ...prev, [k]: on ? [...prev[k], v] : prev[k].filter((x) => x !== v) }));
@@ -200,12 +138,13 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
     return out.sort((a, b) => (f.sort === "new" ? t(b) - t(a) : (b.match?.score ?? -1) - (a.match?.score ?? -1) || t(b) - t(a)));
   }, [items, apps, f]);
 
-  const PAGE = 12;
+  const PAGE = 20;
   const [page, setPage] = useState({ key: params, n: PAGE });
   const limit = page.key === params ? page.n : PAGE;
   const visible = shown.slice(0, limit);
 
   const active = activeFilterCount(f);
+  const extra = f.seniority.length + f.sources.length;
   const hrefFor = (id: string) => {
     const p = new URLSearchParams(params);
     p.set("job", id);
@@ -213,114 +152,86 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
   };
 
   return (
-    <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-[216px_minmax(0,1fr)]">
-      <div className="flex items-center justify-between gap-3 border-y border-line py-3 lg:hidden">
-        <span className="text-label font-medium uppercase text-muted tnum">{shown.length} of {items.length} roles</span>
-        <button
-          type="button"
-          onClick={() => setRailOpen((o) => !o)}
-          aria-expanded={railOpen}
-          aria-controls="job-filters"
-          className="inline-flex h-9 items-center gap-2 rounded-full border border-line px-3.5 text-[12px] font-medium uppercase tracking-[0.09em] text-ink transition-colors duration-150 hover:border-ink"
-        >
-          Filters{active > 0 && <span className="text-faint tnum">{active}</span>}
-          <span aria-hidden="true" className="flex h-3.5 w-3.5 items-center justify-center border border-ink text-[10px] leading-none">{railOpen ? "−" : "+"}</span>
-        </button>
-      </div>
-
-      <aside id="job-filters" className={cx("lg:sticky lg:top-20 lg:block lg:self-start", railOpen ? "block" : "hidden")} aria-label="Filters">
-        <RailSection n={1} title="Search">
-          <input
-            type="search"
-            value={f.q}
-            onChange={(e) => set("q", e.target.value)}
-            placeholder="Title, skill, city"
-            aria-label="Search jobs"
-            className={inputClass}
-          />
-        </RailSection>
-        <RailSection n={2} title="Min match" aside={<span className="font-display text-[15px] font-medium tracking-[-0.02em] text-ink tnum">{f.min}%</span>}>
-          <input type="range" min={0} max={100} step={5} value={f.min} onChange={(e) => set("min", Number(e.target.value))} aria-label="Minimum match" className="h-4 w-full cursor-pointer" />
-          <div className="mt-1 flex justify-between text-[11px] text-faint tnum"><span>0</span><span>50</span><span>100</span></div>
-        </RailSection>
-        <RailSection n={3} title="Work mode">
-          <Switch checked={f.remote} onChange={(v) => set("remote", v)} label={`Remote only · ${facets.remote}`} />
-        </RailSection>
-        {facets.seniority.length > 0 && (
-          <RailSection n={4} title="Seniority">
-            {facets.seniority.map(([k, c]) => (
-              <CheckRow key={k} label={seniorityLabel(k)} count={c} checked={f.seniority.includes(k)} onChange={(on) => toggleIn("seniority", k, on)} />
-            ))}
-          </RailSection>
-        )}
-        <RailSection n={5} title="Source">
-          {facets.sources.map(([k, c]) => (
-            <CheckRow key={k} label={sourceLabel(k)} count={c} checked={f.sources.includes(k)} onChange={(on) => toggleIn("sources", k, on)} />
-          ))}
-        </RailSection>
-        <RailSection n={6} title="Status">
-          <Switch checked={f.hideApplied} onChange={(v) => set("hideApplied", v)} label={`Hide applied · ${facets.applied}`} />
-        </RailSection>
-        <RailSection n={7} title="Sort">
-          <div role="radiogroup" aria-label="Sort" className="grid grid-cols-2 rounded-full border border-line p-[3px]">
-            {([["match", "Match"], ["new", "Newest"]] as const).map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                role="radio"
-                aria-checked={f.sort === k}
-                onClick={() => set("sort", k)}
-                className={cx("h-7 rounded-full text-[12px] font-medium transition-colors duration-150", f.sort === k ? "bg-ink text-paper" : "text-muted hover:text-ink")}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        </RailSection>
-        <div className="border-t border-line pt-3">
-          <button type="button" onClick={() => setF(DEFAULT_FILTERS)} disabled={active === 0} className="text-meta text-muted underline decoration-line-strong underline-offset-4 transition-colors duration-150 hover:text-ink disabled:no-underline disabled:opacity-50">
-            Clear filters
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3" aria-label="Filters">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-0 flex-1 basis-60">
+            <span className="sr-only">Search jobs</span>
+            <Icon icon={Search} size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="search"
+              value={f.q}
+              onChange={(e) => set("q", e.target.value)}
+              placeholder="Title, skill, company, city"
+              className="h-10 w-full rounded-control border border-control bg-surface pl-9 pr-3 text-body-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-meta text-ink-2">
+            <span className="sr-only sm:not-sr-only">Minimum match</span>
+            <select value={f.min} onChange={(e) => set("min", Number(e.target.value))} aria-label="Minimum match" className="h-10 rounded-control border border-control bg-surface pl-3 text-body-sm text-ink">
+              {[0, 50, 60, 70, 80, 90].map((n) => <option key={n} value={n}>{n === 0 ? "Any match" : `${n}% or more`}</option>)}
+            </select>
+          </label>
+          <select value={f.sort} onChange={(e) => set("sort", e.target.value as BoardFilters["sort"])} aria-label="Sort" className="h-10 rounded-control border border-control bg-surface pl-3 text-body-sm text-ink">
+            <option value="match">Best match first</option>
+            <option value="new">Newest first</option>
+          </select>
+        </div>
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+          <button type="button" role="switch" aria-checked={f.remote} onClick={() => set("remote", !f.remote)} className={chip(f.remote)}>Remote only <span className="font-normal tnum">{facets.remote}</span></button>
+          <button type="button" role="switch" aria-checked={f.hideApplied} onClick={() => set("hideApplied", !f.hideApplied)} className={chip(f.hideApplied)}>Hide applied <span className="font-normal tnum">{facets.applied}</span></button>
+          <button type="button" aria-expanded={more} aria-controls="more-filters" onClick={() => setMore((m) => !m)} className={chip(extra > 0)}>
+            <Icon icon={SlidersHorizontal} size={14} /> More filters{extra > 0 && <span className="tnum">{extra}</span>}
           </button>
+          {active > 0 && (
+            <button type="button" onClick={() => setF(DEFAULT_FILTERS)} className="inline-flex h-9 shrink-0 items-center px-2 text-[13px] font-medium text-accent underline-offset-4 hover:underline">Clear filters</button>
+          )}
         </div>
-      </aside>
-
-      <div className="min-w-0">
-        <div className="mb-5 hidden items-center justify-between gap-4 border-b border-line pb-3 lg:flex">
-          <span className="text-label font-medium uppercase text-muted tnum">
-            <span className="text-ink">{shown.length}</span> of {items.length} roles &middot; by {f.sort === "new" ? "newest" : "match"}
-          </span>
-          <span className="flex items-center gap-4 text-[12px] text-faint">
-            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-[2px] bg-stone" />In your graph</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-4 rounded-[2px] border border-line" />Missing</span>
-          </span>
-        </div>
-        {shown.length === 0 ? (
-          <EmptyState icon={SearchX} title="No roles match these filters">Loosen a filter or discover more roles above.</EmptyState>
-        ) : (
-          <>
-            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {visible.map((item) => (
-                <li key={item.job.id} className="min-w-0">
-                  <BoardCard item={item} app={apps[item.job.id]} href={hrefFor(item.job.id)} />
-                </li>
-              ))}
-            </ul>
-            {shown.length > limit && (
-              <div className="mt-8 flex items-center justify-between gap-4 border-t border-line pt-4">
-                <span className="text-label font-medium uppercase text-muted tnum">Showing {visible.length} of {shown.length}</span>
-                <button
-                  type="button"
-                  onClick={() => setPage({ key: params, n: limit + PAGE })}
-                  className="group inline-flex h-9 items-center gap-2 rounded-full border border-line px-4 text-[13px] font-medium text-ink transition-colors duration-150 hover:border-ink"
-                >
-                  Show {Math.min(PAGE, shown.length - limit)} more
-                  <span aria-hidden="true" className="transition-transform duration-150 group-hover:translate-y-0.5">&darr;</span>
-                </button>
-              </div>
+        {/* An ordinary panel under the row, not a dropdown: the chip row scrolls sideways on phones and would clip one. */}
+        {more && (
+          <div id="more-filters" className="grid gap-4 rounded-card border border-line bg-surface p-4 sm:grid-cols-2">
+            {facets.seniority.length > 0 && (
+              <fieldset>
+                <legend className="mb-1 text-meta font-semibold text-ink">Level</legend>
+                {facets.seniority.map(([k, c]) => <CheckRow key={k} label={seniorityLabel(k)} count={c} checked={f.seniority.includes(k)} onChange={(on) => toggleIn("seniority", k, on)} />)}
+              </fieldset>
             )}
-          </>
+            <fieldset>
+              <legend className="mb-1 text-meta font-semibold text-ink">Source</legend>
+              {facets.sources.map(([k, c]) => <CheckRow key={k} label={sourceLabel(k)} count={c} checked={f.sources.includes(k)} onChange={(on) => toggleIn("sources", k, on)} />)}
+            </fieldset>
+          </div>
         )}
       </div>
+
+      <p className="text-meta text-muted tnum">
+        <span className="font-semibold text-ink">{shown.length}</span> of {items.length} roles, {f.sort === "new" ? "newest first" : "best match first"}.
+        <span className="ml-2 hidden sm:inline">Solid chips are in your graph; dashed ones are missing.</span>
+      </p>
+
+      {shown.length === 0 ? (
+        <EmptyState title={items.length === 0 ? "No jobs yet" : "No roles match these filters"}>
+          {items.length === 0 ? "Poll a company's board or paste a posting link above to start." : "Loosen a filter, or add more roles above."}
+        </EmptyState>
+      ) : (
+        <>
+          <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+            {visible.map((item) => (
+              <li key={item.job.id} className="min-w-0 hover:bg-sunken/40">
+                <BoardCard item={item} app={apps[item.job.id]} href={hrefFor(item.job.id)} />
+              </li>
+            ))}
+          </ul>
+          {shown.length > limit && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-meta text-muted tnum">Showing {visible.length} of {shown.length}</span>
+              <button type="button" onClick={() => setPage({ key: params, n: limit + PAGE })} className="inline-flex h-10 items-center rounded-control border border-control px-4 text-[13px] font-semibold text-ink hover:bg-sunken">
+                Show {Math.min(PAGE, shown.length - limit)} more
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

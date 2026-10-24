@@ -164,14 +164,14 @@ try {
     const r = await visit(anon, WEB + p, "visitor", { expectFinal: new RegExp(`^${p}$`), expected401: true });
     if (r) for (const l of r.links) await checkLink(anon, l, r.label, false);
   }
-  for (const p of ["/dashboard", "/jobs", "/applications", "/agent", "/graph", "/inbox", "/tracker", "/resume", "/profile", "/settings", "/onboarding", "/companion", "/companies"]) {
+  for (const p of ["/dashboard", "/jobs", "/applications", "/agent", "/chat", "/graph", "/inbox", "/tracker", "/resume", "/profile", "/settings", "/onboarding", "/companion", "/companies"]) {
     await visit(anon, WEB + p, "visitor", { expectFinal: /^\/login(\?.*)?$/, expected401: true });
   }
   await visit(anon, WEB + "/definitely-not-a-page", "visitor", { expectFinal: /./, expected401: true });
 
   // ---- signed in
   const routes = [
-    "/", "/dashboard", "/agent", "/jobs", "/companies", `/jobs?job=${seed.jobIds[0]}`, "/applications",
+    "/", "/dashboard", "/agent", "/chat", "/jobs", "/companies", `/jobs?job=${seed.jobIds[0]}`, "/applications",
     `/applications/${seed.apps.resumeReview}`, `/applications/${seed.apps.needsAnswers}`, `/applications/${seed.apps.formReview}`,
     "/graph", "/inbox", "/tracker", "/resume", `/resume/${seed.docId}`, `/applications/${seed.apps.resumeReview}/resume`, "/profile", "/settings", "/companion",
   ];

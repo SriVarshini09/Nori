@@ -6,7 +6,7 @@ import { useState } from "react";
 import { USE_MOCK, api, ApiError } from "@/lib/api";
 import { pct } from "@/lib/format";
 import type { Channel, Integration, Profile, TelegramInfo, TelegramLink } from "@/lib/types";
-import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, TextLink, Toggle, idx, inputClass } from "./ui";
+import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, TextLink, Toggle, inputClass } from "./ui";
 
 export function SettingsForm({ profile }: { profile: Profile }) {
   const [autoApprove, setAutoApprove] = useState(profile.resumeAutoApprove);
@@ -95,9 +95,9 @@ export function Integrations({ initial }: { initial: Integration[] }) {
   return (
     <div className="space-y-4">
       <ol className="border-t border-line">
-        {items.map((i, n) => (
-          <li key={i.toolkit} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-4 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:gap-x-4">
-            <span className="text-label font-medium text-faint tnum">{idx(n + 1)}</span>
+        {items.map((i) => (
+          <li key={i.toolkit} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-4">
+            
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-body-sm font-medium text-ink"><Icon icon={TOOLKIT_ICON[i.toolkit] ?? Plug} />{TOOLKIT_LABEL[i.toolkit] ?? i.toolkit}</div>
             </div>
@@ -146,9 +146,8 @@ export function Channels({ channels: initial, telegram }: { channels: Channel[];
     <div className="space-y-6 text-body-sm">
       {channels.length > 0 && (
         <ol className="border-t border-line">
-          {channels.map((c, n) => (
-            <li key={c.id} className="grid grid-cols-[2rem_6rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-3 sm:grid-cols-[2.75rem_8rem_minmax(0,1fr)_auto] sm:gap-x-4">
-              <span className="text-label font-medium text-faint tnum">{idx(n + 1)}</span>
+          {channels.map((c) => (
+            <li key={c.id} className="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-3 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
               <span className="font-medium capitalize text-ink">{c.kind}</span>
               <span className="truncate text-muted">{c.address}</span>
               <Pill mark="ink">Linked</Pill>
@@ -159,7 +158,7 @@ export function Channels({ channels: initial, telegram }: { channels: Channel[];
       <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         <Frame className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <IndexLabel index="A" marker tone="ink">Telegram{bot ? <span className="ml-2 font-normal text-muted">@{bot}</span> : null}</IndexLabel>
+            <IndexLabel tone="ink">Telegram{bot ? <span className="ml-2 font-normal text-muted">@{bot}</span> : null}</IndexLabel>
             {tgLinked ? <Pill mark="ink">Linked</Pill> : <Pill mark="hollow">Not linked</Pill>}
           </div>
           {telegram && !telegram.configured ? (
@@ -168,19 +167,13 @@ export function Channels({ channels: initial, telegram }: { channels: Channel[];
             <p className="mt-4 text-meta text-ink-2">Your phone is linked. Say <span className="font-medium text-ink">status</span> to the bot any time, or reply to a review request with <span className="font-medium text-ink">approve 1</span>.</p>
           ) : (
             <>
-              <ol className="mt-4 space-y-2 text-meta text-ink-2">
-                {[
-                  "Press Link Telegram to get a one-time code.",
-                  bot ? `Open @${bot} in Telegram and send the code.` : "Open your Nori bot in Telegram and send the code.",
-                  "Press Check. The chat appears above once linked.",
-                ].map((s, i) => (
-                  <li key={i} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-1">
-                    <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>{s}
-                  </li>
-                ))}
+              <ol className="mt-4 list-decimal space-y-2 pl-5 text-meta text-ink-2">
+                <li>Press Link Telegram to get a one-time code.</li>
+                <li>{bot ? `Open @${bot} in Telegram and send the code.` : "Open your Nori bot in Telegram and send the code."}</li>
+                <li>Press Check. The chat appears above once linked.</li>
               </ol>
               {link && (
-                <div className="mt-4 rounded-md border border-line bg-stone/40 p-4" role="status">
+                <div className="mt-4 rounded-card bg-sunken p-4" role="status">
                   <div className="text-label font-medium uppercase text-muted">Your code, valid 15 minutes</div>
                   <div className="mt-1 font-mono text-[26px] font-semibold tracking-[0.3em] text-ink">{link.code}</div>
                   {link.link && <div className="mt-2"><TextLink href={link.link} external>Open @{link.botUsername} with the code filled in</TextLink></div>}
@@ -197,7 +190,7 @@ export function Channels({ channels: initial, telegram }: { channels: Channel[];
         </Frame>
         <Frame className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <IndexLabel index="B" marker tone="ink">Slack</IndexLabel>
+            <IndexLabel tone="ink">Slack</IndexLabel>
             {has("slack") ? <Pill mark="ink">Linked</Pill> : <Pill mark="hollow">Not linked</Pill>}
           </div>
           <p className="mt-4 text-meta text-ink-2">Connect Slack under Integrations above, then invite the bot to a channel or DM it. Review requests and replies are posted there.</p>
@@ -253,7 +246,7 @@ export function DangerZone({ email }: { email: string }) {
           icon={Trash2}
           onClick={remove}
           disabled={!matches || busy}
-          className="border-[#a8321f]! text-[#a8321f]! hover:bg-[#a8321f]! hover:text-paper!"
+          className="border-[#a8321f]! text-[#a8321f]! hover:bg-[#a8321f]! hover:text-on-ink!"
         >
           {busy ? "Deleting..." : "Delete account"}
         </Button>

@@ -6,26 +6,16 @@ import { api } from "@/lib/api";
 import { pct } from "@/lib/format";
 import type { AgentStatus, Lane } from "@/lib/types";
 import { ChipInput } from "../ChipInput";
-import { Button, cx, Field, Frame, Icon, IndexLabel, inputClass, Tag } from "../ui";
+import { Button, cx, Field, Frame, Icon, inputClass, Switch, Tag } from "../ui";
 
-const REMOTE_LABEL: Record<Lane["remote"], string> = { only: "Remote only", ok: "Remote ok", no: "On-site only" };
+const REMOTE_LABEL: Record<Lane["remote"], string> = { only: "Remote only", ok: "Remote OK", no: "On-site only" };
 
+/** Kept for older callers. */
 export function SwitchButton({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={cx("relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f9a72]", checked ? "border-[#0f9a72] bg-[#0f9a72]" : "border-line-strong bg-transparent")}
-    >
-      <span className={cx("absolute top-[3px] h-4 w-4 rounded-full shadow-sm transition-[left,background-color] duration-150 ease-[var(--ease)]", checked ? "left-[23px] bg-white" : "left-[3px] bg-faint")} />
-    </button>
-  );
+  return <Switch checked={checked} onChange={onChange} label={label} />;
 }
 
-/** One shared cap for every lane: "N of M used today" with an editable M. */
+/** One shared cap for every lane: "N of M started today" with an editable M. */
 export function CapFrame({ status, onStatus }: { status: AgentStatus; onStatus: (s: AgentStatus) => void }) {
   const [draft, setDraft] = useState(String(status.dailyCap));
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +38,16 @@ export function CapFrame({ status, onStatus }: { status: AgentStatus; onStatus: 
     }
   }
 
-  const step = "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-ink transition-colors duration-150 hover:border-ink disabled:pointer-events-none disabled:opacity-40";
+  const step = "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control border border-control text-ink hover:bg-sunken disabled:pointer-events-none disabled:opacity-40";
 
   return (
-    <Frame as="section">
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 p-4 sm:p-5">
-        <p className="min-w-0 text-body-sm text-muted tnum">
-          <span className="font-display text-[1.75rem] font-medium leading-none tracking-[-0.03em] text-ink">{status.usedToday}</span>
-          {" "}of {status.dailyCap} used today
-        </p>
+    <Frame as="section" className="p-4 sm:p-5">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div>
+          <h2 className="text-body-sm font-semibold text-ink">Daily cap, shared by every lane</h2>
+          <p className="mt-0.5 text-meta text-muted tnum">{status.usedToday} of {status.dailyCap} started today</p>
+        </div>
         <div className="flex items-center gap-2">
-          <span className="mr-1 text-label font-medium uppercase text-muted">Cap</span>
           <button type="button" aria-label="Lower the daily cap" className={step} disabled={status.dailyCap <= 0} onClick={() => commit(status.dailyCap - 1)}><Icon icon={Minus} /></button>
           <input
             aria-label="Daily cap"
@@ -69,15 +58,16 @@ export function CapFrame({ status, onStatus }: { status: AgentStatus; onStatus: 
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => commit(Number(draft))}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-            className={cx(inputClass, "h-8 w-14 px-2 text-center tnum")}
+            className={cx(inputClass, "w-16 text-center tnum")}
           />
           <button type="button" aria-label="Raise the daily cap" className={step} disabled={status.dailyCap >= 100} onClick={() => commit(status.dailyCap + 1)}><Icon icon={Plus} /></button>
         </div>
       </div>
-      <div className="mx-4 mb-4 h-[2px] bg-line sm:mx-5 sm:mb-5" role="progressbar" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={status.usedToday} aria-label="Applications today">
-        <div className="h-full bg-ink" style={{ width: `${fill}%` }} />
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={status.usedToday} aria-label="Applications started today">
+        <div className="h-full rounded-full bg-ink" style={{ width: `${fill}%` }} />
       </div>
-      {error && <p className="border-t border-line px-4 py-3 text-meta text-accent-ink sm:px-5" role="alert">{error}</p>}
+      {status.dailyCap === 0 && <p className="mt-2 text-meta text-attn-fg">At 0, Nori starts nothing on its own. Raise it to turn auto apply on.</p>}
+      {error && <p className="mt-2 text-meta text-danger-fg" role="alert">{error}</p>}
     </Frame>
   );
 }
@@ -88,29 +78,29 @@ function LaneEditor({ lane, isNew, onSave, onCancel, onDelete }: { lane: Lane; i
   return (
     <form
       onSubmit={(e) => { e.preventDefault(); onSave({ ...d, name: d.name.trim() || "Untitled lane" }); }}
-      className="grid gap-x-5 gap-y-4 bg-stone/30 px-4 py-5 sm:px-5 md:grid-cols-2"
+      className="grid gap-x-5 gap-y-4 md:grid-cols-2"
     >
       <Field label="Name"><input className={inputClass} value={d.name} onChange={(e) => set("name", e.target.value)} autoFocus={isNew} placeholder="Frontend, remote" /></Field>
       <Field label="Remote">
         <select className={inputClass} value={d.remote} onChange={(e) => set("remote", e.target.value as Lane["remote"])}>
           <option value="only">Remote only</option>
-          <option value="ok">Remote ok</option>
+          <option value="ok">Remote OK</option>
           <option value="no">On-site only</option>
         </select>
       </Field>
       <div>
-        <span className="mb-1.5 block text-label font-medium uppercase text-muted">Titles</span>
+        <span className="mb-1.5 block text-meta font-medium text-ink-2">Titles</span>
         <ChipInput label="Titles" value={d.titles} onChange={(v) => set("titles", v)} placeholder="Senior Frontend Engineer" />
       </div>
       <div>
-        <span className="mb-1.5 block text-label font-medium uppercase text-muted">Locations</span>
-        <ChipInput label="Locations" value={d.locations} onChange={(v) => set("locations", v)} placeholder="Any" />
+        <span className="mb-1.5 block text-meta font-medium text-ink-2">Places</span>
+        <ChipInput label="Places" value={d.locations} onChange={(v) => set("locations", v)} placeholder="Anywhere" />
       </div>
-      <Field label={<>Min score &middot; <span className="text-ink tnum">{pct(d.minScore)}%</span></>}>
-        <input className="mt-3 w-full" type="range" min={0} max={100} step={5} value={pct(d.minScore)} onChange={(e) => set("minScore", Number(e.target.value) / 100)} />
+      <Field label={<>Minimum match <span className="text-ink tnum">{pct(d.minScore)}%</span></>} hint="Jobs below this are skipped, and the reason is kept.">
+        <input className="mt-2 w-full" type="range" min={0} max={100} step={5} value={pct(d.minScore)} onChange={(e) => set("minScore", Number(e.target.value) / 100)} />
       </Field>
       <div className="flex flex-wrap items-end justify-end gap-2 md:col-span-2">
-        {!isNew && <Button variant="danger" icon={Trash2} onClick={onDelete} className="mr-auto">Delete</Button>}
+        {!isNew && <Button variant="danger" icon={Trash2} onClick={onDelete} className="mr-auto">Delete lane</Button>}
         <Button variant="secondary" icon={X} onClick={onCancel}>Cancel</Button>
         <Button variant="primary" icon={Check} type="submit">Save lane</Button>
       </div>
@@ -141,71 +131,58 @@ export function LanesFrame({ lanes, status, onLanes }: { lanes: Lane[]; status: 
     setAdding({ id: `lane-${Date.now().toString(36)}`, name: "", titles: [], locations: [], remote: "ok", minScore: status.minScore || 0.75, enabled: true });
   }
 
-  const iconBtn = "inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent text-muted transition-colors duration-150 hover:border-line hover:text-ink";
   const all = adding ? [...lanes, adding] : lanes;
 
   return (
-    <Frame as="section">
-      <header className="flex h-12 items-center justify-between gap-3 border-b border-line px-4 sm:px-5">
-        <IndexLabel index="01" marker tone="ink">Lanes</IndexLabel>
-        <Button variant="secondary" icon={Plus} className="h-8 px-3" onClick={startAdd} disabled={!!adding}>Add lane</Button>
-      </header>
-      {all.length === 0 ? (
-        <p className="px-4 py-8 text-center text-body-sm text-muted sm:px-5">No lanes yet.</p>
-      ) : (
-        <ol className="divide-y divide-line">
-          {all.map((l, i) => {
-            const isNew = adding?.id === l.id;
-            const open = isNew || editing === l.id;
-            const n = String(i + 1).padStart(2, "0");
-            return (
-              <li key={l.id}>
-                {open ? (
-                  <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] sm:grid-cols-[2.75rem_minmax(0,1fr)]">
-                    <span className="pl-4 pt-5 text-label font-medium text-faint tnum sm:pl-5">{n}</span>
-                    <LaneEditor
-                      lane={l}
-                      isNew={isNew}
-                      onCancel={() => (isNew ? setAdding(null) : setEditing(null))}
-                      onDelete={() => { setEditing(null); void persist(lanes.filter((x) => x.id !== l.id)); }}
-                      onSave={(next) => {
-                        if (isNew) { setAdding(null); void persist([...lanes, next]); }
-                        else { setEditing(null); void persist(lanes.map((x) => (x.id === next.id ? next : x))); }
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-4 sm:px-5 md:grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,2fr)_7rem_auto] md:items-center">
-                    <span className="pt-[3px] text-label font-medium text-faint tnum md:pt-0">{n}</span>
-                    <div className="min-w-0">
-                      <div className={cx("truncate text-body-sm font-medium", l.enabled ? "text-ink" : "text-muted")}>{l.name}</div>
-                      <div className="mt-0.5 text-meta text-muted tnum">{REMOTE_LABEL[l.remote]} &middot; min {pct(l.minScore)}%</div>
-                    </div>
-                    <div className="col-span-3 col-start-1 row-start-2 mt-3 min-w-0 space-y-1.5 md:col-span-1 md:col-start-3 md:row-start-1 md:mt-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {l.titles.length === 0 ? <span className="text-meta text-faint">Any title</span> : l.titles.map((t) => <Tag key={t}>{t}</Tag>)}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="mr-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-faint">In</span>
-                        {l.locations.length === 0 ? <span className="text-meta text-faint">Anywhere</span> : l.locations.map((t) => <Tag key={t} mark="hollow">{t}</Tag>)}
-                      </div>
-                    </div>
-                    <div className="col-span-3 col-start-1 row-start-3 mt-2 whitespace-nowrap text-meta text-muted tnum md:col-span-1 md:col-start-4 md:row-start-1 md:mt-0 md:text-right">
-                      <span className="text-ink">{queued(l.id)}</span> queued<span className="hidden sm:inline"> today</span>
-                    </div>
-                    <div className="col-start-3 row-start-1 flex items-center justify-end md:col-start-5">
-                      <SwitchButton checked={l.enabled} label={`${l.enabled ? "Disable" : "Enable"} ${l.name}`} onChange={(v) => void persist(lanes.map((x) => (x.id === l.id ? { ...x, enabled: v } : x)))} />
-                      <button type="button" aria-label={`Edit ${l.name}`} className={cx(iconBtn, "ml-2")} onClick={() => { setAdding(null); setEditing(l.id); }}><Icon icon={Pencil} /></button>
-                      <button type="button" aria-label={`Delete ${l.name}`} className={iconBtn} onClick={() => void persist(lanes.filter((x) => x.id !== l.id))}><Icon icon={Trash2} /></button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ol>
+    <section aria-labelledby="lanes-h" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="lanes-h" className="text-title font-semibold text-ink">Lanes</h2>
+        <Button variant="secondary" size="sm" icon={Plus} onClick={startAdd} disabled={!!adding}>Add a lane</Button>
+      </div>
+      {all.length === 0 && (
+        <p className="rounded-card border border-dashed border-line px-4 py-6 text-body-sm text-muted">No lanes yet. Nori queues nothing on its own until it knows what you want.</p>
       )}
-      {error && <p className="border-t border-line px-4 py-3 text-meta text-accent-ink sm:px-5" role="alert">{error}</p>}
-    </Frame>
+      <ul className="flex flex-col gap-2.5">
+        {all.map((l) => {
+          const isNew = adding?.id === l.id;
+          const open = isNew || editing === l.id;
+          return (
+            <li key={l.id} className={cx("rounded-card border bg-surface p-4", open ? "border-ink" : "border-line")}>
+              {open ? (
+                <LaneEditor
+                  lane={l}
+                  isNew={isNew}
+                  onCancel={() => (isNew ? setAdding(null) : setEditing(null))}
+                  onDelete={() => { setEditing(null); void persist(lanes.filter((x) => x.id !== l.id)); }}
+                  onSave={(next) => {
+                    if (isNew) { setAdding(null); void persist([...lanes, next]); }
+                    else { setEditing(null); void persist(lanes.map((x) => (x.id === next.id ? next : x))); }
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-start gap-3">
+                    <Switch checked={l.enabled} label={`${l.name} lane ${l.enabled ? "on" : "off"}`} onChange={(v) => void persist(lanes.map((x) => (x.id === l.id ? { ...x, enabled: v } : x)))} />
+                    <div className="min-w-0 flex-1">
+                      <p className={cx("text-body-sm font-semibold", l.enabled ? "text-ink" : "text-muted")}>{l.name}</p>
+                      <p className="mt-0.5 text-meta text-muted tnum">{REMOTE_LABEL[l.remote]} · minimum match {pct(l.minScore)}% · {l.enabled ? `${queued(l.id)} queued today` : "off"}</p>
+                    </div>
+                    <button type="button" aria-label={`Edit ${l.name}`} className="inline-flex h-9 items-center gap-1.5 rounded-control px-2.5 text-meta font-medium text-ink-2 hover:bg-sunken hover:text-ink" onClick={() => { setAdding(null); setEditing(l.id); }}>
+                      <Icon icon={Pencil} size={14} /> Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 pl-[3.25rem]">
+                    {l.titles.length === 0 ? <span className="text-meta text-muted">Any title</span> : l.titles.map((t) => <Tag key={t}>{t}</Tag>)}
+                    <span className="mx-1 text-meta text-muted">in</span>
+                    {l.locations.length === 0 ? <span className="text-meta text-muted">anywhere</span> : l.locations.map((t) => <Tag key={t}>{t}</Tag>)}
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="text-meta text-danger-fg" role="alert">{error}</p>}
+    </section>
   );
 }

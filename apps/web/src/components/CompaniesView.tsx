@@ -61,7 +61,7 @@ export function CompaniesView({ initial }: { initial: CompanyList }) {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
-            <Icon icon={Search} size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+            <Icon icon={Search} size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
             <input
               type="search" aria-label="Search companies" placeholder="Search companies" value={q}
               onChange={(e) => { setQ(e.target.value); void load(e.target.value, onlyFollowed); }}
@@ -71,12 +71,12 @@ export function CompaniesView({ initial }: { initial: CompanyList }) {
           <button
             type="button" role="switch" aria-checked={onlyFollowed}
             onClick={() => { setOnlyFollowed(!onlyFollowed); void load(q, !onlyFollowed); }}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-line px-4 text-[13px] font-medium text-ink transition-colors hover:border-ink aria-checked:border-ink aria-checked:bg-ink aria-checked:text-paper"
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-line px-4 text-[13px] font-medium text-ink transition-colors hover:border-ink aria-checked:border-ink aria-checked:bg-ink aria-checked:text-on-ink"
           >
             Following only
           </button>
         </div>
-        <p className="mt-4 text-label font-medium uppercase text-muted tnum" role="status">{data.total} {data.total === 1 ? "company" : "companies"}</p>
+        <p className="mt-4 text-meta font-medium text-muted tnum" role="status">{data.total} {data.total === 1 ? "company" : "companies"}</p>
 
         {error && <div className="mt-4"><Notice tone="red">{error}</Notice></div>}
 
@@ -95,7 +95,7 @@ export function CompaniesView({ initial }: { initial: CompanyList }) {
                   <p className="text-meta text-muted">{ATS_LABEL[c.atsType]} &middot; {c.openJobs} open role{c.openJobs === 1 ? "" : "s"}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {c.openJobs > 0 && <Link href={`/jobs?q=${encodeURIComponent(c.name)}`} className="text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">See roles</Link>}
+                  {c.openJobs > 0 && <Link href={`/jobs?q=${encodeURIComponent(c.name)}`} className="text-meta font-medium text-ink underline decoration-control underline-offset-4 hover:decoration-ink">See roles</Link>}
                   <Button
                     type="button" variant={c.followed ? "primary" : "secondary"} disabled={busy !== null}
                     aria-pressed={c.followed} aria-label={`${c.followed ? "Unfollow" : "Follow"} ${c.name}`}
@@ -118,7 +118,7 @@ export function CompaniesView({ initial }: { initial: CompanyList }) {
 
       <aside aria-label="Add a company">
         <Frame className="p-5">
-          <h2 className="font-display text-title font-medium text-ink">Add a company</h2>
+          <h2 className="text-title font-semibold text-ink">Add a company</h2>
           <p className="mt-1 text-meta text-muted">Paste its careers page or any job posting. Nori finds the job board behind it (Greenhouse, Lever, Ashby or SmartRecruiters), reads it and follows the company.</p>
           <form onSubmit={detect} className="mt-4 space-y-4">
             <Field label="Careers or job link">

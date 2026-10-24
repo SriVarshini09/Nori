@@ -1,19 +1,13 @@
 import { pct } from "@/lib/format";
 import { cx } from "./cx";
 
-/** Match score as a tabular figure with a 2px hairline meter underneath. Gradient meter. */
-export function MatchBadge({ score, size = "md" }: { score: number | null | undefined; size?: "sm" | "md" | "lg" }) {
-  if (score == null) return <span className="text-meta text-faint">No score</span>;
+/** Compact "84% match" badge for rows and lists. Blue at 70% and above, neutral below. `size` is kept for callers. */
+export function MatchBadge({ score, className }: { score: number | null | undefined; size?: "sm" | "md" | "lg"; className?: string }) {
+  if (score == null) return <span className={cx("text-meta text-muted", className)}>Not scored</span>;
   const p = pct(score);
-  const num = { sm: "text-[15px]", md: "text-[22px]", lg: "text-[44px]" }[size];
   return (
-    <span title={`${p}% match with your career graph`} className="inline-flex flex-col items-start gap-1.5">
-      <span className={cx("font-display font-medium leading-none tracking-[-0.03em] text-ink tnum", num)}>
-        {p}<span className="ml-0.5 align-top text-[0.45em] font-normal tracking-normal text-muted">%</span>
-      </span>
-      <span aria-hidden="true" className={cx("relative block h-[4px] overflow-hidden rounded-full bg-black/10", size === "lg" ? "w-24" : "w-12")}>
-        <span className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-400 to-amber-400" style={{ width: `${p}%` }} />
-      </span>
+    <span title={`${p}% match with your career graph`} className={cx("inline-flex h-6 shrink-0 items-center rounded-full px-2.5 text-[12px] font-semibold tnum", p >= 70 ? "bg-accent-tint text-accent-fg" : "bg-sunken text-ink-2", className)}>
+      {p}% match
     </span>
   );
 }
