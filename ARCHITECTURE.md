@@ -117,6 +117,7 @@ Single process: `npm run demo` starts the API with the scheduler and channel lis
 
 ```
 GET  /api/settings/model              -> { mode, source: "hosted"|"local"|"none", tiers, localOnly, usage: { totalTokens, capTokens, remainingTokens, exhausted, resetsAt } } (read-only)
+POST /api/settings/error-reporting/test -> { sent, delivered } (operator account only, MCP_USER_EMAIL; sends one Sentry message; 503 without SENTRY_DSN_API)
 GET  /api/lanes                       -> Lane[]
 PUT  /api/lanes                       Lane[] -> Lane[]
 GET  /api/graph/export                -> application/json download of nodes + edges + profile (no credentials)

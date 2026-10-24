@@ -26,7 +26,7 @@ import {
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
-import { captureError } from "./sentry.js";
+import { captureError, sentryEnabled, sentrySelfTest } from "./sentry.js";
 import {
   composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, telegramBotUsername, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
@@ -490,6 +490,19 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   // ---------- model (Nori's hosted model serves every account; no keys to manage) ----------
   /** Which model does the work for this user, and today's token use against the daily allowance. */
   app.get("/api/settings/model", async (c) => c.json(await modelSettings(db, c.get("user").id)));
+
+  /**
+   * Operator-only wiring check for error reporting: sends one message to Sentry and waits for delivery. Allowed for the
+   * account named by MCP_USER_EMAIL (the operator), so a stranger cannot fill the project with noise.
+   */
+  app.post("/api/settings/error-reporting/test", async (c) => {
+    const user = c.get("user");
+    const operator = process.env.MCP_USER_EMAIL?.trim().toLowerCase();
+    if (!operator || user.email.toLowerCase() !== operator) throw bad("Only the operator account can run this check", 403);
+    if (!sentryEnabled()) throw bad("Error reporting is not set up on this server (SENTRY_DSN_API)", 503);
+    const delivered = await sentrySelfTest();
+    return c.json({ sent: true, delivered });
+  });
 
   // ---------- lanes ----------
   const lanesOf = async (userId: string) => {
