@@ -39,7 +39,7 @@ export function buildMcpServer(db: Db, deps: RunnerDeps, me: Me): McpServer {
   const reload = async (id: string) => (await db.select().from(applications).where(eq(applications.id, id)).limit(1))[0];
 
   server.registerTool("find_jobs", {
-    description: "Search the web (Parallel) for job postings on supported ATS sites, store them, and return the best matches for the user's career graph.",
+    description: "Search for job postings (company ATS boards, X, Hacker News, Wellfound, Y Combinator, public LinkedIn job pages), store them, and return the best matches for the user's career graph. Takes about 20 seconds.",
     inputSchema: {
       objective: z.string().describe("Natural language, e.g. 'senior frontend roles at Series B startups, remote or SF'"),
       titles: z.array(z.string()).optional(), locations: z.array(z.string()).optional(), remote: z.boolean().optional(),
@@ -47,7 +47,8 @@ export function buildMcpServer(db: Db, deps: RunnerDeps, me: Me): McpServer {
   }, async ({ objective, titles, locations, remote }) => {
     try {
       const user = await me();
-      const res = await findAndRank(db, user.id, { objective, titles, locations, remote, maxResults: 15 });
+      // Callers such as Omnara give up on a tool after 30 s, so the search and the scoring share a 22 s budget.
+      const res = await findAndRank(db, user.id, { objective, titles, locations, remote, maxResults: 10, budgetMs: 22_000 });
       return json({
         added: res.added,
         jobs: res.jobs.slice(0, 10).map((r) => ({

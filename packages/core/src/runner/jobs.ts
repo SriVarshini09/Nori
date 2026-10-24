@@ -12,19 +12,31 @@ export type JobRowT = typeof jobs.$inferSelect;
 export type MatchRowT = typeof matches.$inferSelect;
 export type RankedJob = { job: JobRowT; match: MatchRowT | null };
 
+export type MatchJobsOptions = {
+  /** Jobs scored at once. Default 6. */
+  concurrency?: number;
+  /** Epoch ms after which no new job is started; jobs not reached come back with match null. */
+  deadline?: number;
+};
+
 /** Extract requirements and (re)compute the match row for each job. Failures leave match null. */
-export function matchJobs(db: Db, userId: string, jobIds: string[]): Promise<RankedJob[]> {
-  return withUserLLM(db, userId, () => matchJobsInner(db, userId, jobIds));
+export function matchJobs(db: Db, userId: string, jobIds: string[], opts: MatchJobsOptions = {}): Promise<RankedJob[]> {
+  return withUserLLM(db, userId, () => matchJobsInner(db, userId, jobIds, opts));
 }
-async function matchJobsInner(db: Db, userId: string, jobIds: string[]): Promise<RankedJob[]> {
+async function matchJobsInner(db: Db, userId: string, jobIds: string[], opts: MatchJobsOptions): Promise<RankedJob[]> {
   if (!jobIds.length) return [];
-  for (const id of jobIds) {
-    try {
-      if (await ensureRequirements(db, id, { upgrade: true })) await computeMatch(db, userId, id, retrieveEvidence);
-    } catch (err) {
-      console.warn(`[match] ${id}: ${(err as Error).message}`);
+  const queue = [...jobIds];
+  const worker = async () => {
+    while (queue.length && !(opts.deadline && Date.now() >= opts.deadline)) {
+      const id = queue.shift()!;
+      try {
+        if (await ensureRequirements(db, id, { upgrade: true })) await computeMatch(db, userId, id, retrieveEvidence);
+      } catch (err) {
+        console.warn(`[match] ${id}: ${(err as Error).message}`);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(opts.concurrency ?? 6, jobIds.length)) }, worker));
   const rows = await db.select().from(jobs).where(inArray(jobs.id, jobIds));
   const ms = await db.select().from(matches).where(and(eq(matches.userId, userId), inArray(matches.jobId, jobIds)));
   const byJob = new Map(ms.map((m) => [m.jobId, m]));
@@ -113,6 +125,7 @@ async function searchHeld(db: Db, userId: string, query: DiscoverQuery): Promise
 }
 
 export async function findAndRank(db: Db, userId: string, query: DiscoverQuery, discover = discoverJobs): Promise<{ added: number; jobs: RankedJob[]; heldOnly?: boolean }> {
+  const started = Date.now();
   let res: Awaited<ReturnType<typeof discoverJobs>>;
   try { res = await discover(db, query); }
   catch (e) {
@@ -120,7 +133,8 @@ export async function findAndRank(db: Db, userId: string, query: DiscoverQuery, 
     return { added: 0, jobs: await searchHeld(db, userId, query), heldOnly: true };
   }
   const rows = await rowsForNormalized(db, res.jobs);
-  return { added: res.added, jobs: await matchJobs(db, userId, rows.map((r) => r.id)) };
+  const deadline = query.budgetMs ? started + query.budgetMs : undefined;
+  return { added: res.added, jobs: await matchJobs(db, userId, rows.map((r) => r.id), { deadline }) };
 }
 
 export const pct = (m: Pick<MatchResult, "score"> | null | undefined) => (m ? `${Math.round(m.score * 100)}%` : "n/a");
