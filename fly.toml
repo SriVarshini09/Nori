@@ -10,6 +10,9 @@ primary_region = "sjc"
   NODE_ENV = "production"
   API_PORT = "4000"
   ARTIFACTS_DIR = "/data/artifacts"
+  # Live sending: an approved application is really submitted to the employer. Every send still needs the person's approval.
+  # Set to "false" (or `flyctl secrets set ALLOW_REAL_SUBMIT=false`) to go back to dry run, where forms are filled and nothing is sent.
+  ALLOW_REAL_SUBMIT = "true"
 
 [mounts]
   source = "jobgraph_data"

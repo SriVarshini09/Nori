@@ -18,25 +18,24 @@ If a screen grows rainbow badges, gradients, shadows or a colour that means noth
 
 ## Colour (`src/app/globals.css`)
 
-CSS variables on `:root`, redefined for dark mode under `prefers-color-scheme: dark` and under
-`:root[data-theme="dark"]` (Settings, Appearance). Exposed to Tailwind with `@theme inline`, so `bg-surface`,
-`text-muted`, `border-attn` and so on work. Every text pairing passes WCAG AA (4.5:1) in both modes; control edges
-pass 3:1.
+CSS variables on `:root`. There is one theme, light and warm; the dark theme and the Appearance setting were removed.
+Exposed to Tailwind with `@theme inline`, so `bg-surface`, `text-muted`, `border-attn` and so on work. Every text
+pairing passes WCAG AA (4.5:1); control edges pass 3:1.
 
-| Role | Token | Light | Dark | Use |
-| --- | --- | --- | --- | --- |
-| Page | `bg` | `#fbfaf8` | `#151311` | page background |
-| Surface | `surface` | `#fffefc` | `#1d1a17` | cards, inputs |
-| Sunken | `sunken` | `#f3f1ed` | `#252220` | quiet fills, hover rows, selected nav |
-| Line | `line` | `#e9e5df` | `#34302b` | card edges and dividers |
-| Control | `control` | `#8e877d` | `#7a7268` | input and secondary button edges (3:1) |
-| Ink | `ink` | `#2b2722` | `#ece7e0` | text and primary buttons |
-| Ink 2 | `ink-2` | `#4a443c` | `#cfc8be` | secondary text on surfaces |
-| Muted | `muted` | `#6b645b` | `#a8a096` | hints, metadata |
-| Accent | `accent`, `accent-tint`, `accent-fg` | `#2f5a8a` | `#8fb4e0` | links, focus, sources, good outcomes |
-| Needs you | `attn`, `attn-tint`, `attn-fg` | `#b5480f` | `#e8a062` | items waiting on the person, and nothing else |
-| Dry run | `sandbox`, `sandbox-fg`, `sandbox-line` | `#efeaf6` | `#241d31` | the dry run band |
-| Danger | `danger`, `danger-tint`, `danger-fg` | `#b4281c` | `#ef7a6a` | failures, errors, destructive actions |
+| Role | Token | Light | Use |
+| --- | --- | --- | --- |
+| Page | `bg` | `#fbfaf8` | page background |
+| Surface | `surface` | `#fffefc` | cards, inputs |
+| Sunken | `sunken` | `#f3f1ed` | quiet fills, hover rows, selected nav |
+| Line | `line` | `#e9e5df` | card edges and dividers |
+| Control | `control` | `#8e877d` | input and secondary button edges (3:1) |
+| Ink | `ink` | `#2b2722` | text and primary buttons |
+| Ink 2 | `ink-2` | `#4a443c` | secondary text on surfaces |
+| Muted | `muted` | `#6b645b` | hints, metadata |
+| Accent | `accent`, `accent-tint`, `accent-fg` | `#2f5a8a` | links, focus, sources, good outcomes |
+| Needs you | `attn`, `attn-tint`, `attn-fg` | `#b5480f` | items waiting on the person, and nothing else |
+| Dry run | `sandbox`, `sandbox-fg`, `sandbox-line` | `#efeaf6` | the dry run band |
+| Danger | `danger`, `danger-tint`, `danger-fg` | `#b4281c` | failures, errors, destructive actions |
 
 Rules:
 - **Orange only means "you must act".** Waiting cards get a 2px `border-attn` edge; nothing decorative is orange.
@@ -108,7 +107,7 @@ Primitives are re-exported from `ui.tsx`.
   checks.
 - **Career graph**: add a fact, a list view (default) with a detail panel, and the map.
 - **Inbox**, **Chat**, **Resumes**, **Profile** (with how ready it is for forms), **Settings** (model, channels and
-  apps, limits, appearance, account).
+  apps, limits, account).
 - **Landing**, sign-in pages, onboarding (six steps with a "why this step" note), and the companion popover.
 
 ## Copy
