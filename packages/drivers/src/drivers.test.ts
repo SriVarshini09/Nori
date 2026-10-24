@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { DriverContext, FormField } from "@jobgraph/core";
 import { GreenhouseDriver } from "./greenhouse.js";
 import { chromium } from "playwright";
-import { runApplyFlow } from "./flow.js";
+import { closeParkedPages, runApplyFlow } from "./flow.js";
 import { ashbyApplyUrl, classifyField, cleanLabel, discoverFields, fillForm, leverApplyUrl, phoneCountryValue, pickDriver, WebDriver } from "./index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +24,8 @@ beforeAll(async () => {
 });
 
 const savedEnv = process.env.ALLOW_REAL_SUBMIT;
-afterEach(() => {
+afterEach(async () => {
+  await closeParkedPages();
   if (savedEnv === undefined) delete process.env.ALLOW_REAL_SUBMIT;
   else process.env.ALLOW_REAL_SUBMIT = savedEnv;
 });
@@ -312,4 +313,66 @@ describe("multi-page forms", () => {
     const res = await runApplyFlow(ctx, { name: "test" });
     expect(res).toMatchObject({ outcome: "failed", submitClicked: true });
   }, 90_000);
+});
+
+describe("carrying on from the filled form", () => {
+  const opened = (events: { step: string }[]) => events.filter((e) => e.step === "navigate").length;
+
+  it("sends from the form that was reviewed, without opening the site and filling it again", async () => {
+    process.env.ALLOW_REAL_SUBMIT = "true";
+    const first = makeCtx({ dryRun: true, sessionKey: "reuse-send" });
+    const filled = await new GreenhouseDriver().run(first.ctx);
+    expect(filled.outcome, JSON.stringify(filled)).toBe("filled");
+    expect(opened(first.events)).toBe(1);
+
+    const second = makeCtx({ dryRun: false, sessionKey: "reuse-send" });
+    const sent = await new GreenhouseDriver().run(second.ctx);
+    expect(sent.outcome, JSON.stringify(sent)).toBe("submitted");
+    expect(opened(second.events)).toBe(0);
+    expect(second.events.some((e) => e.step === "reused_form")).toBe(true);
+    expect(second.events.some((e) => e.step === "submit")).toBe(true);
+  }, TIMEOUT);
+
+  it("an answer to a missing field is typed into the same page, then it sends", async () => {
+    process.env.ALLOW_REAL_SUBMIT = "true";
+    const shared = {
+      answerQuestion: async (f: FormField) => (/why do you want/i.test(f.label) ? "Robots." : /which office/i.test(f.label) ? "New York" : null),
+      sessionKey: "reuse-answers",
+    };
+    const first = makeCtx({ ...shared, dryRun: true });
+    const asked = await new GreenhouseDriver().run(first.ctx);
+    expect(asked.outcome, JSON.stringify(asked)).toBe("needs_user");
+    if (asked.outcome !== "needs_user") return;
+    const answers = Object.fromEntries(asked.pending.map((q) => [q.label, q.type === "select" ? "LinkedIn" : "Yes"]));
+
+    const second = makeCtx({ ...shared, dryRun: false, answers });
+    const sent = await new GreenhouseDriver().run(second.ctx);
+    expect(sent.outcome, JSON.stringify(sent)).toBe("submitted");
+    expect(opened(second.events)).toBe(0);
+    if (sent.outcome !== "submitted") return;
+    expect(field(sent, /how did you hear/i)?.value).toMatch(/linkedin/i);
+  }, TIMEOUT);
+
+  it("a changed answer replaces the typed one on the kept page", async () => {
+    const first = makeCtx({ dryRun: true, sessionKey: "reuse-edit" });
+    const filled = await new GreenhouseDriver().run(first.ctx);
+    expect(filled.outcome, JSON.stringify(filled)).toBe("filled");
+    if (filled.outcome !== "filled") return;
+    const why = field(filled, /why do you want/i)!;
+    expect(why.value).toMatch(/robots/);
+
+    const second = makeCtx({ dryRun: true, sessionKey: "reuse-edit", answers: { [why.label]: "A different answer." } });
+    const again = await new GreenhouseDriver().run(second.ctx);
+    expect(again.outcome, JSON.stringify(again)).toBe("filled");
+    if (again.outcome !== "filled") return;
+    expect(opened(second.events)).toBe(0);
+    expect(field(again, /why do you want/i)?.value).toBe("A different answer.");
+  }, TIMEOUT);
+
+  it("fills from the start when there is no kept page for the application", async () => {
+    const { ctx, events } = makeCtx({ dryRun: true, sessionKey: "never-filled" });
+    const r = await new GreenhouseDriver().run(ctx);
+    expect(r.outcome, JSON.stringify(r)).toBe("filled");
+    expect(opened(events)).toBe(1);
+  }, TIMEOUT);
 });
