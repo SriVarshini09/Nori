@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 /** Where apps/api listens. The browser only ever talks to this app; /api and /mcp are proxied so the session cookie stays same-origin. */
 const API_URL = (process.env.API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
@@ -59,4 +60,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry's build plugin wires the client, server and edge configs in. No auth token is configured, so no source maps are
+ * uploaded (stack traces are still useful; minified names in the browser). The tunnel route keeps error reports on this
+ * origin, which the Content-Security-Policy above allows, instead of a direct call to sentry.io that it would block.
+ */
+export default withSentryConfig(nextConfig, {
+  silent: true,
+  tunnelRoute: "/monitoring",
+  sourcemaps: { disable: true },
+  telemetry: false,
+});

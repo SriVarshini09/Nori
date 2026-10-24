@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { NoriMark } from "@/components/Logo";
 import { Button, Frame, buttonClass } from "@/components/ui";
 
 const DEV = process.env.NODE_ENV !== "production";
 
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  useEffect(() => { console.error("[nori] page error", error.digest ?? "", error.message); }, [error]);
+  useEffect(() => { console.error("[nori] page error", error.digest ?? "", error.message); Sentry.captureException(error); }, [error]);
   return (
     <Frame className="mx-auto mt-6 max-w-2xl p-6 text-center sm:mt-16 sm:p-10">
       <span className="mx-auto flex w-fit rotate-[-6deg] opacity-90"><NoriMark size={72} /></span>

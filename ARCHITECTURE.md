@@ -36,7 +36,7 @@ apps/web               Next.js dashboard
 
 ## Env (see .env.example)
 
-`DATABASE_URL` (optional), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `OPENAI_COMPAT_BASE_URL` / `OPENAI_COMPAT_API_KEY` / `OPENAI_COMPAT_MODEL` (Cline: `https://api.cline.bot/api/v1`, Ollama: `http://localhost:11434/v1`), `LLM_PROVIDER` override, `PARALLEL_API_KEY`, `COMPOSIO_API_KEY`, `TELEGRAM_BOT_TOKEN`, `DEFAULT_USER_EMAIL`, `ALLOW_REAL_SUBMIT` (driver never clicks submit unless `true`), `API_PORT`, `WEB_URL`.
+`DATABASE_URL` (optional), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `OPENAI_COMPAT_BASE_URL` / `OPENAI_COMPAT_API_KEY` / `OPENAI_COMPAT_MODEL` (Cline: `https://api.cline.bot/api/v1`, Ollama: `http://localhost:11434/v1`), `LLM_PROVIDER` override, `PARALLEL_API_KEY`, `COMPOSIO_API_KEY`, `TELEGRAM_BOT_TOKEN`, `DEFAULT_USER_EMAIL`, `ALLOW_REAL_SUBMIT` (driver never clicks submit unless `true`), `API_PORT`, `WEB_URL`, `SENTRY_DSN_API` (API error reporting; `NEXT_PUBLIC_SENTRY_DSN` on the web side, tunnelled through `/monitoring`).
 
 ## Auth and onboarding
 
