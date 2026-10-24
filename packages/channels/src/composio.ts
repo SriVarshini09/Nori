@@ -48,15 +48,33 @@ export function resetComposioCache() {
   sessions.clear();
 }
 
+/**
+ * Composio says a session has no connection for a toolkit. A session cached before the person connected Gmail keeps
+ * saying so, so the cached session is dropped and the call is tried once more on a fresh one.
+ */
+export function isNoConnectionError(message: string): boolean {
+  return /No active connection|ToolRouterV2_NoActiveConnection/i.test(message);
+}
+
 /** Execute a Composio tool for a user and return its `data`. Throws on a tool-level error. */
 export async function executeTool(userId: string, slug: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-  const session = await getSession(userId);
-  const res = await session.execute(slug, args);
-  if (res.error) throw new Error(`Composio ${slug} failed: ${String(res.error).slice(0, 500)}`);
-  const data = (res.data ?? {}) as Record<string, unknown>;
-  // Some tools wrap failures as { successful: false, error }.
-  if (data && data.successful === false && data.error) throw new Error(`Composio ${slug} failed: ${String(data.error).slice(0, 500)}`);
-  return data;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const session = await getSession(userId);
+      const res = await session.execute(slug, args);
+      if (res.error) throw new Error(`Composio ${slug} failed: ${String(res.error).slice(0, 500)}`);
+      const data = (res.data ?? {}) as Record<string, unknown>;
+      // Some tools wrap failures as { successful: false, error }.
+      if (data && data.successful === false && data.error) throw new Error(`Composio ${slug} failed: ${String(data.error).slice(0, 500)}`);
+      return data;
+    } catch (err) {
+      if (attempt === 0 && isNoConnectionError(err instanceof Error ? err.message : String(err))) {
+        sessions.delete(userId);
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /** Ask Composio which tool slugs fit a use case (fallback discovery for slugs we have not confirmed). */
