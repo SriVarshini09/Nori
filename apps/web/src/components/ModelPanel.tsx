@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Check, KeyRound, ListRestart, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ModelMode, ModelPreset, ModelPresetsInfo, ModelSettings, ModelTestResult } from "@/lib/types";
-import { Button, Field, Frame, Icon, IndexLabel, Notice, TextLink, cx, idx, inputClass } from "./ui";
+import { Button, Field, Frame, Icon, IndexLabel, Notice, TextLink, cx, inputClass } from "./ui";
 
 const MODE_LINE: Record<ModelMode, string> = {
   cline: "Running on open models via Cline",
@@ -94,24 +94,24 @@ export function ModelPanel({ initial, presets: info, compact }: { initial: Model
         <IndexLabel marker={mode === "heuristic" ? "hollow" : "ink"} tone="ink">
           <span role="status">{MODE_LINE[mode]}</span>
         </IndexLabel>
-        {preset.keyUrl && !hasKey && <TextLink href={preset.keyUrl} external>Get a {preset.label} key</TextLink>}
+        {preset.keyUrl && !hasKey && <TextLink href={preset.keyUrl} external>Get a key from {preset.label}</TextLink>}
       </div>
 
       <div role="radiogroup" aria-label="Model provider" className="mt-5 border-t border-line">
-        {offered.map((d, n) => {
+        {offered.map((d) => {
           const on = d.id === preset.id;
           return (
             <div key={d.id} className="border-b border-line">
               <button
                 type="button" role="radio" aria-checked={on} onClick={() => pick(d)}
-                className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 py-3.5 text-left transition-colors duration-150 hover:bg-stone/50 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:gap-x-4"
+                className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-control px-2 py-3.5 text-left hover:bg-sunken"
               >
-                <span className="text-label font-medium text-faint tnum">{idx(n + 1)}</span>
+                
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm font-medium text-ink">{d.label}</span>
                   <span className="mt-0.5 block text-meta text-muted">{d.line}</span>
                 </span>
-                <span aria-hidden="true" className={cx("flex h-4 w-4 items-center justify-center rounded-full border transition-colors duration-150", on ? "border-ink" : "border-line-strong")}>
+                <span aria-hidden="true" className={cx("flex h-4 w-4 items-center justify-center rounded-full border transition-colors duration-150", on ? "border-ink" : "border-control")}>
                   {on && <span className="h-2 w-2 rounded-full bg-ink" />}
                 </span>
               </button>

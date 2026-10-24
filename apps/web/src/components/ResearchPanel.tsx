@@ -4,7 +4,6 @@ import { Building2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import type { CompanyResearch } from "@/lib/types";
-import { idx } from "./cx";
 import { Tag } from "./Pill";
 import { Button, Notice } from "./ui";
 
@@ -29,7 +28,7 @@ export function ResearchView({ research }: { research: CompanyResearch }) {
       </dl>
       {research.recentNews && research.recentNews.length > 0 && (
         <div>
-          <div className="mb-2 text-label font-medium uppercase text-muted">Recent news</div>
+          <div className="mb-2 text-meta font-medium text-muted">Recent news</div>
           <ul className="space-y-1.5 text-ink-2">
             {research.recentNews.map((n) => (
               <li key={n} className="flex gap-2.5"><span aria-hidden="true" className="mt-[8px] h-[5px] w-[5px] shrink-0 bg-ink" />{n}</li>
@@ -39,14 +38,14 @@ export function ResearchView({ research }: { research: CompanyResearch }) {
       )}
       {research.citations.length > 0 && (
         <div>
-          <div className="mb-2 text-label font-medium uppercase text-muted">Sources</div>
+          <div className="mb-2 text-meta font-medium text-muted">Sources</div>
           <ol className="border-t border-line">
             {research.citations.map((c, i) => (
               <li key={c.url + i} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2 border-b border-line py-2 text-meta">
-                <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>
+                <span className="text-muted tnum">{i + 1}.</span>
                 <span className="min-w-0">
                   <Tag className="mr-2">{c.field}</Tag>
-                  <a href={c.url} target="_blank" rel="noreferrer" className="break-words text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">{c.title || c.url}</a>
+                  <a href={c.url} target="_blank" rel="noreferrer" className="break-words text-accent underline-offset-4 hover:underline">{c.title || c.url}</a>
                 </span>
               </li>
             ))}

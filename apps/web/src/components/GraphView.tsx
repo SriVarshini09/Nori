@@ -12,8 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { NODE_GROUPS } from "@/lib/format";
 import type { Graph, GraphNode } from "@/lib/types";
-import { Panel } from "./Panel";
-import { Button, Field, Frame, Icon, IndexLabel, Notice, Ticks, cx, idx, inputClass } from "./ui";
+import { Button, Field, Frame, Icon, IndexLabel, Notice, cx, inputClass } from "./ui";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -22,17 +21,20 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 type NodeLook = { fill: string | null; stroke: string | null; lw: number };
 type Palette = Record<"ink" | "ink2" | "paper" | "stone" | "stone2" | "line" | "lineStrong" | "muted" | "faint" | "accent", string>;
 
-/** One hue per kind of fact, so the graph reads at a glance: roles jade, skills violet, results amber, projects coral, education sky. */
+/**
+ * Kinds of fact told apart by tone and by filled versus outlined, never by a rainbow: colour keeps its meaning
+ * elsewhere in Nori. Roles and companies are ink, skills and tools blue, everything else neutral.
+ */
 function look(type: string, c: Palette): NodeLook {
   switch (type) {
-    case "role": return { fill: "#0f9a72", stroke: null, lw: 0 };
-    case "company": return { fill: c.paper, stroke: "#0f9a72", lw: 1.75 };
-    case "skill": return { fill: "#8b7cff", stroke: null, lw: 0 };
-    case "tool": return { fill: c.paper, stroke: "#8b7cff", lw: 1.75 };
-    case "metric": return { fill: "#ffb347", stroke: null, lw: 0 };
-    case "project": return { fill: "#ff7a8a", stroke: null, lw: 0 };
-    case "education": return { fill: "#5ec2ff", stroke: null, lw: 0 };
-    case "certification": return { fill: c.paper, stroke: "#5ec2ff", lw: 1.75 };
+    case "role": return { fill: c.ink, stroke: null, lw: 0 };
+    case "company": return { fill: c.paper, stroke: c.ink, lw: 1.75 };
+    case "skill": return { fill: c.accent, stroke: null, lw: 0 };
+    case "tool": return { fill: c.paper, stroke: c.accent, lw: 1.75 };
+    case "metric": return { fill: c.ink2, stroke: null, lw: 0 };
+    case "project": return { fill: c.muted, stroke: null, lw: 0 };
+    case "education": return { fill: c.paper, stroke: c.muted, lw: 1.75 };
+    case "certification": return { fill: c.paper, stroke: c.ink2, lw: 1.75 };
     default: return { fill: c.lineStrong, stroke: null, lw: 0 };
   }
 }
@@ -40,7 +42,7 @@ function look(type: string, c: Palette): NodeLook {
 /** Same looks as CSS, for the DOM legend and panel swatches. */
 function swatchStyle(type: string): React.CSSProperties {
   const v = (n: string) => `var(--${n})`;
-  const l = look(type, { ink: v("ink"), ink2: v("ink-2"), paper: v("paper"), stone: v("stone"), stone2: v("stone-2"), line: v("line"), lineStrong: v("line-strong"), muted: v("muted"), faint: v("faint"), accent: v("accent") });
+  const l = look(type, { ink: v("ink"), ink2: v("ink-2"), paper: v("surface"), stone: v("sunken"), stone2: v("line"), line: v("line"), lineStrong: v("control"), muted: v("muted"), faint: v("muted"), accent: v("accent") });
   return { background: l.fill ?? "transparent", boxShadow: l.stroke ? `inset 0 0 0 ${l.lw >= 1.5 ? 1.5 : 1}px ${l.stroke}` : undefined };
 }
 
@@ -161,9 +163,9 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
     const cs = getComputedStyle(document.documentElement);
     const tok = (n: string, fb: string) => cs.getPropertyValue(n).trim() || fb;
     const C: Palette = {
-      ink: tok("--ink", "#141311"), ink2: tok("--ink-2", "#3a3732"), paper: tok("--paper", "#faf8f4"), stone: tok("--stone", "#ebe6dc"),
-      stone2: tok("--stone-2", "#e2dccf"), line: tok("--line", "#d9d3c7"), lineStrong: tok("--line-strong", "#bfb8aa"),
-      muted: tok("--muted", "#6f6a60"), faint: tok("--faint", "#9a9487"), accent: tok("--accent", "#b8632b"),
+      ink: tok("--ink", "#2b2722"), ink2: tok("--ink-2", "#4a443c"), paper: tok("--surface", "#fffefc"), stone: tok("--sunken", "#f3f1ed"),
+      stone2: tok("--line", "#e9e5df"), line: tok("--line", "#e9e5df"), lineStrong: tok("--control", "#8e877d"),
+      muted: tok("--muted", "#6b645b"), faint: tok("--muted", "#6b645b"), accent: tok("--accent", "#2f5a8a"),
     };
     const font = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
 
@@ -510,8 +512,7 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
     <Frame surface="paper">
       <div className="relative">
         {/* controls: a static strip on phones, a framed overlay top-left on large screens */}
-        <div className="relative z-10 border-b border-line bg-paper p-4 lg:absolute lg:left-4 lg:top-4 lg:w-[240px] lg:border lg:p-4">
-          <Ticks className="hidden lg:block" />
+        <div className="relative z-10 border-b border-line bg-surface p-4 lg:absolute lg:left-4 lg:top-4 lg:w-[240px] lg:rounded-card lg:border lg:p-4">
           <div className="relative">
             <input
               type="search"
@@ -523,16 +524,16 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
               }}
               placeholder="Find a node"
               aria-label="Find a node by label"
-              className={cx(inputClass, "h-8 py-1 text-meta")}
+              className={cx(inputClass, "min-h-9 py-1 text-meta")}
             />
             {matches.length > 0 && (
-              <ul className="absolute inset-x-0 top-[calc(100%+4px)] z-20 border border-line bg-paper" role="listbox" aria-label="Matching nodes">
+              <ul className="absolute inset-x-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-control border border-line bg-surface" role="listbox" aria-label="Matching facts">
                 {matches.map((m) => (
                   <li key={m.id}>
-                    <button type="button" onClick={() => choose(m.id)} className="flex w-full items-center gap-2 border-b border-line px-2.5 py-2 text-left text-meta text-ink last:border-b-0 hover:bg-stone/60">
+                    <button type="button" onClick={() => choose(m.id)} className="flex w-full items-center gap-2 border-b border-line px-2.5 py-2 text-left text-meta text-ink last:border-b-0 hover:bg-sunken">
                       <Swatch type={m.type} size={8} />
                       <span className="min-w-0 flex-1 truncate">{m.label}</span>
-                      <span className="text-[10px] uppercase tracking-[0.1em] text-faint">{typeName(m.type)}</span>
+                      <span className="text-[11px] capitalize text-muted">{typeName(m.type)}</span>
                     </button>
                   </li>
                 ))}
@@ -541,7 +542,7 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
           </div>
 
           <ol className="mt-3 grid grid-cols-2 gap-x-4 sm:grid-cols-3 lg:grid-cols-1" aria-label="Node types">
-            {typeList.map(([t, c], i) => {
+            {typeList.map(([t, c]) => {
               const off = hidden.has(t);
               return (
                 <li key={t}>
@@ -552,10 +553,9 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
                     title={off ? `Show ${groupLabel(t).toLowerCase()}` : `Hide ${groupLabel(t).toLowerCase()}`}
                     className="group flex w-full items-center gap-2.5 py-[5px] text-left"
                   >
-                    <span className="w-4 text-label font-medium text-faint tnum">{idx(i + 1)}</span>
                     <Swatch type={t} dim={off} />
-                    <span className={cx("min-w-0 flex-1 truncate text-meta transition-colors duration-150", off ? "text-faint line-through decoration-faint" : "text-ink group-hover:text-ink-2")}>{groupLabel(t)}</span>
-                    <span className="text-[12px] text-faint tnum">{c}</span>
+                    <span className={cx("min-w-0 flex-1 truncate text-meta transition-colors duration-150", off ? "text-muted line-through decoration-control" : "text-ink group-hover:text-ink-2")}>{groupLabel(t)}</span>
+                    <span className="text-[12px] text-muted tnum">{c}</span>
                   </button>
                 </li>
               );
@@ -563,9 +563,9 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
           </ol>
 
           <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
-            <button type="button" onClick={() => apiRef.current?.fit()} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-[12px] font-medium text-ink transition-colors duration-150 hover:border-ink">Fit</button>
-            <button type="button" onClick={() => apiRef.current?.reset()} className="inline-flex h-7 items-center rounded-full border border-line px-3 text-[12px] font-medium text-ink transition-colors duration-150 hover:border-ink">Reset layout</button>
-            <span className="ml-auto text-[11px] text-faint tnum">{zoomPct}%</span>
+            <button type="button" onClick={() => apiRef.current?.fit()} className="inline-flex h-8 items-center rounded-control border border-control px-3 text-[12px] font-semibold text-ink hover:bg-sunken">Fit</button>
+            <button type="button" onClick={() => apiRef.current?.reset()} className="inline-flex h-8 items-center rounded-control border border-control px-3 text-[12px] font-semibold text-ink hover:bg-sunken">Reset layout</button>
+            <span className="ml-auto text-[11px] text-muted tnum">{zoomPct}%</span>
           </div>
         </div>
 
@@ -577,7 +577,7 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
             className="absolute inset-0 block touch-none select-none"
             style={{ cursor: "grab" }}
           />
-          <p className="pointer-events-none absolute bottom-3 left-4 hidden text-[11px] text-faint sm:block lg:left-[272px]">
+          <p className="pointer-events-none absolute bottom-3 left-4 hidden text-[11px] text-muted sm:block lg:left-[272px]">
             {plural(graph.nodes.length, "node")} &middot; {plural(graph.edges.length, "edge")} &middot; scroll to zoom, drag to pan
           </p>
         </div>
@@ -595,7 +595,7 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
   );
 }
 
-function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Neighbor[]; onClose: () => void; onPick: (id: string) => void }) {
+function NodePanel({ node, nbrs, onClose, onPick, inline }: { node: GraphNode; nbrs: Neighbor[]; onClose: () => void; onPick: (id: string) => void; inline?: boolean }) {
   const router = useRouter();
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -617,50 +617,50 @@ function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Nei
   const statement = isMetric ? String(node.props?.statement ?? node.label) : null;
   const evidenced = isMetric && Array.isArray(node.props?.skills) ? (node.props.skills as unknown[]).map(String) : [];
   const backedBy = isMetric ? nbrs.filter((n) => n.edgeType === "achieved" && n.dir === "in").map((n) => n.node) : [];
-  let row = 0;
 
   return (
     <aside
       aria-label={`${typeName(node.type)}: ${node.label}`}
-      className="relative z-10 border-t border-line bg-paper lg:absolute lg:bottom-4 lg:right-4 lg:top-4 lg:w-[320px] lg:overflow-y-auto lg:border"
+      className={inline
+        ? "rounded-card border border-line bg-surface lg:sticky lg:top-6 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto"
+        : "relative z-10 border-t border-line bg-surface lg:absolute lg:bottom-4 lg:right-4 lg:top-4 lg:w-[320px] lg:overflow-y-auto lg:rounded-card lg:border"}
     >
-      <Ticks className="hidden lg:block" />
-      <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-line bg-paper px-5 py-3">
-        <IndexLabel tone="ink"><Swatch type={node.type} size={9} />{typeName(node.type)}</IndexLabel>
-        <button type="button" onClick={onClose} aria-label="Close node details" className="inline-flex h-7 items-center gap-1.5 rounded-full border border-line px-2.5 text-[11px] font-medium uppercase tracking-[0.09em] text-ink transition-colors duration-150 hover:border-ink">
-          <Icon icon={X} /> Close
+      <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-line bg-surface px-5 py-3">
+        <IndexLabel tone="ink"><Swatch type={node.type} size={9} /><span className="capitalize">{typeName(node.type)}</span></IndexLabel>
+        <button type="button" onClick={onClose} aria-label="Close fact details" className="inline-flex h-8 w-8 items-center justify-center rounded-control text-ink-2 hover:bg-sunken hover:text-ink">
+          <Icon icon={X} />
         </button>
       </div>
       <div className="space-y-5 px-5 py-5">
         <div>
-          <h3 className="font-display text-[22px] font-medium leading-[1.12] tracking-[-0.025em] text-ink">{node.label}</h3>
+          <h3 className="text-title font-semibold text-ink">{node.label}</h3>
           {(dates || node.source) && (
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted">
               {dates && <span className="tnum">{dates}</span>}
-              {dates && node.source && <span className="text-line-strong">&middot;</span>}
+              {dates && node.source && <span className="text-control">&middot;</span>}
               {node.source && <span>from {node.source}</span>}
             </p>
           )}
           {node.type !== "person" && (
-            <button type="button" onClick={remove} disabled={removing} className="mt-3 text-[12px] font-medium text-accent-ink underline underline-offset-4 disabled:opacity-40">
-              {removing ? "Removing..." : "Remove this from my graph"}
+            <button type="button" onClick={remove} disabled={removing} className="mt-3 inline-flex h-8 items-center rounded-control border border-danger px-3 text-[12px] font-semibold text-danger hover:bg-danger-tint disabled:opacity-40">
+              {removing ? "Retracting..." : "Retract this fact"}
             </button>
           )}
-          {removeError && <p role="alert" className="mt-1 text-[12px] text-accent-ink">{removeError}</p>}
+          {removeError && <p role="alert" className="mt-1 text-[12px] text-danger-fg">{removeError}</p>}
         </div>
 
         {isMetric && statement && (
           <div>
-            <div className="mb-2 text-label font-medium uppercase text-muted">Resume bullet it backs</div>
-            <p className="border-l border-ink pl-3 text-body-sm text-ink-2">{statement}</p>
+            <div className="mb-2 text-meta font-medium text-muted">Resume line it backs</div>
+            <p className="rounded-control bg-sunken px-3 py-2 text-body-sm text-ink-2">{statement}</p>
             {(backedBy.length > 0 || evidenced.length > 0) && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {backedBy.map((b) => (
-                  <button key={b.id} type="button" onClick={() => onPick(b.id)} className="rounded-[var(--radius-tag)] border border-line px-1.5 py-[2px] text-[12px] text-ink-2 transition-colors duration-150 hover:border-ink hover:text-ink">
+                  <button key={b.id} type="button" onClick={() => onPick(b.id)} className="rounded-full border border-line px-2 py-[2px] text-[12px] text-ink-2 hover:border-control hover:text-ink">
                     {b.label}
                   </button>
                 ))}
-                {evidenced.map((s) => <span key={s} className="rounded-[var(--radius-tag)] bg-stone px-1.5 py-[2px] text-[12px] text-ink">{s}</span>)}
+                {evidenced.map((s) => <span key={s} className="rounded-full bg-sunken px-2 py-[2px] text-[12px] text-ink">{s}</span>)}
               </div>
             )}
           </div>
@@ -679,25 +679,24 @@ function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Nei
 
         {node.sourceQuote && (
           <div>
-            <div className="mb-2 text-label font-medium uppercase text-muted">Source quote</div>
-            <pre className="whitespace-pre-wrap break-words bg-stone/60 px-3 py-2.5 font-mono text-[12px] leading-[1.6] text-ink-2">{node.sourceQuote}</pre>
+            <div className="mb-2 text-meta font-medium text-muted">Source</div>
+            <p className="whitespace-pre-wrap break-words rounded-control bg-sunken px-3 py-2.5 text-meta text-ink-2">&ldquo;{node.sourceQuote}&rdquo;</p>
           </div>
         )}
 
         <div>
-          <div className="mb-2 flex items-center justify-between text-label font-medium uppercase text-muted">
-            <span>Connections</span>
-            <span className="text-faint tnum">{nbrs.length}</span>
+          <div className="mb-2 flex items-center justify-between text-meta font-medium text-muted">
+            <span>Linked facts</span>
+            <span className="tnum">{nbrs.length}</span>
           </div>
-          {nbrs.length === 0 && <p className="border-t border-line py-2 text-meta text-faint">No connections yet.</p>}
+          {nbrs.length === 0 && <p className="py-2 text-meta text-muted">No links yet.</p>}
           {[...groups].map(([label, list]) => (
             <div key={label} className="mt-3 first:mt-0">
-              <div className="border-b border-line pb-1.5 text-[11px] font-medium text-ink-2">{label} <span className="text-faint tnum">· {list.length}</span></div>
+              <div className="pb-1 text-[12px] font-medium text-ink-2">{label} <span className="text-muted tnum">· {list.length}</span></div>
               <ol>
                 {list.map((n) => (
-                  <li key={n.node.id + n.edgeType + n.dir} className="border-b border-line">
-                    <button type="button" onClick={() => onPick(n.node.id)} className="grid w-full grid-cols-[1.5rem_10px_minmax(0,1fr)] items-center gap-2 py-2 text-left text-meta transition-colors duration-150 hover:bg-stone/50">
-                      <span className="text-label font-medium text-faint tnum">{idx(++row)}</span>
+                  <li key={n.node.id + n.edgeType + n.dir}>
+                    <button type="button" onClick={() => onPick(n.node.id)} className="grid w-full grid-cols-[10px_minmax(0,1fr)] items-center gap-2 rounded-control px-1.5 py-1.5 text-left text-meta hover:bg-sunken">
                       <Swatch type={n.node.type} size={8} />
                       <span className="truncate text-ink" title={n.node.label}>{n.node.label}</span>
                     </button>
@@ -712,6 +711,95 @@ function NodePanel({ node, nbrs, onClose, onPick }: { node: GraphNode; nbrs: Nei
   );
 }
 
+// ---------------------------------------------------------------- list view (the default)
+
+/** Every fact as a row: filter by kind, search, open one to see its source and what it links to, retract it. */
+function FactList({ graph, focus }: { graph: Graph; focus?: string }) {
+  const { byId, adj, typeList } = useIndex(graph);
+  const [type, setType] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<string | null>(focus && byId.has(focus) ? focus : null);
+  const order = (t: string) => { const i = NODE_GROUPS.findIndex((g) => g.type === t); return i === -1 ? 99 : i; };
+  const term = q.trim().toLowerCase();
+  const rows = graph.nodes
+    .filter((n) => n.type !== "person")
+    .filter((n) => !type || n.type === type)
+    .filter((n) => !term || `${n.label} ${n.sourceQuote ?? ""}`.toLowerCase().includes(term))
+    .sort((a, b) => order(a.type) - order(b.type) || String(b.startDate ?? "").localeCompare(String(a.startDate ?? "")) || a.label.localeCompare(b.label));
+  const sel = selected ? byId.get(selected) ?? null : null;
+  const kinds = typeList.filter(([t]) => t !== "person");
+
+  return (
+    <div className={cx("grid grid-cols-1 gap-4", sel && "lg:grid-cols-[minmax(0,1fr)_340px]")}>
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-0 flex-1 basis-56">
+            <span className="sr-only">Search facts</span>
+            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search facts and their sources" className={inputClass} />
+          </label>
+        </div>
+        <div role="group" aria-label="Kind of fact" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
+          <button type="button" aria-pressed={type === null} onClick={() => setType(null)} className={cx("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium", type === null ? "border-ink bg-ink text-on-ink" : "border-line bg-surface text-ink-2 hover:border-control")}>
+            All <span className="font-normal tnum">{graph.nodes.filter((n) => n.type !== "person").length}</span>
+          </button>
+          {kinds.map(([t, c]) => (
+            <button key={t} type="button" aria-pressed={type === t} onClick={() => setType(type === t ? null : t)} className={cx("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium", type === t ? "border-ink bg-ink text-on-ink" : "border-line bg-surface text-ink-2 hover:border-control")}>
+              <Swatch type={t} size={8} /> {groupLabel(t)} <span className="font-normal tnum">{c}</span>
+            </button>
+          ))}
+        </div>
+        {rows.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line px-4 py-6 text-body-sm text-muted">No facts match.</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+            {rows.map((n) => {
+              const d = dateRange(n);
+              const links = adj.get(n.id)?.length ?? 0;
+              return (
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(n.id)}
+                    aria-pressed={selected === n.id}
+                    className={cx("flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-sunken/50", selected === n.id && "bg-sunken")}
+                  >
+                    <span className="mt-1.5"><Swatch type={n.type} size={9} /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-body-sm font-medium text-ink">{n.label}</span>
+                      <span className="mt-0.5 block truncate text-meta text-muted">
+                        <span className="capitalize">{typeName(n.type)}</span>{d ? ` · ${d}` : ""}{links ? ` · ${links} link${links === 1 ? "" : "s"}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      {sel && <NodePanel inline node={sel} nbrs={adj.get(sel.id) ?? []} onClose={() => setSelected(null)} onPick={(id) => setSelected(id)} />}
+    </div>
+  );
+}
+
+/** The career graph page body: a list by default, a map to explore. */
+export function CareerGraph({ graph, focus }: { graph: Graph; focus?: string }) {
+  const [view, setView] = useState<"list" | "map">("list");
+  if (graph.nodes.length === 0) return <GraphEmpty />;
+  return (
+    <div className="flex flex-col gap-4">
+      <div role="tablist" aria-label="View" className="inline-flex w-fit gap-1 rounded-control bg-sunken p-1">
+        {(["list", "map"] as const).map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className={cx("h-8 rounded-[6px] px-4 text-[13px] font-medium", view === v ? "bg-surface text-ink shadow-[0_1px_2px_rgba(43,39,34,0.12)]" : "text-ink-2 hover:text-ink")}>
+            {v === "list" ? "List" : "Map"}
+          </button>
+        ))}
+      </div>
+      {view === "list" ? <FactList graph={graph} focus={focus} /> : <GraphView graph={graph} focus={focus} />}
+    </div>
+  );
+}
+
 function GraphEmpty() {
   const steps = [
     ["Paste your resume", "Drop the plain text below. Roles, companies, skills and metrics become nodes, each with the line it came from.", "#teach"],
@@ -719,16 +807,17 @@ function GraphEmpty() {
     ["Review", "Come back here to check every node and its source. Tailored resumes only use what this graph can back.", null],
   ] as const;
   return (
-    <Frame className="flex min-h-[640px] flex-col justify-center px-6 py-12 sm:px-12">
-      <IndexLabel marker="hollow">Empty graph</IndexLabel>
-      <h3 className="mt-4 max-w-xl font-display text-[1.875rem] font-medium leading-[1.04] tracking-[-0.035em] text-ink sm:text-display-lg">Nothing here yet.<br />Three steps to fill it.</h3>
-      <ol className="mt-10 grid gap-0 border-t border-line md:grid-cols-3">
-        {steps.map(([t, d, href], i) => (
-          <li key={t} className={cx("border-b border-line py-6 md:border-b-0 md:py-8", i > 0 && "md:border-l md:pl-6", i < 2 && "md:pr-6")}>
-            <span className="font-display text-[44px] font-medium leading-none tracking-[-0.04em] text-faint tnum">{idx(i + 1)}</span>
-            <p className="mt-4 text-title font-medium text-ink">{t}</p>
-            <p className="mt-1.5 text-body-sm text-muted">{d}</p>
-            {href && <a href={href} className="mt-4 inline-flex text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">Go to step &darr;</a>}
+    <Frame surface="none" className="flex flex-col gap-5 px-6 py-8">
+      <div>
+        <p className="text-title font-semibold text-ink">Your career graph is empty</p>
+        <p className="mt-1 max-w-prose text-body-sm text-muted">Nori writes resumes and answers only from facts here, so start by giving it some.</p>
+      </div>
+      <ol className="grid gap-3 md:grid-cols-3">
+        {steps.map(([t, d, href]) => (
+          <li key={t} className="rounded-card bg-sunken p-4">
+            <p className="text-body-sm font-semibold text-ink">{t}</p>
+            <p className="mt-1 text-meta text-muted">{d}</p>
+            {href && <a href={href} className="mt-2 inline-flex text-meta font-medium text-accent underline-offset-4 hover:underline">Start here</a>}
           </li>
         ))}
       </ol>
@@ -781,39 +870,34 @@ export function GraphInputs() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-12 gap-4 sm:gap-6">
-        <Panel index="01" title="Tell the agent a fact" aside="Stored with its source quote" className="col-span-12 lg:col-span-7">
-          <form onSubmit={sendFact} className="flex h-full flex-col gap-4">
-            <Field label="Anything it should know" hint="Metrics, projects, tools, side work.">
-              <textarea
-                className={cx(inputClass, "resize-none")}
-                rows={5}
-                value={fact}
-                onChange={(e) => setFact(e.target.value)}
-                placeholder="At Lumen I cut our CI time by almost half by parallelising Playwright suites."
-              />
-            </Field>
-            <div className="mt-auto flex justify-end border-t border-line pt-4">
-              <Button type="submit" variant="primary" icon={Plus} disabled={busy !== null || !fact.trim()}>{busy === "fact" ? "Adding..." : "Add to graph"}</Button>
-            </div>
-          </form>
-        </Panel>
-        <Panel index="02" title="Paste your resume" aside={replaceOld ? "Replaces your last resume" : "Merges into the graph"} className="col-span-12 lg:col-span-5">
-          <form onSubmit={sendResume} className="flex h-full flex-col gap-4">
-            <Field label="Resume text" hint="Plain text. Re-ingesting never duplicates.">
-              <textarea className={cx(inputClass, "resize-none font-mono text-[12.5px]")} rows={5} value={resumeText} onChange={(e) => setResumeText(e.target.value)} placeholder="Paste the full text of your resume" />
-            </Field>
-            <label className="flex items-start gap-2 text-[13px] text-ink">
-              <input type="checkbox" className="mt-0.5" checked={replaceOld} onChange={(e) => setReplaceOld(e.target.checked)} />
-              <span>Replace what my earlier resume said. Facts you added in chat stay. Untick to merge two resumes.</span>
-            </label>
-            <div className="mt-auto flex justify-end border-t border-line pt-4">
-              <Button type="submit" icon={FileUp} disabled={busy !== null || !resumeText.trim()}>{busy === "resume" ? "Ingesting..." : "Ingest resume"}</Button>
-            </div>
-          </form>
-        </Panel>
-      </div>
+    <div id="teach" className="flex scroll-mt-20 flex-col gap-3">
+      <form onSubmit={sendFact} className="flex flex-col gap-2 sm:flex-row">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">Add a fact</span>
+          <input
+            className={inputClass}
+            value={fact}
+            onChange={(e) => setFact(e.target.value)}
+            placeholder="Tell Nori something true, e.g. At Lumen I cut CI time by almost half"
+          />
+        </label>
+        <Button type="submit" variant="primary" icon={Plus} disabled={busy !== null || !fact.trim()}>{busy === "fact" ? "Adding..." : "Add fact"}</Button>
+      </form>
+      <details className="group">
+        <summary className="inline-flex cursor-pointer items-center gap-1 text-meta font-medium text-accent underline-offset-4 hover:underline">
+          <Icon icon={FileUp} size={14} /> Or paste a whole resume
+        </summary>
+        <form onSubmit={sendResume} className="mt-3 flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
+          <Field label="Resume text" hint="Plain text. Pasting the same resume again never duplicates facts.">
+            <textarea className={cx(inputClass, "resize-y text-meta")} rows={6} value={resumeText} onChange={(e) => setResumeText(e.target.value)} placeholder="Paste the full text of your resume" />
+          </Field>
+          <label className="flex items-start gap-2 text-meta text-ink">
+            <input type="checkbox" className="mt-0.5" checked={replaceOld} onChange={(e) => setReplaceOld(e.target.checked)} />
+            <span>Replace what my earlier resume said. Facts you added yourself stay. Untick to merge two resumes.</span>
+          </label>
+          <div><Button type="submit" variant="secondary" icon={FileUp} disabled={busy !== null || !resumeText.trim()}>{busy === "resume" ? "Reading..." : "Read resume"}</Button></div>
+        </form>
+      </details>
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
     </div>
   );

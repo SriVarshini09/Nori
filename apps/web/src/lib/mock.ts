@@ -436,6 +436,8 @@ export function createApplication(jobId: string): Application {
 export function eventScript(status: ApplicationStatus): { step: string; message: string; level?: "info" | "warn" | "error" }[] {
   const idx = Math.max(0, STEP_ORDER.indexOf(status));
   const gates = new Set(["resume_review", "form_review"]);
+  // At a gate the agent waits for the person; the demo must not play past an approval nobody gave.
+  if (gates.has(status)) return [];
   const out: { step: string; message: string }[] = [];
   for (let i = idx + 1; i < STEP_ORDER.length; i++) {
     out.push({ step: STEP_ORDER[i], message: STEP_MESSAGES[STEP_ORDER[i]] });
@@ -544,6 +546,9 @@ export function agentStatus(): AgentStatus {
     autoApprove: me.profile.resumeAutoApprove,
     reviewBeforeSubmit: me.profile.reviewBeforeSubmit,
     channels: channels.map((c) => ({ kind: c.kind, address: c.address })),
+    // Demo mode never sends anything, so it reports what a dry-run server reports.
+    liveSubmit: false,
+    autopilotTrust: { approved: 1, needed: 3 },
     mode: modelSettings().mode,
     lanes: laneState.map((l, i) => ({ id: l.id, name: l.name, enabled: l.enabled, queuedToday: l.enabled ? [2, 1, 0][i] ?? 0 : 0 })),
     awaitingReview: [

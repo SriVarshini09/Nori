@@ -67,17 +67,17 @@ export function ResumeLibrary({ docs, options }: { docs: ResumeDocSummary[]; opt
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-6" aria-label="Your resumes">
           {docs.map((d) => (
-            <li key={d.id} className="flex flex-col rounded-2xl border border-line bg-paper p-4">
+            <li key={d.id} className="flex flex-col rounded-card border border-line bg-surface p-4">
               <Link href={`/resume/${d.id}`} className="block rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink" aria-label={`Open ${d.name}`}>
                 <Thumb id={d.id} version={d.version} />
               </Link>
               <div className="mt-4 flex items-start justify-between gap-2">
-                <Link href={`/resume/${d.id}`} className="min-w-0 font-display text-title font-medium text-ink hover:underline">{d.name}</Link>
+                <Link href={`/resume/${d.id}`} className="min-w-0 text-title font-semibold text-ink hover:underline">{d.name}</Link>
                 {d.isDefault && <Pill mark="ink">Default</Pill>}
               </div>
               <p className="mt-1 text-meta text-muted">{templateName(d.templateId)} · {SOURCE[d.source]}</p>
               <p className="text-meta text-muted tnum">{d.stats.roles} roles · {d.stats.bullets} bullets · {d.stats.words} words</p>
-              <p className="text-[12px] text-faint">Edited {new Date(d.updatedAt).toLocaleDateString()} · version {d.version}</p>
+              <p className="text-[12px] text-muted">Edited {new Date(d.updatedAt).toLocaleDateString()} · version {d.version}</p>
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
                 {!d.isDefault && <Button type="button" variant="secondary" icon={Star} disabled={busy !== null} onClick={() => void run(`def-${d.id}`, async () => { await api.setDefaultResumeDoc(d.id); router.refresh(); })}>Make default</Button>}
                 <Button type="button" variant="secondary" icon={Copy} disabled={busy !== null} onClick={() => void run(`dup-${d.id}`, async () => { await api.duplicateResumeDoc(d.id); router.refresh(); })}>Duplicate</Button>

@@ -7,23 +7,21 @@ import { Button, Frame, buttonClass } from "@/components/ui";
 
 const DEV = process.env.NODE_ENV !== "production";
 
+/** What happened, what was not affected, what to do. */
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => { console.error("[nori] page error", error.digest ?? "", error.message); }, [error]);
   return (
-    <Frame className="mx-auto mt-6 max-w-2xl p-6 text-center sm:mt-16 sm:p-10">
-      <span className="mx-auto flex w-fit rotate-[-6deg] opacity-90"><NoriMark size={72} /></span>
-      <h1 className="mt-5 font-display text-display-md font-medium text-ink">That did not load.</h1>
-      <p className="mx-auto mt-3 max-w-md text-body-sm text-ink-2" role="alert">
-        {DEV && error.message ? error.message : "Nori could not reach the server just now. Your data is safe. Try again in a moment."}
+    <Frame className="mx-auto mt-6 flex max-w-xl flex-col items-start gap-3 p-6 sm:mt-16 sm:p-8">
+      <NoriMark size={44} />
+      <p className="text-meta text-muted">Error</p>
+      <h1 className="text-display-md font-semibold text-ink">Something broke on our side</h1>
+      <p className="text-body-sm text-ink-2" role="alert">
+        {DEV && error.message ? error.message : "Nothing was sent, and your data is safe. Try again in a moment."}
       </p>
-      {error.digest && <p className="mt-2 text-meta text-muted">Reference: {error.digest}</p>}
-      {DEV && (
-        <p className="mt-2 text-meta text-muted">
-          If the API is not running, start apps/api on port 4000 or set NEXT_PUBLIC_USE_MOCK=1 in apps/web/.env.local.
-        </p>
-      )}
-      <div className="mt-7 flex flex-wrap justify-center gap-3">
-        <Button variant="primary" arrow onClick={reset}>Try again</Button>
+      {error.digest && <p className="text-meta text-muted">If it keeps happening, quote reference {error.digest}.</p>}
+      {DEV && <p className="text-meta text-muted">If the API is not running, start apps/api on port 4000 or set NEXT_PUBLIC_USE_MOCK=1 in apps/web/.env.local.</p>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button variant="primary" onClick={reset}>Try again</Button>
         <Link href="/" className={buttonClass({ variant: "secondary" })}>Back to the start</Link>
       </div>
     </Frame>

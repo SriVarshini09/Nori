@@ -1,30 +1,25 @@
 import type { Metadata } from "next";
 import { api } from "@/lib/api";
 import { ExportGraphButton } from "@/components/ExportGraphButton";
-import { GraphInputs, GraphView } from "@/components/GraphView";
-import { PageHeader, SectionHeader } from "@/components/ui";
+import { CareerGraph, GraphInputs } from "@/components/GraphView";
+import { Notice, PageHeader } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Career graph" };
 
 export default async function GraphPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const node = Array.isArray(sp.node) ? sp.node[0] : sp.node;
-  const graph = await api.graph();
+  const graph = await api.graph().catch(() => null);
+  const facts = graph?.nodes.filter((n) => n.type !== "person").length ?? 0;
   return (
-    <div>
+    <div className="flex flex-col gap-5">
       <PageHeader
-        label="Career graph"
-        title={<>Everything the<br />agent knows.</>}
-        subtitle="Every resume line traces back to a node here."
+        title="Career graph"
+        subtitle={graph ? `${facts} fact${facts === 1 ? "" : "s"}. Every resume line and every answer Nori writes traces back to one of these.` : undefined}
         actions={<ExportGraphButton />}
       />
-      <section aria-label="Graph">
-        <GraphView key={node ?? "none"} graph={graph} focus={node} />
-      </section>
-      <section id="teach" className="mt-20 scroll-mt-20 sm:mt-24">
-        <SectionHeader index="02" label="Teach" size="md" title={<>Add a fact, or<br />paste a resume.</>} />
-        <div className="mt-8"><GraphInputs /></div>
-      </section>
+      <GraphInputs />
+      {graph ? <CareerGraph key={node ?? "none"} graph={graph} focus={node} /> : <Notice tone="red">Cannot load your graph right now. Try again in a moment.</Notice>}
     </div>
   );
 }

@@ -170,11 +170,11 @@ export function ResumeStudio(props: Props) {
           <Icon icon={ArrowLeft} />{isDoc ? "All resumes" : "Back to the review"}
         </Link>
         {isDoc ? (
-          <input aria-label="Resume name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className={cx(inputClass, "h-10 max-w-sm font-display text-title")} />
+          <input aria-label="Resume name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className={cx(inputClass, "h-10 max-w-sm text-title")} />
         ) : (
-          <h1 className="font-display text-title font-medium text-ink">Edit resume for {(props as AppProps).jobTitle} at {(props as AppProps).companyName}</h1>
+          <h1 className="text-title font-semibold text-ink">Edit resume for {(props as AppProps).jobTitle} at {(props as AppProps).companyName}</h1>
         )}
-        <span role="status" aria-live="polite" className={cx("text-meta", save.kind === "error" || save.kind === "conflict" ? "text-accent-ink" : "text-muted")}>{status}</span>
+        <span role="status" aria-live="polite" className={cx("text-meta", save.kind === "error" || save.kind === "conflict" ? "text-danger-fg" : "text-muted")}>{status}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {isDoc && isDefault && <Pill mark="ink">Default</Pill>}
           {isDoc && !isDefault && <Button type="button" variant="secondary" icon={Star} disabled={busy !== null} onClick={() => run("default", async () => { await api.setDefaultResumeDoc(docId); setIsDefault(true); setNotice("This is now the resume the agent starts from and styles tailored resumes after."); })}>Make default</Button>}
@@ -188,7 +188,7 @@ export function ResumeStudio(props: Props) {
       </div>
 
       {save.kind === "conflict" && (
-        <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-accent bg-paper px-4 py-3 text-body-sm text-ink">
+        <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-control border border-accent bg-surface px-4 py-3 text-body-sm text-ink">
           <span>{save.message}</span>
           <Button type="button" variant="secondary" onClick={() => window.location.reload()}>Reload</Button>
         </div>
@@ -198,7 +198,7 @@ export function ResumeStudio(props: Props) {
 
       <div className="mb-4 flex gap-2 lg:hidden" role="tablist" aria-label="Edit or preview">
         {(["edit", "preview"] as const).map((p) => (
-          <button key={p} type="button" role="tab" aria-selected={pane === p} onClick={() => setPane(p)} className={cx("h-9 rounded-full border px-4 text-[13px] font-medium", pane === p ? "border-ink bg-ink text-paper" : "border-line text-ink")}>{p === "edit" ? "Edit" : "Preview"}</button>
+          <button key={p} type="button" role="tab" aria-selected={pane === p} onClick={() => setPane(p)} className={cx("h-9 rounded-full border px-4 text-[13px] font-medium", pane === p ? "border-ink bg-ink text-on-ink" : "border-line text-ink")}>{p === "edit" ? "Edit" : "Preview"}</button>
         ))}
       </div>
 
@@ -206,7 +206,7 @@ export function ResumeStudio(props: Props) {
         <div className={cx("min-w-0 space-y-5", pane === "preview" && "hidden lg:block")}>
           <div role="tablist" aria-label="Resume sections" className="flex flex-wrap gap-2">
             {(isDoc ? (["content", "design", "history"] as const) : (["content", "design"] as const)).map((t) => (
-              <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx("h-9 rounded-full border px-4 text-[13px] font-medium capitalize", tab === t ? "border-ink bg-ink text-paper" : "border-line text-ink hover:border-ink")}>{t}</button>
+              <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx("h-9 rounded-full border px-4 text-[13px] font-medium capitalize", tab === t ? "border-ink bg-ink text-on-ink" : "border-line text-ink hover:border-ink")}>{t}</button>
             ))}
           </div>
 
@@ -226,12 +226,12 @@ export function ResumeStudio(props: Props) {
           {tab === "design" && (
             <div className="space-y-6">
               <section aria-labelledby="h-template">
-                <h2 id="h-template" className="mb-3 font-display text-title font-medium text-ink">Template</h2>
+                <h2 id="h-template" className="mb-3 text-title font-semibold text-ink">Template</h2>
                 <TemplateGallery templates={options.templates} value={templateId} onPick={pickTemplate} />
                 {!template.atsSafe && <p className="mt-3 text-meta text-muted">Two-column layouts can scramble the reading order in applicant tracking systems. Use this one for people, not portals.</p>}
               </section>
               <section aria-labelledby="h-theme">
-                <h2 id="h-theme" className="mb-3 font-display text-title font-medium text-ink">Style</h2>
+                <h2 id="h-theme" className="mb-3 text-title font-semibold text-ink">Style</h2>
                 <ThemePanel theme={theme} template={template} options={options} onChange={(p) => setTheme((t) => ({ ...t, ...p }))} onReset={() => setTheme(template.theme)} />
               </section>
             </div>
@@ -244,8 +244,8 @@ export function ResumeStudio(props: Props) {
 
         <div className={cx("min-w-0 space-y-6 lg:sticky lg:top-4 lg:self-start", pane === "edit" && "hidden lg:block")}>
           <PreviewPane html={preview?.html ?? null} pages={preview?.pages ?? null} target={preview?.target ?? theme.pages} loading={previewLoading} error={previewError} />
-          <section aria-labelledby="h-ats" className="rounded-2xl border border-line bg-paper p-4 sm:p-5">
-            <h2 id="h-ats" className="mb-3 flex items-center gap-2 font-display text-title font-medium text-ink"><Icon icon={FileText} />ATS check</h2>
+          <section aria-labelledby="h-ats" className="rounded-card border border-line bg-surface p-4 sm:p-5">
+            <h2 id="h-ats" className="mb-3 flex items-center gap-2 text-title font-semibold text-ink"><Icon icon={FileText} />ATS check</h2>
             <AtsPanel score={preview?.atsScore ?? null} checks={preview?.atsChecks ?? []} />
           </section>
         </div>

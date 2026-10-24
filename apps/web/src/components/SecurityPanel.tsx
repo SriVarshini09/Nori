@@ -119,9 +119,9 @@ export function SecurityPanel({ user }: { user: User }) {
   if (USE_MOCK) return <Frame className="p-5 sm:p-6"><p className="text-body-sm text-muted">Password and device controls need the live API (demo mode has no real account).</p></Frame>;
   return (
     <div className="space-y-6">
-      <Frame className="p-5 sm:p-6"><h3 className="mb-4 text-label font-medium uppercase text-muted">Email</h3><EmailStatus user={user} /></Frame>
-      <Frame className="p-5 sm:p-6"><h3 className="mb-4 text-label font-medium uppercase text-muted">Password</h3><ChangePassword /></Frame>
-      <Frame className="p-5 sm:p-6"><h3 className="mb-4 text-label font-medium uppercase text-muted">Signed-in devices</h3><Sessions /></Frame>
+      <Frame className="p-5 sm:p-6"><h3 className="mb-4 text-meta font-medium text-muted">Email</h3><EmailStatus user={user} /></Frame>
+      <Frame className="p-5 sm:p-6"><h3 className="mb-4 text-meta font-medium text-muted">Password</h3><ChangePassword /></Frame>
+      <Frame className="p-5 sm:p-6"><h3 className="mb-4 text-meta font-medium text-muted">Signed-in devices</h3><Sessions /></Frame>
     </div>
   );
 }

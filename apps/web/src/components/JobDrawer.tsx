@@ -4,42 +4,42 @@ import { STATUS_LABEL } from "@/lib/format";
 import type { ApplicationStatus, JobDetail } from "@/lib/types";
 import { Accordion } from "./Accordion";
 import { ApplyButton } from "./ApplyButton";
-import { cx, idx } from "./cx";
+import { cx } from "./cx";
 import { DrawerKeys } from "./DrawerKeys";
-import { Frame } from "./Frame";
 import { Icon } from "./Icon";
-import { IndexLabel, Square } from "./IndexLabel";
 import { MatchRing } from "./MatchRing";
+import { Monogram } from "./Monogram";
 import { ResearchPanel } from "./ResearchPanel";
 import { STATUS_MARK } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
-import { monogram, placeName, postedIso, seniorityKey, seniorityLabel, sourceLabel, workMode } from "./jobMeta";
+import { placeName, postedIso, seniorityKey, seniorityLabel, sourceLabel, workMode } from "./jobMeta";
 
-function Block({ n, title, aside, children }: { n: number; title: string; aside?: React.ReactNode; children: React.ReactNode }) {
+function Block({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <Frame as="section" className="p-5 sm:p-6">
-      <header className="mb-4 flex items-center justify-between gap-3">
-        <h3><IndexLabel index={idx(n)} marker tone="ink">{title}</IndexLabel></h3>
-        {aside && <span className="text-[12px] text-faint tnum">{aside}</span>}
+    <section className="rounded-card border border-line bg-surface p-4 sm:p-5">
+      <header className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-body-sm font-semibold text-ink">{title}</h3>
+        {aside && <span className="text-[12px] text-muted tnum">{aside}</span>}
       </header>
       {children}
-    </Frame>
+    </section>
   );
 }
 
-const sub = "mb-2 text-label font-medium uppercase text-muted";
-const pill = "inline-flex h-[22px] items-center rounded-full px-2 text-[11.5px] font-medium leading-none";
-
-function Chip({ name, matched, note }: { name: string; matched: boolean; note?: string }) {
+function Chip({ name, matched, required }: { name: string; matched: boolean; required?: boolean }) {
   return (
-    <span className={cx("inline-flex items-center gap-1 rounded-[var(--radius-tag)] px-1.5 py-[2px] text-[12px] leading-[1.35]", matched ? "bg-stone text-ink" : "border border-line text-muted")}>
-      <span className={matched ? "" : "line-through decoration-faint decoration-1"}>{name}</span>
-      {note && <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-accent-ink no-underline">{note}</span>}
+    <span className={cx("inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[12px]", matched ? "bg-sunken text-ink" : "border border-dashed border-control text-muted")}>
+      {name}
+      {required && !matched && <span className="text-[11px] font-semibold text-ink-2">required</span>}
+      <span className="sr-only">{matched ? ", in your graph" : ", missing"}</span>
     </span>
   );
 }
 
-/** Server-rendered job detail drawer in the card language; `closeHref` is the board URL without ?job=. */
+/**
+ * Job detail as a side drawer (a full-screen sheet on phones). Server-rendered; `closeHref` is the list URL
+ * without ?job=. Escape closes it and focus returns to where it was.
+ */
 export function JobDrawer({ detail, closeHref, application }: {
   detail: JobDetail; closeHref: string; application?: { id: string; status: ApplicationStatus } | null;
 }) {
@@ -53,125 +53,72 @@ export function JobDrawer({ detail, closeHref, application }: {
   const mode = workMode(job);
   const place = placeName(job.location);
   const sen = seniorityKey(job);
-  let n = 0;
+  const waiting = application ? STATUS_MARK[application.status] === "accent" : false;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`${job.title} at ${job.companyName}`}>
       <DrawerKeys closeHref={closeHref} focusId="job-drawer-close" />
-      <Link href={closeHref} aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-ink/25" scroll={false} />
-      <aside className="relative flex h-full w-full max-w-[640px] flex-col overflow-y-auto border-l border-line bg-canvas">
-        <header className="sticky top-0 z-10 border-b border-line bg-canvas px-5 pb-5 pt-4 sm:px-8">
+      <Link href={closeHref} aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-ink/30" scroll={false} />
+      <aside className="relative flex h-full w-full max-w-[600px] flex-col overflow-y-auto border-l border-line bg-bg">
+        <header className="sticky top-0 z-10 border-b border-line bg-bg px-4 pb-4 pt-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center bg-ink font-display text-[12px] font-medium tracking-[0.04em] text-paper">{monogram(job.companyName)}</span>
-            <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-ink">
-              {job.companyName}
-              <span className="ml-2 font-normal text-faint">Posted <TimeAgo iso={postedIso(job)} /></span>
+            <Monogram name={job.companyName} size={32} />
+            <span className="min-w-0 flex-1 truncate text-body-sm text-ink-2">
+              {job.companyName} <span className="text-muted">· posted <TimeAgo iso={postedIso(job)} /></span>
             </span>
-            <Link id="job-drawer-close" href={closeHref} scroll={false} aria-label="Close drawer" className="inline-flex h-8 shrink-0 items-center gap-2 rounded-full border border-line px-3 text-[12px] font-medium uppercase tracking-[0.09em] text-ink transition-colors duration-150 hover:border-ink">
-              <Icon icon={X} /> Close
+            <Link id="job-drawer-close" href={closeHref} scroll={false} aria-label="Close job details" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-ink-2 hover:bg-sunken hover:text-ink">
+              <Icon icon={X} size={18} />
             </Link>
           </div>
-          <h2 className="mt-4 font-display text-[1.625rem] font-medium leading-[1.06] tracking-[-0.03em] text-ink sm:text-display-md">{job.title}</h2>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {place && <span className={cx(pill, "bg-stone text-ink-2")}>{place}</span>}
-            <span className={cx(pill, "bg-stone text-ink-2")}>{mode}</span>
-            {sen && <span className={cx(pill, "bg-stone text-ink-2")}>{seniorityLabel(sen)}</span>}
-            <span className={cx(pill, "border border-line text-muted")}>{sourceLabel(job.atsType)}</span>
+          <h2 className="mt-3 text-display-md font-semibold text-ink">{job.title}</h2>
+          <p className="mt-1 text-meta text-muted">
+            {[place ?? (mode === "Remote" ? "Anywhere" : null), mode, sen ? seniorityLabel(sen) : null, sourceLabel(job.atsType)].filter(Boolean).join(" · ")}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {application ? (
+              <Link href={`/applications/${application.id}`} className={cx("inline-flex h-10 items-center gap-2 rounded-control px-4 text-[13px] font-semibold", waiting ? "bg-attn-tint text-attn-fg ring-1 ring-inset ring-attn" : "bg-sunken text-ink")}>
+                {STATUS_LABEL[application.status] ?? application.status} <Icon icon={ArrowRight} size={14} />
+              </Link>
+            ) : (
+              <ApplyButton jobId={job.id} size="md" />
+            )}
+            <a href={job.applyUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-1.5 rounded-control border border-control px-4 text-[13px] font-semibold text-ink hover:bg-sunken">
+              Open posting <Icon icon={ExternalLink} size={14} />
+            </a>
           </div>
         </header>
 
-        <div className="space-y-4 px-5 py-6 sm:px-8">
-          <Frame className="p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <MatchRing score={match?.score} size={64} />
-                <div>
-                  <div className="text-label font-medium uppercase text-muted">Match</div>
-                  <div className="mt-1 text-body-sm text-ink tnum">
-                    {match ? `${matchedUnique.length} matched, ${new Set(missing.map((m) => m.requirement)).size} missing` : "Not scored yet"}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <a href={job.applyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-meta font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
-                  Posting <Icon icon={ExternalLink} />
-                </a>
-                {application ? (
-                  <Link href={`/applications/${application.id}`} className="inline-flex h-9 items-center gap-2 rounded-full bg-stone px-3.5 text-[12.5px] font-medium text-ink transition-colors duration-150 hover:bg-stone-2">
-                    <Square tone={STATUS_MARK[application.status] ?? "muted"} size={6} />
-                    Applied &middot; {STATUS_LABEL[application.status] ?? application.status} <Icon icon={ArrowRight} />
-                  </Link>
-                ) : (
-                  <ApplyButton jobId={job.id} size="md" />
-                )}
-              </div>
-            </div>
-            {req?.summary && <p className="mt-5 border-t border-line pt-4 text-body text-ink-2">{/[.!?)"”]$/.test(req.summary.trim()) ? req.summary : `${req.summary.trim().replace(/\s+\S*$/, "")}…`}</p>}
-          </Frame>
-
-          <Block n={++n} title="Requirements" aside={req ? `${required.length} required · ${nice.length} nice` : undefined}>
-            {req ? (
-              <div className="space-y-5">
-                <dl className="grid grid-cols-3 border-y border-line text-body-sm">
-                  {[["Seniority", sen ? seniorityLabel(sen) : "–"], ["Min years", req.yearsMin ?? "–"], ["Family", req.roleFamily || "–"]].map(([k, v], i) => (
-                    <div key={String(k)} className={i > 0 ? "border-l border-line py-3 pl-4" : "py-3"}>
-                      <dt className="text-label font-medium uppercase text-muted">{k}</dt>
-                      <dd className="mt-1 capitalize text-ink tnum">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-                {[["Required", required], ["Nice to have", nice]].map(([label, list]) => (
-                  <div key={label as string}>
-                    <div className={sub}>{label as string}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(list as typeof required).length === 0 && <span className="text-meta text-faint">None extracted</span>}
-                      {(list as typeof required).map((s) => <Chip key={s.name} name={s.name} matched={matchedSet.has(s.name.toLowerCase())} />)}
-                    </div>
-                  </div>
-                ))}
-                {req.disqualifiers.length > 0 && (
-                  <p className="flex items-start gap-2 text-meta text-ink"><span aria-hidden="true" className="mt-[6px] h-[6px] w-[6px] shrink-0 bg-accent" />Watch out: {req.disqualifiers.join("; ")}</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-body-sm text-muted">Requirements have not been extracted yet.</p>
-            )}
-          </Block>
-
-          <Block n={++n} title="Why this match" aside={match ? `${match.explanation.reasons.length} reasons` : undefined}>
+        <div className="flex flex-col gap-4 px-4 py-5 sm:px-6">
+          <Block title="Match" aside={match ? `${matchedUnique.length} matched, ${new Set(missing.map((m) => m.requirement)).size} missing` : undefined}>
             {match ? (
-              <div className="space-y-6 text-body-sm">
-                <ol className="border-t border-line">
-                  {match.explanation.reasons.map((r, i) => (
-                    <li key={r + i} className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 border-b border-line py-2.5">
-                      <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>
-                      <span className="text-ink-2">{r}</span>
-                    </li>
-                  ))}
-                </ol>
-                <div>
-                  <div className={sub}>Matched &middot; {matchedUnique.length}</div>
-                  <ul className="border-t border-line">
-                    {matchedUnique.map((m) => (
-                      <li key={m.requirement + m.nodeId} className="grid gap-x-4 gap-y-1 border-b border-line py-2.5 sm:grid-cols-[9rem_minmax(0,1fr)]">
-                        <span><Chip name={m.requirement.length > 40 ? `${m.requirement.slice(0, 38)}…` : m.requirement} matched /></span>
-                        <Link href={`/graph?node=${encodeURIComponent(m.nodeId)}`} className="text-meta text-ink-2 underline decoration-line underline-offset-4 hover:decoration-ink">
-                          {m.label}
-                        </Link>
-                      </li>
-                    ))}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-4">
+                  <MatchRing score={match.score} size={56} />
+                  <ul className="flex min-w-0 flex-col gap-1 text-body-sm text-ink-2">
+                    {match.explanation.reasons.slice(0, 4).map((r, i) => <li key={r + i}>{r}</li>)}
                   </ul>
                 </div>
+                {matchedUnique.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-meta font-medium text-ink">Has, from your graph</p>
+                    <ul className="flex flex-col divide-y divide-line">
+                      {matchedUnique.map((m) => (
+                        <li key={m.requirement + m.nodeId} className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5 text-meta">
+                          <span className="text-ink">{m.requirement}</span>
+                          <Link href={`/graph?node=${encodeURIComponent(m.nodeId)}`} className="text-accent underline-offset-4 hover:underline">{m.label}</Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div>
-                  <div className={sub}>Missing &middot; {missing.length}</div>
+                  <p className="mb-1.5 text-meta font-medium text-ink">Missing</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {missing.length === 0 && <span className="text-meta text-faint">Nothing missing</span>}
-                    {missing.map((m) => (
-                      <Chip key={m.requirement} name={m.requirement.length > 48 ? `${m.requirement.slice(0, 46)}…` : m.requirement} matched={false} note={m.required ? "req" : undefined} />
-                    ))}
+                    {missing.length === 0 && <span className="text-meta text-muted">Nothing missing.</span>}
+                    {missing.map((m) => <Chip key={m.requirement} name={m.requirement.length > 48 ? `${m.requirement.slice(0, 46)}…` : m.requirement} matched={false} required={m.required} />)}
                   </div>
                   {missing.length > 0 && (
-                    <p className="mt-3 text-meta text-muted">Have experience with these? <Link href="/graph" className="text-ink underline decoration-line-strong underline-offset-4">Tell the agent a fact</Link> and the score updates.</p>
+                    <p className="mt-2 text-meta text-muted">Have one of these? <Link href="/graph" className="font-medium text-accent underline-offset-4 hover:underline">Add it as a fact</Link> and the score updates. Nori never claims it for you.</p>
                   )}
                 </div>
               </div>
@@ -180,15 +127,43 @@ export function JobDrawer({ detail, closeHref, application }: {
             )}
           </Block>
 
-          <Block n={++n} title={`Company research${company ? ` · ${company.name}` : ""}`} aside={company?.research ? `${company.research.citations.length} sources` : undefined}>
+          <Block title="Requirements" aside={req ? `${required.length} required, ${nice.length} nice to have` : undefined}>
+            {req ? (
+              <div className="flex flex-col gap-4">
+                {req.summary && <p className="text-body-sm text-ink-2">{req.summary}</p>}
+                <dl className="grid grid-cols-3 gap-2">
+                  {[["Level", sen ? seniorityLabel(sen) : "Not stated"], ["Years", req.yearsMin ?? "Not stated"], ["Family", req.roleFamily || "Not stated"]].map(([k, v]) => (
+                    <div key={String(k)} className="rounded-control bg-sunken px-3 py-2">
+                      <dt className="text-[12px] text-muted">{k}</dt>
+                      <dd className="text-body-sm capitalize text-ink tnum">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {([["Required", required], ["Nice to have", nice]] as const).map(([label, list]) => (
+                  <div key={label}>
+                    <p className="mb-1.5 text-meta font-medium text-ink">{label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {list.length === 0 && <span className="text-meta text-muted">None found in the posting.</span>}
+                      {list.map((s) => <Chip key={s.name} name={s.name} matched={matchedSet.has(s.name.toLowerCase())} />)}
+                    </div>
+                  </div>
+                ))}
+                {req.disqualifiers.length > 0 && (
+                  <p className="rounded-control bg-attn-tint px-3 py-2 text-meta text-attn-fg">Check before applying: {req.disqualifiers.join("; ")}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-body-sm text-muted">Requirements have not been read yet. Nori reads them when it scores or applies.</p>
+            )}
+          </Block>
+
+          <Block title={`Company research${company ? `: ${company.name}` : ""}`} aside={company?.research ? `${company.research.citations.length} sources` : undefined}>
             <ResearchPanel jobId={job.id} initial={company?.research ?? null} />
           </Block>
 
-          <Frame className="px-5 sm:px-6">
-            <Accordion index={idx(++n)} title="Full description" meta={`${Math.max(1, Math.round(job.descriptionText.split(/\s+/).length / 230))} min read`} className="border-y-0">
-              <div className="max-w-prose whitespace-pre-wrap text-body text-ink-2">{job.descriptionText}</div>
-            </Accordion>
-          </Frame>
+          <Accordion title="Full description" meta={`${Math.max(1, Math.round(job.descriptionText.split(/\s+/).length / 230))} min read`}>
+            <div className="max-w-prose whitespace-pre-wrap text-body text-ink-2">{job.descriptionText}</div>
+          </Accordion>
         </div>
       </aside>
     </div>

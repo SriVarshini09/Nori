@@ -6,7 +6,7 @@ import { useState } from "react";
 import { USE_MOCK, api } from "@/lib/api";
 import { pct } from "@/lib/format";
 import type { Channel, Integration, Profile } from "@/lib/types";
-import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, Toggle, idx, inputClass } from "./ui";
+import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, Toggle, inputClass } from "./ui";
 
 export function SettingsForm({ profile }: { profile: Profile }) {
   const [autoApprove, setAutoApprove] = useState(profile.resumeAutoApprove);
@@ -95,9 +95,9 @@ export function Integrations({ initial }: { initial: Integration[] }) {
   return (
     <div className="space-y-4">
       <ol className="border-t border-line">
-        {items.map((i, n) => (
-          <li key={i.toolkit} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-4 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:gap-x-4">
-            <span className="text-label font-medium text-faint tnum">{idx(n + 1)}</span>
+        {items.map((i) => (
+          <li key={i.toolkit} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-4">
+            
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-body-sm font-medium text-ink"><Icon icon={TOOLKIT_ICON[i.toolkit] ?? Plug} />{TOOLKIT_LABEL[i.toolkit] ?? i.toolkit}</div>
             </div>
@@ -122,9 +122,9 @@ export function Channels({ channels }: { channels: Channel[] }) {
     <div className="space-y-6 text-body-sm">
       {channels.length > 0 && (
         <ol className="border-t border-line">
-          {channels.map((c, n) => (
-            <li key={c.id} className="grid grid-cols-[2rem_6rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-3 sm:grid-cols-[2.75rem_8rem_minmax(0,1fr)_auto] sm:gap-x-4">
-              <span className="text-label font-medium text-faint tnum">{idx(n + 1)}</span>
+          {channels.map((c) => (
+            <li key={c.id} className="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line py-3 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
+              
               <span className="font-medium capitalize text-ink">{c.kind}</span>
               <span className="truncate text-muted">{c.address}</span>
               <Pill mark="ink">Linked</Pill>
@@ -135,24 +135,24 @@ export function Channels({ channels }: { channels: Channel[] }) {
       <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         <Frame className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <IndexLabel index="A" marker tone="ink">Telegram</IndexLabel>
+            <IndexLabel tone="ink">Telegram</IndexLabel>
             {has("telegram") ? <Pill mark="ink">Linked</Pill> : <Pill mark="hollow">Not linked</Pill>}
           </div>
-          <ol className="mt-4 space-y-2 text-meta text-ink-2">
+          <ol className="mt-4 list-decimal space-y-2 pl-5 text-meta text-ink-2">
             {[
               "Make sure the server has TELEGRAM_BOT_TOKEN set.",
               "Open Telegram and start a chat with your Nori bot.",
               "Send /start. The chat appears here once linked, and you can say things like “apply to #2”.",
             ].map((s, i) => (
-              <li key={i} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-1">
-                <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>{s}
+              <li key={i}>
+                {s}
               </li>
             ))}
           </ol>
         </Frame>
         <Frame className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <IndexLabel index="B" marker tone="ink">Slack</IndexLabel>
+            <IndexLabel tone="ink">Slack</IndexLabel>
             {has("slack") ? <Pill mark="ink">Linked</Pill> : <Pill mark="hollow">Not linked</Pill>}
           </div>
           <p className="mt-4 text-meta text-ink-2">Connect Slack under Integrations above, then invite the bot to a channel or DM it. Review requests and replies are posted there.</p>
@@ -208,7 +208,7 @@ export function DangerZone({ email }: { email: string }) {
           icon={Trash2}
           onClick={remove}
           disabled={!matches || busy}
-          className="border-[#a8321f]! text-[#a8321f]! hover:bg-[#a8321f]! hover:text-paper!"
+          className="border-[#a8321f]! text-[#a8321f]! hover:bg-[#a8321f]! hover:text-on-ink!"
         >
           {busy ? "Deleting..." : "Delete account"}
         </Button>

@@ -9,12 +9,12 @@ const VERDICT: Record<RecruiterReview["verdict"], { label: string; line: string 
 };
 
 const STATUS: Record<MustHave["status"], { label: string; cls: string; icon: typeof Check }> = {
-  demonstrated: { label: "shown in your experience", cls: "border-emerald-600/30 bg-emerald-50 text-emerald-900", icon: Check },
-  listed: { label: "only in the skills list", cls: "border-amber-600/30 bg-amber-50 text-amber-900", icon: CircleDashed },
-  missing: { label: "not on your resume", cls: "border-rose-600/30 bg-rose-50 text-rose-900", icon: CircleX },
+  demonstrated: { label: "shown in your experience", cls: "border-transparent bg-accent-tint text-accent-fg", icon: Check },
+  listed: { label: "only in the skills list", cls: "border-transparent bg-sunken text-ink", icon: CircleDashed },
+  missing: { label: "not on your resume", cls: "border-dashed border-control bg-surface text-muted", icon: CircleX },
 };
 
-const SEVERITY: Record<"high" | "medium" | "low", string> = { high: "bg-rose-500", medium: "bg-amber-500", low: "bg-stone-400" };
+const SEVERITY: Record<"high" | "medium" | "low", string> = { high: "bg-danger", medium: "bg-ink-2", low: "bg-control" };
 
 /**
  * What a recruiter would see on this resume for this job: a score, what is working, what is not and how to fix it, and each
@@ -25,11 +25,11 @@ export function RecruiterView({ review }: { review: RecruiterReview }) {
   const musts = [...review.musts].sort((a, b) => Number(b.required) - Number(a.required) || a.status.localeCompare(b.status));
   const missing = musts.filter((m) => m.status === "missing" && m.required);
   return (
-    <section aria-labelledby="recruiter-h" className="rounded-2xl border border-line bg-paper p-5 sm:p-6">
+    <section aria-labelledby="recruiter-h" className="rounded-card border border-line bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <IndexLabel>Recruiter&apos;s view</IndexLabel>
-          <h3 id="recruiter-h" className="mt-2 font-display text-title font-medium text-ink">{v.label}: {review.score} out of 100</h3>
+          <h3 id="recruiter-h" className="mt-1 text-title font-semibold text-ink">{v.label}: {review.score} out of 100</h3>
           <p className="mt-1 text-body-sm text-muted">{v.line}</p>
         </div>
         <div className="text-meta text-muted tnum" aria-label="Resume facts">
@@ -40,7 +40,7 @@ export function RecruiterView({ review }: { review: RecruiterReview }) {
 
       {musts.length > 0 && (
         <div className="mt-5">
-          <p className="text-label font-medium uppercase text-muted">What the job asks for</p>
+          <p className="text-meta font-medium text-muted">What the job asks for</p>
           <ul aria-label="Skills the job asks for" className="mt-2 flex flex-wrap gap-2">
             {musts.map((m) => {
               const s = STATUS[m.status];

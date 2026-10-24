@@ -34,7 +34,7 @@ export function ContactStep({ profile, onSubmit, busy, onBack, submitLabel, stat
     pronouns: s(profile.pronouns),
   });
   const input = (k: keyof typeof f, label: string, opts: { type?: string; required?: boolean; placeholder?: string; auto?: string; className?: string } = {}) => (
-    <Field label={<>{label}{opts.required && <span className="ml-1 text-accent-ink">*</span>}</>} className={opts.className}>
+    <Field label={<>{label}{opts.required && <span className="ml-1 text-danger-fg">*</span>}</>} className={opts.className}>
       <input
         className={inputClass}
         type={opts.type ?? "text"}
@@ -283,7 +283,7 @@ export function PreferencesStep({ profile, onSubmit, busy, onBack, submitLabel, 
             <input className={cx(inputClass, "tnum")} type="number" min={0} step={5000} value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} />
           </Field>
           <div className="sm:col-span-2">
-            <span className="mb-1.5 block text-label font-medium uppercase text-muted">Remote</span>
+            <span className="mb-1.5 block text-meta font-medium text-ink-2">Remote</span>
             <Segmented label="Remote" value={remote} onChange={setRemote} options={REMOTE} />
           </div>
         </div>
@@ -291,7 +291,7 @@ export function PreferencesStep({ profile, onSubmit, busy, onBack, submitLabel, 
       <Group letter="B" title="Companies">
         <div className="space-y-5">
           <div>
-            <span className="mb-2 block text-label font-medium uppercase text-muted">Stages</span>
+            <span className="mb-2 block text-meta font-medium text-ink-2">Stages</span>
             <PillSelect value={stages} onChange={setStages} options={STAGES} />
           </div>
           <Field label="Exclude companies">

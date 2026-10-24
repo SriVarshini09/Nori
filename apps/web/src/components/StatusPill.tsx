@@ -7,11 +7,11 @@ import type { ApplicationStatus } from "@/lib/types";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
 import type { MarkTone } from "./IndexLabel";
-import { PILL_TONE } from "./Pill";
 
 /**
- * Status -> marker. Accent = waiting on you; ink = sent / positive; hollow = agent working;
- * ink outline = closed negative; muted = parked. Used by square markers (tracker columns).
+ * Status -> meaning. accent = waiting on you (orange edge); ink = sent or a good outcome (blue tint);
+ * hollow = Nori is working; outline = failed (brick); muted = parked or closed. Rejected is an outcome, not an
+ * error, so it stays neutral.
  */
 export const STATUS_MARK: Record<ApplicationStatus, MarkTone> = {
   queued: "hollow",
@@ -28,7 +28,7 @@ export const STATUS_MARK: Record<ApplicationStatus, MarkTone> = {
   interview: "ink",
   offer: "ink",
   failed: "outline",
-  rejected: "outline",
+  rejected: "muted",
   skipped: "muted",
 };
 
@@ -51,14 +51,32 @@ export const STATUS_ICON: Record<ApplicationStatus, LucideIcon> = {
   rejected: Ban,
 };
 
-/** Stone pill with the status icon. Live states pulse; states waiting on you get a hairline ink ring. */
-export function StatusPill({ status }: { status: ApplicationStatus | string }) {
+const STYLE: Record<MarkTone, string> = {
+  accent: "bg-attn-tint text-attn-fg ring-1 ring-inset ring-attn",
+  ink: "bg-accent-tint text-accent-fg",
+  hollow: "bg-sunken text-ink",
+  outline: "bg-danger-tint text-danger-fg",
+  muted: "bg-sunken text-muted",
+};
+
+/**
+ * Stage pill: icon plus word. Working stages show a dot that breathes; skipped is dashed; an offer is the one
+ * solid fill.
+ */
+export function StatusPill({ status, className }: { status: ApplicationStatus | string; className?: string }) {
   const s = status as ApplicationStatus;
-  const live = s === "tailoring" || s === "filling" || s === "submitting";
-  const needsYou = STATUS_MARK[s] === "accent";
+  const mark = STATUS_MARK[s] ?? "muted";
+  const working = s === "tailoring" || s === "filling" || s === "submitting";
   return (
-    <span className={cx("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full pl-2 pr-2.5 text-[12px] font-medium ring-1 ring-inset", PILL_TONE[STATUS_MARK[s] ?? "muted"], needsYou && "shadow-[0_0_0_3px_rgba(245,158,11,0.15)]")}>
-      <Icon icon={STATUS_ICON[s] ?? Clock} className={cx(live && "animate-pulse")} />
+    <span
+      className={cx(
+        "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full pl-2 pr-2.5 text-[12px] font-medium",
+        s === "offer" ? "bg-accent text-on-ink" : STYLE[mark],
+        s === "skipped" && "bg-transparent ring-1 ring-inset ring-control [border-style:dashed]",
+        className,
+      )}
+    >
+      <Icon icon={STATUS_ICON[s] ?? Clock} size={14} className={cx(working && "animate-pulse")} />
       {STATUS_LABEL[s] ?? status}
     </span>
   );
