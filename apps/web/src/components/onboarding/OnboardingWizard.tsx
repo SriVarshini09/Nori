@@ -6,7 +6,7 @@ import {
   ArrowRight, BadgeCheck, Check, FileText, FileUp, ListChecks, Network, Plug, ShieldCheck, SlidersHorizontal, UserRound, type LucideIcon,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { ONBOARDING_STEPS, type IngestResult, type Integration, type ModelPresetsInfo, type ModelSettings, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
+import { ONBOARDING_STEPS, type IngestResult, type Integration, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
 import { Icon, Notice, cx } from "../ui";
 import { Doll } from "../dash/Doll";
 import { Letters } from "../Letters";
@@ -22,7 +22,7 @@ export const STEP_META: Meta[] = [
   { id: "authorization", label: "Authorization", icon: BadgeCheck, title: ["Where you", "can work."], lead: "Every US form asks these.", note: "Forms always ask this. Answer once." },
   { id: "screening", label: "Screening", icon: ListChecks, title: ["Answers forms", "always ask."], lead: "Set once, reused on every application.", note: "Set once, reused on every form." },
   { id: "preferences", label: "Preferences", icon: SlidersHorizontal, title: ["What you", "want next."], lead: "Shapes discovery, scoring and the agent.", note: "Tell me what you want next." },
-  { id: "integrations", label: "Integrations", icon: Plug, title: ["Pick a model,", "connect your tools."], lead: "Optional. You can do this later in Settings.", note: "Last step! Connect your tools." },
+  { id: "integrations", label: "Integrations", icon: Plug, title: ["Connect", "your tools."], lead: "Optional. You can do this later in Settings.", note: "Last step! Connect your tools." },
 ];
 
 /** Index of the first unfinished step; "done" sits one past the last so every step reads as complete. */
@@ -143,13 +143,11 @@ function Confetti() {
   );
 }
 
-export function OnboardingWizard({ initialStep, serverStep, profile: initialProfile, integrations, model, presets, replayWelcome = false }: {
+export function OnboardingWizard({ initialStep, serverStep, profile: initialProfile, integrations, replayWelcome = false }: {
   initialStep: OnboardingStepId;
   serverStep: OnboardingStep;
   profile: Profile;
   integrations: Integration[];
-  model: ModelSettings | null;
-  presets: ModelPresetsInfo;
   /** `/onboarding?welcome=1` plays the intro again. */
   replayWelcome?: boolean;
 }) {
@@ -325,7 +323,7 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
             {meta.id === "preferences" && <PreferencesStep {...common} />}
             {meta.id === "integrations" && (
               <>
-                <IntegrationsStep initial={integrations} model={model} presets={presets} busy={busy} onBack={back} onFinish={finish} />
+                <IntegrationsStep initial={integrations} busy={busy} onBack={back} onFinish={finish} />
                 {error && <div className="mt-5"><Notice tone="red">{error}</Notice></div>}
               </>
             )}

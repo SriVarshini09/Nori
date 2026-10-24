@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, Hash, LoaderCircle, Mail, RefreshCw, Send, Sheet, Sparkles, type LucideIcon } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Integration, ModelPresetsInfo, ModelSettings } from "@/lib/types";
+import type { Integration } from "@/lib/types";
 import { Icon, Notice, cx } from "../ui";
-import { ModelPanel } from "../ModelPanel";
 import { ObButton, Soft } from "./controls";
 
 const CARDS: { toolkit: string; name: string; icon: LucideIcon; what: string; grad: string }[] = [
@@ -42,10 +41,8 @@ function Heading({ n, title, hint }: { n: string; title: string; hint?: string }
   );
 }
 
-export function IntegrationsStep({ initial, model, presets, busy, onBack, onFinish }: {
+export function IntegrationsStep({ initial, busy, onBack, onFinish }: {
   initial: Integration[];
-  model: ModelSettings | null;
-  presets: ModelPresetsInfo;
   busy?: boolean;
   onBack?: () => void;
   onFinish: () => void;
@@ -76,9 +73,7 @@ export function IntegrationsStep({ initial, model, presets, busy, onBack, onFini
 
   return (
     <div>
-      <Heading n="A" title="Model" />
-      <ModelPanel initial={model} presets={presets} compact />
-      <div className="mt-10"><Heading n="B" title="Tools" hint="Optional" /></div>
+      <Heading n="A" title="Tools" hint="Optional" />
       <ul className="grid gap-4 sm:grid-cols-2">
         {CARDS.map((c, i) => {
           const on = connected(c.toolkit);

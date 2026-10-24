@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowRight, Check, CircleAlert, FileText, KeyRound, Network, ScanSearch, ShieldCheck, Sparkles, Trash2, UserCheck, X, type LucideIcon } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, FileText, Network, ScanSearch, ShieldCheck, Sparkles, Trash2, UserCheck, X, type LucideIcon } from "lucide-react";
 import { cx } from "@/components/cx";
 import { NoriBuddy } from "./NoriBuddy";
 import { btnPrimary, btnSecondary, btnSun, chip, container } from "./styles";
@@ -58,7 +58,7 @@ function HeroArt() {
 
 const PROOF: [LucideIcon, string][] = [
   [ScanSearch, "Greenhouse, Lever, Ashby and SmartRecruiters"],
-  [KeyRound, "Bring your own key or run locally"],
+  [Sparkles, "Nothing to configure: the model is included"],
   [ShieldCheck, "Nothing sent without your approval"],
   [Trash2, "Export or delete everything, anytime"],
 ];

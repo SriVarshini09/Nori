@@ -18,7 +18,7 @@ import { baselineFromDoc, getDefaultResumeDoc } from "../resume/docs.js";
 import { emit } from "./events.js";
 import { checkDisqualifiers, unprovenConstraints } from "../agent/gate.js";
 import { AUTOPILOT_COMPANY_COOLDOWN_DAYS, autopilotVerdict, describeVerdict, type AutopilotMode } from "./autopilot.js";
-import { withUserLLM } from "../llm/index.js";
+import { newUsage, runCollectingUsage, withUserLLM } from "../llm/index.js";
 import { LIKELY_QUESTIONS, isProfileField, makeAnswerQuestion, toApplicantProfile, type ComposedAnswer } from "./answers.js";
 
 export type Application = typeof applications.$inferSelect;
@@ -571,11 +571,23 @@ export function runApplication(db: Db, applicationId: string, deps: RunnerDeps):
     // Tailoring and answers use this user's models (own key, hosted, or local).
     return withUserLLM(db, first.userId, async () => {
       let status = first.status;
-      // Always step once: a gate status may already be approved. Stop when a step makes no progress.
-      for (let i = 0; i < 20; i++) {
-        const next = await stepApplication(db, applicationId, deps);
-        if (next === status) break; // waiting, terminal, or owned by another process
-        status = next;
+      const usage = newUsage();
+      try {
+        await runCollectingUsage(usage, async () => {
+          // Always step once: a gate status may already be approved. Stop when a step makes no progress.
+          for (let i = 0; i < 20; i++) {
+            const next = await stepApplication(db, applicationId, deps);
+            if (next === status) break; // waiting, terminal, or owned by another process
+            status = next;
+          }
+        });
+      } finally {
+        // What this run cost in model tokens, so the person can see it on the application page.
+        if (usage.calls) {
+          await emit(db, applicationId, "usage",
+            `Model use this run: about ${usage.totalTokens.toLocaleString("en-US")} tokens over ${usage.calls} call${usage.calls === 1 ? "" : "s"}${usage.model ? ` (${usage.model})` : ""}`,
+            { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens, calls: usage.calls, model: usage.model ?? null, estimated: usage.estimated ?? false });
+        }
       }
       return status;
     });

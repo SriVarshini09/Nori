@@ -33,7 +33,7 @@ export function checkEnv(env: Env = process.env): EnvCheck {
     if (!env.DATABASE_URL) errors.push("DATABASE_URL is required in production (embedded PGlite is for development).");
     if (!env.WEB_URL || isLocalHost(env.WEB_URL)) errors.push("WEB_URL must be the public https address of the web app in production (it is the one origin CORS allows, and the base of emailed links).");
     else if (!env.WEB_URL.startsWith("https://")) warnings.push("WEB_URL is not https: session cookies are Secure in production and will not stick over plain http.");
-    if (!env.CREDENTIALS_KEY && !env.APP_SECRET) errors.push("Set CREDENTIALS_KEY (or APP_SECRET): stored model keys are encrypted with it, and the development fallback key is public.");
+    if (!env.CREDENTIALS_KEY && !env.APP_SECRET) errors.push("Set CREDENTIALS_KEY (or APP_SECRET): stored secrets are encrypted with it, and the development fallback key is public.");
     else if (!env.CREDENTIALS_KEY) warnings.push("CREDENTIALS_KEY is not set; the key-encryption key is derived from APP_SECRET. Prefer a dedicated CREDENTIALS_KEY.");
     if (env.DEFAULT_USER_EMAIL) errors.push("DEFAULT_USER_EMAIL must not be set in production: it would let anyone without a session act as that user.");
     if (env.TELEGRAM_AUTOLINK === "true") errors.push("TELEGRAM_AUTOLINK must not be on in production: it links any stranger who messages the bot to the default user.");
