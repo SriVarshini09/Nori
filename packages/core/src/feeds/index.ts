@@ -17,3 +17,5 @@ export { seedBoardRegistry } from "./registry-seed.js";
 export { detectBoard, findBoardsInHtml, type DetectedBoard } from "./detect.js";
 export { listCompanies, followCompany, unfollowCompany, type CompanyRow } from "./companies.js";
 export { prettifyToken } from "./http.js";
+export { exaAvailable, exaSearch, type ExaResult, type ExaSearchInput } from "./exa.js";
+export { SOCIAL_SOURCES, applyLinkIn, heuristicPosting, postingFromResult, sourceFor, type SocialSource } from "./social.js";

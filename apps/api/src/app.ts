@@ -391,7 +391,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     })),
     localOnly: localOnly(),
     embeddedWorker: process.env.EMBED_WORKER === "1",
-    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode !== "console" && !mailerState().blockedBy },
+    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), exa: Boolean(process.env.EXA_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode !== "console" && !mailerState().blockedBy },
     allowRealSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
   }));
 

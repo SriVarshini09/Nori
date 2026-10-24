@@ -10,7 +10,7 @@ packages/core/src
   contracts.ts  Shared types every package codes against. Coordinator-owned.
   llm/          getLLM(): Anthropic or any OpenAI-compatible endpoint; withFallback() for heuristics
   graph/        career graph: skills dictionary, resume ingestion, subgraph retrieval, conversational facts
-  feeds/        ATS feed pollers (greenhouse, lever, ashby, smartrecruiters), Parallel search/extract, normalize+upsert, requirement extraction
+  feeds/        ATS feed pollers (greenhouse, lever, ashby, smartrecruiters), web search (Exa: exa.ts + social.ts for X, Hacker News, Wellfound, YC, LinkedIn pages; Parallel), normalize+upsert, requirement extraction
   research/     Parallel Task API company research with citations
   match/        job <-> graph scoring with explanation
   tailor/       baseline resume from graph, bullet rewrite with provenance, HTML template, PDF fitting loop, ATS checks

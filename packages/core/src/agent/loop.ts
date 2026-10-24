@@ -5,9 +5,8 @@ import {
   type ApplicationStatus, type AtsType, type Preferences,
 } from "../db/schema.js";
 import type { DiscoverQuery, OutboundMessage } from "../contracts.js";
-import { discoverJobs } from "../feeds/discover.js";
+import { discoverJobs, searchAvailable } from "../feeds/discover.js";
 import { pollTenant } from "../feeds/normalize.js";
-import { parallelAvailable } from "../feeds/parallel.js";
 import { FEEDS } from "../feeds/registry.js";
 import { ensureRequirements } from "../feeds/requirements.js";
 import { getGraph, retrieveEvidence } from "../graph/query.js";
@@ -173,7 +172,7 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
     }
     const q = discoverQueryFrom(prefs, profile.remotePreference);
     const last = prefs.agent?.lastDiscoverAt ? Date.parse(prefs.agent.lastDiscoverAt) : 0;
-    if (q && (deps.parallelAvailable ?? parallelAvailable)() && now.getTime() - last >= DISCOVER_EVERY_MS) {
+    if (q && (deps.parallelAvailable ?? searchAvailable)() && now.getTime() - last >= DISCOVER_EVERY_MS) {
       await setAgentState(db, userId, { lastDiscoverAt: now.toISOString() });
       try {
         const r = await (deps.discover ?? discoverJobs)(db, q);
