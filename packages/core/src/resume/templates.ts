@@ -6,7 +6,9 @@ import {
   type Density, type ResumeTheme, type SectionId,
 } from "./theme.js";
 
-export type TemplateId = "classic" | "modern" | "compact" | "executive" | "minimal" | "technical" | "sidebar";
+export type TemplateId = "ats" | "classic" | "modern" | "compact" | "executive" | "minimal" | "technical" | "sidebar";
+/** The template new resumes and tailored resumes use unless the person picks another. */
+export const DEFAULT_TEMPLATE: TemplateId = "ats";
 
 export type TemplateMeta = {
   id: TemplateId;
@@ -23,6 +25,13 @@ export type TemplateMeta = {
 };
 
 export const TEMPLATES: Record<TemplateId, TemplateMeta> = {
+  ats: {
+    id: "ats", name: "ATS Standard", columns: 1, atsSafe: true,
+    description: "The parser-first one-pager: centred name, plain bold headings with a rule, company-first roles, Times type, tight spacing.",
+    bestFor: "Workday, Greenhouse and every other applicant tracking system. The default.",
+    theme: { font: "tinos", accent: "#000000", fontSize: 10.5, lineHeight: 1.2, margin: 0.5, headerAlign: "center" },
+    sections: ["summary", "skills", "experience", "education", "projects", "certifications"],
+  },
   classic: {
     id: "classic", name: "Classic", columns: 1, atsSafe: true,
     description: "The safe default: one column, black on white, standard headings.",
@@ -79,8 +88,20 @@ export function themeFor(templateId: TemplateId, overrides?: unknown): ResumeThe
 
 // ---------- shared markup ----------
 
-function contactItems(c: ResumeContent["contact"]): string[] {
+type Style = "default" | "ats";
+
+function contactItems(c: ResumeContent["contact"], style: Style = "default"): string[] {
   const out: string[] = [];
+  if (style === "ats") {
+    // Location | phone | email | LinkedIn | GitHub | Portfolio, links shown by their label (the href keeps the address).
+    if (c.location?.trim()) out.push(e(c.location.trim()));
+    if (c.phone?.trim()) out.push(e(c.phone.trim()));
+    if (c.email?.trim()) out.push(`<a href="mailto:${e(c.email.trim())}">${e(c.email.trim())}</a>`);
+    for (const [u, label] of [[c.linkedin, "LinkedIn"], [c.github, "GitHub"], [c.website, "Portfolio"]] as const) {
+      if (u?.trim()) out.push(`<a href="${e(hrefOf(u))}">${label}</a>`);
+    }
+    return out;
+  }
   if (c.email?.trim()) out.push(`<a href="mailto:${e(c.email.trim())}">${e(c.email.trim())}</a>`);
   if (c.phone?.trim()) out.push(e(c.phone.trim()));
   if (c.location?.trim()) out.push(e(c.location.trim()));
@@ -95,21 +116,32 @@ function bulletList(items: { text: string }[]): string {
 
 type Built = { id: string; title: string; html: string };
 
-function sectionBodies(c: ResumeContent): Record<SectionId, string> {
+function sectionBodies(c: ResumeContent, style: Style = "default"): Record<SectionId, string> {
   const summary = c.summary?.trim() ? `<p>${e(c.summary.trim())}</p>` : "";
   const experience = c.experience.map((r) => {
     const when = dateRange(r.start, r.end);
+    if (style === "ats") {
+      // Company first in bold with the dates on the right; title and location on the line below. What Workday-style parsers read best.
+      const sub = [r.title, r.location].filter(Boolean).map((x) => e(x!)).join(" \u00b7 ");
+      return `<div class="role">\n<h3><span>${e(r.company || r.title)}</span>${when ? `<span class="when">${e(when)}</span>` : ""}</h3>\n${sub && r.company ? `<p class="sub">${sub}</p>\n` : ""}${bulletList(r.bullets)}\n</div>`;
+    }
     const heading = [r.title, r.company].filter(Boolean).map((x) => e(x)).join(", ");
     return `<div class="role">\n<h3><span>${heading}</span>${when ? `<span class="when">${e(when)}</span>` : ""}</h3>\n${r.location ? `<p class="sub">${e(r.location)}</p>\n` : ""}${bulletList(r.bullets)}\n</div>`;
   }).join("\n");
   const education = c.education.map((ed) => {
-    const deg = [ed.degree, ed.field].filter(Boolean).join(", ");
     const when = dateRange(ed.start, ed.end);
+    if (style === "ats") {
+      const deg = ed.degree && ed.field ? `${ed.degree} in ${ed.field}` : ed.degree || ed.field || "";
+      return `<div class="edu"><h3><span>${e(ed.school)}</span>${when ? `<span class="when">${e(when)}</span>` : ""}</h3>${deg ? `<p class="sub">${e(deg)}</p>` : ""}</div>`;
+    }
+    const deg = [ed.degree, ed.field].filter(Boolean).join(", ");
     const left = [deg, ed.school].filter(Boolean).map((x) => e(x!)).join(" - ");
     return `<div class="edu"><h3><span>${left}</span>${when ? `<span class="when">${e(when)}</span>` : ""}</h3></div>`;
   }).join("\n");
-  const rows = c.skills.filter((g) => g.items.length > 0).map((g) => `<p><strong>${e(g.group)}:</strong> ${g.items.map((i) => e(i)).join(", ")}</p>`);
-  const skills = rows.length ? `<div class="skills">\n${rows.join("\n")}\n</div>` : "";
+  const rows = c.skills.filter((g) => g.items.length > 0).map((g) => (style === "ats"
+    ? `<li><strong>${e(g.group)}:</strong> ${g.items.map((i) => e(i)).join(", ")}</li>`
+    : `<p><strong>${e(g.group)}:</strong> ${g.items.map((i) => e(i)).join(", ")}</p>`));
+  const skills = rows.length ? (style === "ats" ? `<div class="skills">\n<ul>\n${rows.join("\n")}\n</ul>\n</div>` : `<div class="skills">\n${rows.join("\n")}\n</div>`) : "";
   const projects = (c.projects ?? []).filter((p) => p.name).map((p) => `<div class="role">\n<h3><span>${e(p.name)}</span></h3>\n${bulletList(p.bullets)}\n</div>`).join("\n");
   const certs = (c.certifications ?? []).filter((x) => x.trim());
   const certifications = certs.length ? bulletList(certs.map((t) => ({ text: t }))) : "";
@@ -118,7 +150,7 @@ function sectionBodies(c: ResumeContent): Record<SectionId, string> {
 
 /** Sections in display order: the resume's own order, else the template's, with hidden and empty ones removed. */
 export function resolveSections(c: ResumeContent, template: TemplateMeta): Built[] {
-  const bodies = sectionBodies(c);
+  const bodies = sectionBodies(c, template.id === "ats" ? "ats" : "default");
   const hidden = new Set(c.layout?.hidden ?? []);
   const wanted = c.layout?.sections?.length ? c.layout.sections : template.sections ?? [...SECTION_IDS];
   const order = [...new Set<SectionId>([...(wanted as SectionId[]), ...SECTION_IDS])];
@@ -166,6 +198,27 @@ h3 .when { font-weight: 400; white-space: nowrap; }
 }
 
 const CSS: Record<TemplateId, (t: ResumeTheme) => string> = {
+  // Mirrors a LaTeX one-pager that Workday and the big parsers read cleanly: Times at 10.5pt, half-inch sides with a
+  // shorter top margin, bold section titles over a thin rule, no colour, bullets with no gaps.
+  ats: (t) => {
+    const top = (t.margin * 0.6).toFixed(2), bottom = (t.margin * 0.8).toFixed(2);
+    return `
+@page { margin: ${top}in ${t.margin}in ${bottom}in ${t.margin}in; }
+@media screen { body { padding: ${top}in ${t.margin}in ${bottom}in ${t.margin}in; } }
+body { color: #000; }
+header { text-align: center; }
+h1 { font-size: 17pt; font-weight: 700; line-height: 1.15; }
+.contact { font-size: .9em; margin: 2pt 0 0 0; color: #000; }
+.contact span.sep { margin: 0 .3em; }
+h2 { font-family: var(--head); font-size: 1em; font-weight: 700; margin: 5pt 0 1pt 0; padding-bottom: 0; border-bottom: .6pt solid #000; line-height: 1.2; }
+.sec:first-of-type h2 { margin-top: 4pt; }
+h3 { margin: 3pt 0 0 0; font-weight: 700; }
+h3 .when { font-weight: 400; }
+.sub { font-style: normal; margin: 0; }
+ul { padding-left: 13pt; margin-top: 0; }
+li { margin: 0; }
+.edu { margin-top: 2pt; }`;
+  },
   classic: (t) => `
 h1 { font-size: 20pt; font-weight: 700; letter-spacing: .2pt; text-align: ${t.headerAlign}; }
 .contact { font-size: .96em; margin: 2pt 0 4pt 0; color: #222; text-align: ${t.headerAlign}; }
@@ -258,13 +311,13 @@ export type RenderHtmlOptions = {
 export const DEFAULT_FONT_BASE = "/api/resume-fonts";
 
 /** A complete, self-contained resume HTML document for a template and theme. */
-export function renderResumeHtml(content: ResumeContent, templateId: TemplateId = "classic", themeIn?: unknown, opts: RenderHtmlOptions = {}): string {
-  const template = TEMPLATES[isTemplateId(templateId) ? templateId : "classic"];
+export function renderResumeHtml(content: ResumeContent, templateId: TemplateId = DEFAULT_TEMPLATE, themeIn?: unknown, opts: RenderHtmlOptions = {}): string {
+  const template = TEMPLATES[isTemplateId(templateId) ? templateId : DEFAULT_TEMPLATE];
   const density = opts.density ?? "normal";
   const theme = applyDensity(themeFor(template.id, themeIn), density);
   const fonts: FontId[] = [theme.font, theme.headingFont ?? theme.font];
   if (template.id === "technical" || template.id === "compact") fonts.push("mono");
-  const items = contactItems(content.contact);
+  const items = contactItems(content.contact, template.id === "ats" ? "ats" : "default");
   const contactHtml = items.length ? `<p class="contact">${items.map((x) => `<span class="item">${x}</span>`).join('<span class="sep">|</span>')}</p>` : "";
   const sections = resolveSections(content, template);
 
