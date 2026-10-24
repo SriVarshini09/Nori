@@ -6,7 +6,7 @@ import {
   type Density, type ResumeTheme, type SectionId,
 } from "./theme.js";
 
-export type TemplateId = "ats" | "classic" | "modern" | "compact" | "executive" | "minimal" | "technical" | "sidebar";
+export type TemplateId = "ats";
 /** The template new resumes and tailored resumes use unless the person picks another. */
 export const DEFAULT_TEMPLATE: TemplateId = "ats";
 
@@ -28,52 +28,9 @@ export const TEMPLATES: Record<TemplateId, TemplateMeta> = {
   ats: {
     id: "ats", name: "ATS Standard", columns: 1, atsSafe: true,
     description: "The parser-first one-pager: centred name, plain bold headings with a rule, company-first roles, Times type, tight spacing.",
-    bestFor: "Workday, Greenhouse and every other applicant tracking system. The default.",
+    bestFor: "Workday, Greenhouse and every other applicant tracking system. The one template Nori uses.",
     theme: { font: "tinos", accent: "#000000", fontSize: 10.5, lineHeight: 1.2, margin: 0.5, headerAlign: "center" },
     sections: ["summary", "skills", "experience", "education", "projects", "certifications"],
-  },
-  classic: {
-    id: "classic", name: "Classic", columns: 1, atsSafe: true,
-    description: "The safe default: one column, black on white, standard headings.",
-    bestFor: "Every application, especially large companies with strict parsers.",
-    theme: { font: "source-sans", accent: "#1a1a1a", fontSize: 10.75, lineHeight: 1.3, margin: 0.55, headerAlign: "left" },
-  },
-  modern: {
-    id: "modern", name: "Modern", columns: 1, atsSafe: true,
-    description: "Clean sans-serif with a single accent colour on headings and rules.",
-    bestFor: "Product, design and engineering roles at startups and scale-ups.",
-    theme: { font: "inter", accent: "#2563eb", fontSize: 10, lineHeight: 1.36, margin: 0.6, headerAlign: "left" },
-  },
-  compact: {
-    id: "compact", name: "Compact", columns: 1, atsSafe: true,
-    description: "Name and contact share one band. Tight spacing fits a long career on one page.",
-    bestFor: "Ten or more years of experience, or many roles.",
-    theme: { font: "source-sans", accent: "#0f766e", fontSize: 10, lineHeight: 1.22, margin: 0.45, headerAlign: "left" },
-  },
-  executive: {
-    id: "executive", name: "Executive", columns: 1, atsSafe: true,
-    description: "Centred serif header with a double rule. Quiet and formal.",
-    bestFor: "Leadership, finance, legal and consulting.",
-    theme: { font: "garamond", accent: "#4a3b2a", fontSize: 11.5, lineHeight: 1.28, margin: 0.65, headerAlign: "center" },
-  },
-  minimal: {
-    id: "minimal", name: "Minimal", columns: 1, atsSafe: true,
-    description: "Generous white space, no rules, small spaced headings.",
-    bestFor: "Short resumes with strong, concrete bullets.",
-    theme: { font: "inter", accent: "#6b7280", fontSize: 10, lineHeight: 1.38, margin: 0.62, headerAlign: "left" },
-  },
-  technical: {
-    id: "technical", name: "Technical", columns: 1, atsSafe: true,
-    description: "Skills first, monospaced labels and dates, an engineer's reading order.",
-    bestFor: "Software, data and infrastructure roles.",
-    theme: { font: "source-sans", headingFont: "mono", accent: "#7c3aed", fontSize: 10.25, lineHeight: 1.28, margin: 0.5, headerAlign: "left" },
-    sections: ["summary", "skills", "experience", "projects", "education", "certifications"],
-  },
-  sidebar: {
-    id: "sidebar", name: "Sidebar", columns: 2, atsSafe: false,
-    description: "Coloured side column for contact, skills and education. Eye-catching, but two columns can confuse parsers.",
-    bestFor: "Sending directly to a person, not through an applicant tracking system.",
-    theme: { font: "inter", accent: "#1e3a5f", fontSize: 9.75, lineHeight: 1.34, margin: 0.4, headerAlign: "left" },
   },
 };
 
@@ -219,85 +176,6 @@ ul { padding-left: 13pt; margin-top: 0; }
 li { margin: 0; }
 .edu { margin-top: 2pt; }`;
   },
-  classic: (t) => `
-h1 { font-size: 20pt; font-weight: 700; letter-spacing: .2pt; text-align: ${t.headerAlign}; }
-.contact { font-size: .96em; margin: 2pt 0 4pt 0; color: #222; text-align: ${t.headerAlign}; }
-.contact span.sep { margin: 0 .35em; }
-h2 { font-family: var(--head); font-size: 1.07em; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin: 11pt 0 3pt 0; padding-bottom: 1pt; border-bottom: .75pt solid #444; }
-.sec:first-of-type h2 { margin-top: 5pt; }`,
-
-  modern: (t) => `
-h1 { font-size: 25pt; font-weight: 700; letter-spacing: -.01em; line-height: 1.1; text-align: ${t.headerAlign}; }
-.contact { margin: 5pt 0 3pt 0; color: #555; font-size: .95em; text-align: ${t.headerAlign}; }
-.contact span.sep { margin: 0 .55em; color: var(--accent); }
-h2 { font-family: var(--head); font-size: .88em; text-transform: uppercase; letter-spacing: .16em; font-weight: 700; color: var(--accent); margin: 15pt 0 4pt 0; padding-bottom: 3pt; border-bottom: 1.4pt solid var(--accent); }
-.sec:first-of-type h2 { margin-top: 12pt; }
-h3 { font-weight: 600; margin-top: 7pt; }
-h3 .when { color: #666; font-size: .93em; }
-.sub { color: #555; font-style: normal; }
-li::marker { color: var(--accent); }
-.skills strong { color: var(--accent); font-weight: 600; }`,
-
-  compact: (t) => `
-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 14pt; border-bottom: 1.2pt solid var(--accent); padding-bottom: 4pt; }
-h1 { font-size: 18pt; font-weight: 700; line-height: 1.05; }
-.contact { text-align: right; font-size: .93em; max-width: 62%; color: #333; }
-.contact span.sep { margin: 0 .3em; color: #888; }
-h2 { font-family: var(--head); font-size: .98em; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin: 7pt 0 2pt 0; padding-left: 6pt; border-left: 3pt solid var(--accent); line-height: 1.15; }
-h3 { margin-top: 3.5pt; }
-ul { padding-left: 12pt; margin-top: 1pt; }
-li { margin-bottom: .4pt; }`,
-
-  executive: (t) => `
-header { text-align: center; padding-bottom: 7pt; border-bottom: 3pt double var(--accent); margin-bottom: 4pt; }
-h1 { font-size: 22pt; font-weight: 400; text-transform: uppercase; letter-spacing: .2em; line-height: 1.15; }
-.contact { margin-top: 4pt; font-style: italic; color: #3a3a3a; font-size: .95em; }
-.contact span.sep { margin: 0 .6em; color: var(--accent); }
-h2 { font-family: var(--head); font-size: 1em; text-transform: uppercase; letter-spacing: .18em; font-weight: 700; color: var(--accent); margin: 12pt 0 3pt 0; padding-bottom: 2pt; border-bottom: .6pt solid var(--accent); }
-h3 { margin-top: 6pt; }
-h3 .when { font-style: italic; }
-.sub { color: #444; }`,
-
-  minimal: (t) => `
-h1 { font-size: 22pt; font-weight: 600; letter-spacing: -.005em; text-align: ${t.headerAlign}; }
-.contact { margin: 4pt 0 6pt 0; color: #666; font-size: .93em; text-align: ${t.headerAlign}; }
-.contact span.sep { margin: 0 .6em; color: #bbb; }
-h2 { font-family: var(--head); font-size: .82em; text-transform: uppercase; letter-spacing: .22em; font-weight: 600; color: var(--accent); margin: 15pt 0 5pt 0; }
-.sec:first-of-type h2 { margin-top: 10pt; }
-h3 { font-weight: 600; margin-top: 7pt; }
-h3 .when { color: #777; font-size: .92em; }
-.sub { color: #666; font-style: normal; }
-li::marker { color: #999; }
-ul { margin-top: 3pt; } li { margin-bottom: 2pt; }`,
-
-  technical: (t) => `
-h1 { font-size: 21pt; font-weight: 700; letter-spacing: -.01em; text-align: ${t.headerAlign}; }
-.contact { margin: 3pt 0 2pt 0; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: .8em; color: #444; text-align: ${t.headerAlign}; }
-.contact span.sep { margin: 0 .5em; color: var(--accent); }
-h2 { font-family: var(--head); font-size: .82em; text-transform: uppercase; letter-spacing: .12em; font-weight: 700; color: var(--accent); margin: 12pt 0 3pt 0; padding-bottom: 2pt; border-bottom: .75pt dashed var(--accent); }
-.sec:first-of-type h2 { margin-top: 8pt; }
-h3 .when { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: .8em; color: #555; font-weight: 400; }
-.skills strong { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: .86em; color: var(--accent); font-weight: 700; }
-li::marker { color: var(--accent); }`,
-
-  sidebar: (t) => `
-@page { margin: 0; }
-@media print { html { background: linear-gradient(90deg, var(--accent) 0, var(--accent) 32%, #fff 32%); } .cols { min-height: 100vh; } }
-@media screen { body { padding: 0 !important; background: linear-gradient(90deg, var(--accent) 0, var(--accent) 32%, #fff 32%); } .cols { min-height: ${PAGE_SIZES[t.pageSize].heightIn}in; } }
-.cols { display: grid; grid-template-columns: 32% 68%; }
-.side { color: #f3f6fa; padding: ${t.margin + 0.15}in ${t.margin * 0.7}in ${t.margin}in ${t.margin}in; }
-.main { padding: ${t.margin + 0.15}in ${t.margin}in ${t.margin}in ${t.margin * 0.8}in; }
-.side h1 { font-size: 21pt; font-weight: 700; line-height: 1.1; margin-bottom: 8pt; color: #fff; overflow-wrap: anywhere; }
-.side .contact { font-size: .92em; color: #dbe5f1; }
-.side .contact span.item { display: block; margin: 0 0 3pt 0; overflow-wrap: anywhere; }
-.side h2 { font-family: var(--head); font-size: .85em; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: #fff; margin: 14pt 0 4pt 0; padding-bottom: 2pt; border-bottom: .75pt solid rgba(255,255,255,.55); }
-.side .skills p { margin-bottom: 4pt; }
-.side h3 { display: block; margin: 0 0 2pt 0; font-weight: 600; }
-.side h3 .when { display: block; font-weight: 400; color: #dbe5f1; white-space: normal; }
-.side ul { padding-left: 12pt; }
-.main h2 { font-family: var(--head); font-size: .95em; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: var(--accent); margin: 14pt 0 4pt 0; padding-bottom: 2pt; border-bottom: 1pt solid var(--accent); }
-.main .sec:first-child h2 { margin-top: 0; }
-.main h3 .when { color: #555; }`,
 };
 
 // ---------- document ----------
@@ -316,21 +194,11 @@ export function renderResumeHtml(content: ResumeContent, templateId: TemplateId 
   const density = opts.density ?? "normal";
   const theme = applyDensity(themeFor(template.id, themeIn), density);
   const fonts: FontId[] = [theme.font, theme.headingFont ?? theme.font];
-  if (template.id === "technical" || template.id === "compact") fonts.push("mono");
   const items = contactItems(content.contact, template.id === "ats" ? "ats" : "default");
   const contactHtml = items.length ? `<p class="contact">${items.map((x) => `<span class="item">${x}</span>`).join('<span class="sep">|</span>')}</p>` : "";
   const sections = resolveSections(content, template);
 
-  let body: string;
-  if (template.id === "sidebar") {
-    const sideIds = new Set(["skills", "education", "certifications"]);
-    const side = sections.filter((s) => sideIds.has(s.id) || !(SECTION_IDS as readonly string[]).includes(s.id));
-    const main = sections.filter((s) => !side.includes(s));
-    const sideContact = items.length ? `<p class="contact">${items.map((x) => `<span class="item">${x}</span>`).join("")}</p>` : "";
-    body = `<div class="cols">\n<aside class="side">\n<header>\n<h1>${e(content.name)}</h1>\n${sideContact}\n</header>\n${side.map(wrap).join("\n")}\n</aside>\n<main class="main">\n${main.map(wrap).join("\n")}\n</main>\n</div>`;
-  } else {
-    body = `<header>\n<h1>${e(content.name)}</h1>\n${contactHtml}\n</header>\n${sections.map(wrap).join("\n")}`;
-  }
+  const body = `<header>\n<h1>${e(content.name)}</h1>\n${contactHtml}\n</header>\n${sections.map(wrap).join("\n")}`;
 
   return `<!doctype html>
 <html lang="en">

@@ -217,7 +217,7 @@ export function ApplicationReview({ initial, nodeLabels }: { initial: Applicatio
               </div>
               {resume.edited && <p className="mt-2"><Pill mark="accent">Edited by you</Pill></p>}
               <p className="mt-3 text-meta text-muted tnum">
-                {resume.templateId ? <>{resume.templateId[0].toUpperCase() + resume.templateId.slice(1)} template &middot; </> : null}{resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}
+                {resume.templateId ? <>{resume.templateId === "ats" ? "ATS Standard" : resume.templateId[0].toUpperCase() + resume.templateId.slice(1)} template &middot; </> : null}{resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}
                 {resume.keywordCoverage != null && <> &middot; keywords {Math.round(resume.keywordCoverage * 100)}%</>}
                 {failing.length > 0 && <> &middot; <span title={failing.map((c) => c.label).join("\n")} className="cursor-help underline decoration-line-strong decoration-dotted underline-offset-4">{failing.length} check{failing.length === 1 ? "" : "s"} to fix</span></>}
               </p>

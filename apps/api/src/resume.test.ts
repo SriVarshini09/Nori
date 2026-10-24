@@ -88,18 +88,18 @@ describe("auth", () => {
 });
 
 describe("templates", () => {
-  it("lists eight templates with fonts and page sizes, ATS Standard first", async () => {
+  it("lists the one template with fonts and page sizes", async () => {
     const r = await req("GET", "/api/resume-templates", { cookie: A });
     expect(r.status).toBe(200);
-    expect(r.json.templates.map((t: any) => t.id)).toEqual(["ats", "classic", "modern", "compact", "executive", "minimal", "technical", "sidebar"]);
-    expect(r.json.templates.find((t: any) => t.id === "sidebar")).toMatchObject({ atsSafe: false, columns: 2 });
+    expect(r.json.templates.map((t: any) => t.id)).toEqual(["ats"]);
+    expect(r.json.templates[0]).toMatchObject({ atsSafe: true, columns: 1, name: "ATS Standard" });
     expect(r.json.templates[0].theme).toMatchObject({ font: "tinos", pageSize: "letter", headerAlign: "center" });
     expect(r.json.fonts.map((f: any) => f.id)).toContain("garamond");
     expect(r.json.pageSizes).toEqual([{ id: "letter", label: "US Letter" }, { id: "a4", label: "A4" }]);
   });
 
   it("renders a sample preview for a thumbnail, with theme overrides from the query", async () => {
-    const r = await req("GET", "/api/resume-templates/executive/preview?accent=%23aa0000&pageSize=a4", { cookie: A });
+    const r = await req("GET", "/api/resume-templates/ats/preview?accent=%23aa0000&pageSize=a4", { cookie: A });
     expect(r.status).toBe(200);
     const html = r.buf!.toString();
     expect(html).toContain("Alex Morgan");
@@ -112,18 +112,18 @@ describe("templates", () => {
 
 describe("live preview", () => {
   it("returns html, the real page count and the ATS report", async () => {
-    const r = await req("POST", "/api/resume/preview", { cookie: A, body: { content: SAMPLE_RESUME, templateId: "modern", theme: { accent: "#0a7d5a" } } });
+    const r = await req("POST", "/api/resume/preview", { cookie: A, body: { content: SAMPLE_RESUME, templateId: "ats", theme: { accent: "#0a7d5a" } } });
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ pages: 1, targetPages: 1, templateId: "modern", density: "normal" });
+    expect(r.json).toMatchObject({ pages: 1, targetPages: 1, templateId: "ats", density: "normal" });
     expect(r.json.html).toContain("#0a7d5a");
     expect(r.json.atsScore).toBeGreaterThan(80);
     expect(r.json.atsChecks.length).toBeGreaterThan(5);
-    expect(r.json.theme).toMatchObject({ accent: "#0a7d5a", font: "inter" });
+    expect(r.json.theme).toMatchObject({ accent: "#0a7d5a", font: "tinos" });
   }, 60_000);
 
-  it("falls back to Classic for an unknown template, rejects bad content and oversize bodies", async () => {
+  it("falls back to ATS Standard for an unknown template, rejects bad content and oversize bodies", async () => {
     const ok = await req("POST", "/api/resume/preview", { cookie: A, body: { content: SAMPLE_RESUME, templateId: "wordart" } });
-    expect(ok.json.templateId).toBe("classic");
+    expect(ok.json.templateId).toBe("ats");
     const bad = await req("POST", "/api/resume/preview", { cookie: A, body: { content: { name: 5 } } });
     expect(bad.status).toBe(422);
     expect(bad.json.error).toMatch(/name/);
@@ -154,9 +154,9 @@ describe("resume library", () => {
     const content = structuredClone(doc.content);
     content.summary = "Full-stack engineer who ships.";
     content.experience[0].bullets[0].text = "Led the checkout migration to React and TypeScript, cutting load time 45% for two million users";
-    const saved = await req("PUT", `/api/resume-docs/${docId}`, { cookie: A, body: { content, templateId: "modern", theme: { accent: "#7c3aed" }, expectedVersion: 1 } });
+    const saved = await req("PUT", `/api/resume-docs/${docId}`, { cookie: A, body: { content, templateId: "ats", theme: { accent: "#7c3aed" }, expectedVersion: 1 } });
     expect(saved.status).toBe(200);
-    expect(saved.json).toMatchObject({ version: 2, templateId: "modern" });
+    expect(saved.json).toMatchObject({ version: 2, templateId: "ats" });
     expect(saved.json.theme.accent).toBe("#7c3aed");
     const stale = await req("PUT", `/api/resume-docs/${docId}`, { cookie: A, body: { name: "Stale", expectedVersion: 1 } });
     expect(stale.status).toBe(409);
@@ -180,15 +180,15 @@ describe("resume library", () => {
   });
 
   it("creates from content, blank, copy and graph; manages the default; deletes", async () => {
-    const fromContent = await req("POST", "/api/resume-docs", { cookie: A, body: { from: "content", name: "Imported", content: SAMPLE_RESUME, templateId: "executive" } });
+    const fromContent = await req("POST", "/api/resume-docs", { cookie: A, body: { from: "content", name: "Imported", content: SAMPLE_RESUME, templateId: "ats" } });
     expect(fromContent.status).toBe(201);
-    expect(fromContent.json).toMatchObject({ name: "Imported", templateId: "executive", isDefault: false });
+    expect(fromContent.json).toMatchObject({ name: "Imported", templateId: "ats", isDefault: false });
     const blank = await req("POST", "/api/resume-docs", { cookie: A, body: { from: "blank" } });
     expect(blank.json.content.name).toBe("Jordan Rivera");
     const copy = await req("POST", "/api/resume-docs", { cookie: A, body: { from: "copy", copyOf: docId } });
     expect(copy.json).toMatchObject({ name: "Copy of My resume", source: "copy" });
-    const fromGraph = await req("POST", "/api/resume-docs", { cookie: A, body: { from: "graph", name: "From graph", templateId: "compact" } });
-    expect(fromGraph.json).toMatchObject({ source: "graph", templateId: "compact" });
+    const fromGraph = await req("POST", "/api/resume-docs", { cookie: A, body: { from: "graph", name: "From graph", templateId: "ats" } });
+    expect(fromGraph.json).toMatchObject({ source: "graph", templateId: "ats" });
     expect((await req("POST", "/api/resume-docs", { cookie: A, body: { from: "copy" } })).status).toBe(400);
     expect((await req("POST", "/api/resume-docs", { cookie: A, body: { from: "content", content: { name: 3 } } })).status).toBe(422);
 
@@ -250,13 +250,13 @@ describe("tailored resumes", () => {
   let appId: string;
 
   it("tailors with the default document's template and theme", async () => {
-    await req("POST", "/api/resume-docs", { cookie: A, body: { from: "content", name: "Style source", content: { ...SAMPLE_RESUME, name: "Jordan Rivera", contact: { email: "jordan.rivera@example.com", phone: "(415) 555-0199" } }, templateId: "technical", theme: { accent: "#0f766e" }, makeDefault: true } });
+    await req("POST", "/api/resume-docs", { cookie: A, body: { from: "content", name: "Style source", content: { ...SAMPLE_RESUME, name: "Jordan Rivera", contact: { email: "jordan.rivera@example.com", phone: "(415) 555-0199" } }, templateId: "ats", theme: { accent: "#0f766e" }, makeDefault: true } });
     const created = await req("POST", "/api/applications?wait=1", { cookie: A, body: { jobId } });
     expect(created.status).toBe(201);
     appId = created.json.id;
     const detail = (await req("GET", `/api/applications/${appId}`, { cookie: A })).json;
     expect(detail.application.status).toBe("resume_review");
-    expect(detail.resume).toMatchObject({ templateId: "technical", edited: false, version: 1 });
+    expect(detail.resume).toMatchObject({ templateId: "ats", edited: false, version: 1 });
     expect(detail.resume.theme.accent).toBe("#0f766e");
     expect(detail.resume.html).toContain("#0f766e");
   }, 120_000);
@@ -271,7 +271,7 @@ describe("tailored resumes", () => {
     const r = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { content } });
     expect(r.status).toBe(200);
     expect(r.json.application).toMatchObject({ status: "resume_review", resumeApprovedAt: null });
-    expect(r.json.resume).toMatchObject({ version: 2, edited: true, templateId: "technical" });
+    expect(r.json.resume).toMatchObject({ version: 2, edited: true, templateId: "ats" });
     expect(r.json.resume.html).toBeUndefined();
     const after = (await req("GET", `/api/applications/${appId}`, { cookie: A })).json;
     expect(after.application.resumeId).toBe(r.json.resume.id);
@@ -295,11 +295,11 @@ describe("tailored resumes", () => {
 
   it("restyles without touching the words, and a no-op returns the same version", async () => {
     const before = (await req("GET", `/api/applications/${appId}`, { cookie: A })).json;
-    const r = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { templateId: "executive", theme: { pageSize: "a4" } } });
+    const r = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { templateId: "ats", theme: { pageSize: "a4" } } });
     expect(r.status).toBe(200);
-    expect(r.json.resume).toMatchObject({ templateId: "executive", version: before.resume.version + 1 });
-    expect(r.json.resume.theme).toMatchObject({ pageSize: "a4", font: "garamond" });
-    const same = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { templateId: "executive" } });
+    expect(r.json.resume).toMatchObject({ templateId: "ats", version: before.resume.version + 1 });
+    expect(r.json.resume.theme).toMatchObject({ pageSize: "a4", font: "tinos" });
+    const same = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { templateId: "ats" } });
     expect(same.json.resume.version).toBe(r.json.resume.version);
   }, 120_000);
 
@@ -317,8 +317,8 @@ describe("tailored resumes", () => {
   }, 120_000);
 
   it("protects other users' applications and files", async () => {
-    expect((await req("PUT", `/api/applications/${appId}/resume`, { cookie: B, body: { templateId: "modern" } })).status).toBe(404);
-    expect((await req("PUT", "/api/applications/not-a-uuid/resume", { cookie: A, body: { templateId: "modern" } })).status).toBe(404);
+    expect((await req("PUT", `/api/applications/${appId}/resume`, { cookie: B, body: { templateId: "ats" } })).status).toBe(404);
+    expect((await req("PUT", "/api/applications/not-a-uuid/resume", { cookie: A, body: { templateId: "ats" } })).status).toBe(404);
     const detail = (await req("GET", `/api/applications/${appId}`, { cookie: A })).json;
     const rel = detail.resume.pdfPath.replace(/\\/g, "/").replace(/^.*\/(?=[0-9a-f-]{36}\/)/, "");
     expect((await req("GET", `/api/artifacts/${rel}`, { cookie: A })).status).toBe(200);
@@ -328,7 +328,7 @@ describe("tailored resumes", () => {
 
   it("only allows edits while the resume waits for review", async () => {
     await req("POST", `/api/applications/${appId}/approve-resume?wait=1`, { cookie: A });
-    const r = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { templateId: "modern" } });
+    const r = await req("PUT", `/api/applications/${appId}/resume`, { cookie: A, body: { templateId: "ats" } });
     expect(r.status).toBe(409);
     expect(r.json.error).toMatch(/before the form is filled/);
   }, 120_000);
