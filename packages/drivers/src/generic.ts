@@ -136,7 +136,7 @@ export function profileValue(cls: FieldClass, profile: ApplicantProfile, resumeP
 /** Optional fields of these classes stay blank when the profile has no value (no answer generation). */
 const BLANK_WHEN_ABSENT = new Set<FieldClass>(["github", "social", "website", "linkedin", "country"]);
 
-const norm = (s: string) => s.toLowerCase().replace(/\*/g, "").replace(/\s+/g, " ").trim();
+export const norm = (s: string) => s.toLowerCase().replace(/\*/g, "").replace(/\s+/g, " ").trim();
 
 const YES = /^(y|yes|true|1|i am|i do|i will)\b/i;
 const NO = /^(n|no|false|0|i am not|i do not|i don't|i will not)\b/i;

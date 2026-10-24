@@ -264,7 +264,7 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
     job, requirements, profileRow,
     reviewBeforeSubmit: profileRow.reviewBeforeSubmit,
     ctx: {
-      applyUrl: formUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
+      applyUrl: formUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion, sessionKey: app.id,
       onEvent: (step, message, data) => { void emit(db, app.id, `driver:${step}`, message, data ?? {}); },
       artifactsDir: path.join(artifactsRootOf(deps), app.id),
       headless: deps.headless,

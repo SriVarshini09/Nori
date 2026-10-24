@@ -10,7 +10,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import type { DriverContext, DriverResult, FormField, PendingQuestion, Receipt } from "@jobgraph/core";
-import { discoverFields, fillForm, findSubmitButton, detectCaptcha, CAPTCHA_QUESTION, PREFERRED_FORM_SELECTORS } from "./generic.js";
+import { discoverFields, fillField, fillForm, findSubmitButton, detectCaptcha, norm, CAPTCHA_QUESTION, PREFERRED_FORM_SELECTORS } from "./generic.js";
 import {
   runScript, CONFIRMATION_SCRIPT, JOB_CONTEXT_SCRIPT, CODE_INPUTS_SCRIPT, ERRORS_SCRIPT, PASSWORD_SCRIPT, FORM_VISIBLE_SCRIPT,
 } from "./dom.js";
@@ -129,6 +129,84 @@ async function attachResumeFallback(page: Page, ctx: DriverContext): Promise<boo
   }
 }
 
+/**
+ * A filled form kept open between steps. The fill and the send used to be two full runs (open the site, fill every field),
+ * so approving took as long as the first fill and an answer to one missing field redid the whole form. Now the page a run
+ * leaves behind waits here, keyed by application, and the next run applies only what changed. Kept in memory for a short
+ * while and for a few applications at once; anything else, including a server restart, starts from scratch as before.
+ */
+type Parked = {
+  browser: Browser; page: Page; fields: FormField[]; filled: Receipt["fields"]; files: string[]; pending: PendingQuestion[];
+  /** ctx.answers (normalised by label) the page was filled with, to tell a person's later edit from what is already there. */
+  used: Map<string, string>;
+  timer: ReturnType<typeof setTimeout>;
+};
+const PARK_MS = 20 * 60_000;
+const PARK_MAX = 3;
+const parked = new Map<string, Parked>();
+
+function dropParked(key: string): void {
+  const p = parked.get(key);
+  if (!p) return;
+  parked.delete(key);
+  clearTimeout(p.timer);
+  void p.browser.close().catch(() => {});
+}
+
+function parkPage(key: string, entry: Omit<Parked, "timer">): void {
+  dropParked(key);
+  while (parked.size >= PARK_MAX) dropParked(parked.keys().next().value as string);
+  const timer = setTimeout(() => dropParked(key), PARK_MS);
+  timer.unref?.();
+  parked.set(key, { ...entry, timer });
+}
+
+function takeParked(key: string): Parked | undefined {
+  const p = parked.get(key);
+  if (!p) return undefined;
+  parked.delete(key);
+  clearTimeout(p.timer);
+  return p;
+}
+
+/** Close every kept page (tests, shutdown). */
+export async function closeParkedPages(): Promise<void> {
+  for (const key of [...parked.keys()]) dropParked(key);
+}
+
+/**
+ * Carry on from a kept page: type only the answers that are new or changed since it was filled. Returns null when the page
+ * cannot be trusted (the form's fields changed, or an edit would not go in), and the caller starts over with a fresh run.
+ */
+async function continueParked(p: Parked, ctx: DriverContext, preferred: string[]): Promise<{ filled: Receipt["fields"]; files: string[]; pending: PendingQuestion[] } | null> {
+  try {
+    if (p.page.isClosed()) return null;
+    const now = await discoverFields(p.page, preferred);
+    const labels = (fs: FormField[]) => fs.map((x) => x.label).sort().join("");
+    if (labels(now) !== labels(p.fields)) return null;
+    const answers = new Map(Object.entries(ctx.answers ?? {}).map(([k, v]) => [norm(k), v]));
+    const filled = p.filled.map((x) => ({ ...x }));
+    let applied = 0;
+    for (const field of now) {
+      if (field.kind === "file") continue;
+      const key = norm(field.label);
+      const want = answers.get(key);
+      if (!want || want === p.used.get(key)) continue;
+      const have = filled.find((x) => x.label === field.label);
+      if (have?.value === want) continue;
+      const actual = await fillField(p.page, field, want);
+      if (have) have.value = actual; else filled.push({ label: field.label, value: actual, kind: field.kind });
+      ctx.onEvent("field_filled", `Filled "${field.label}"`, { label: field.label, kind: field.kind, source: "answers", reused: true, value: actual.slice(0, 120) });
+      applied++;
+    }
+    const pending = p.pending.filter((q) => !filled.some((x) => x.label === q.label));
+    ctx.onEvent("reused_form", `Carried on from the form already filled (${applied} answer${applied === 1 ? "" : "s"} added)`, { applied });
+    return { filled, files: p.files, pending };
+  } catch {
+    return null;
+  }
+}
+
 export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promise<DriverResult> {
   const started = Date.now();
   const preferred = opts.preferredForms ?? PREFERRED_FORM_SELECTORS;
@@ -137,59 +215,84 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
   /** Set once submit has been clicked: from then on the employer may have the application, and every result says so. */
   let clicked = false;
   let fields: FormField[] = [];
+  /** Set when the page is handed to the registry above instead of being closed. */
+  let keepOpen = false;
   const receipt = (extra: Partial<Receipt> & Pick<Receipt, "fields" | "files">): Receipt => ({
     submittedVia: opts.name, dryRun: ctx.dryRun, durationMs: Date.now() - started, ...extra,
   });
 
   try {
-    browser = await chromium.launch({ headless: ctx.headless ?? true });
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-    page = await context.newPage();
-    page.setDefaultTimeout(NAV_TIMEOUT);
-
-    ctx.onEvent("navigate", `Opening ${ctx.applyUrl}`);
-    try {
-      await page.goto(ctx.applyUrl, { waitUntil: "networkidle", timeout: NAV_TIMEOUT });
-    } catch (err) {
-      // Pages with long-polling never go idle; continue if the document itself loaded.
-      if (!page.url() || page.url() === "about:blank") throw err;
-      ctx.onEvent("navigate_warn", "Page did not reach network idle; continuing");
+    // A page kept from the previous step: carry on from it when it is still the same form.
+    const kept = ctx.sessionKey ? takeParked(ctx.sessionKey) : undefined;
+    let carried: Awaited<ReturnType<typeof continueParked>> = null;
+    if (kept) {
+      carried = await continueParked(kept, ctx, preferred);
+      if (carried) { browser = kept.browser; page = kept.page; fields = kept.fields; }
+      else { await kept.browser.close().catch(() => {}); ctx.onEvent("reuse_skipped", "The kept form could not be reused; filling again from the start"); }
     }
+    const used = new Map(Object.entries(ctx.answers ?? {}).map(([k, v]) => [norm(k), v] as [string, string]));
+    /** Hand the page to the registry so the next step continues from it (see Parked). */
+    const keep = (): void => {
+      if (!ctx.sessionKey || !browser || !page) return;
+      parkPage(ctx.sessionKey, { browser, page, fields, filled, files, pending, used });
+      keepOpen = true;
+    };
+    let filled: Receipt["fields"];
+    let pending: PendingQuestion[];
+    let files: string[];
+    if (carried) {
+      ({ filled, pending, files } = carried);
+    } else {
+      browser = await chromium.launch({ headless: ctx.headless ?? true });
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      page = await context.newPage();
+      page.setDefaultTimeout(NAV_TIMEOUT);
 
-    if (opts.beforeDiscover) await opts.beforeDiscover(page, ctx);
-    await revealForm(page, ctx, preferred);
-
-    if (await runScript<boolean>(page, PASSWORD_SCRIPT)) {
-      const shot = await screenshot(page, ctx, opts.name, "account-wall");
-      const pending: PendingQuestion[] = [{ label: "Account sign-in or creation required", type: "account", required: true }];
-      ctx.onEvent("needs_user", "Site asks for a password; the driver never signs in or creates accounts");
-      return { outcome: "needs_user", pending, receipt: receipt({ fields: [], files: [], screenshotPath: shot }) };
-    }
-
-    fields = await discoverFields(page, preferred);
-    ctx.onEvent("discovered", `Found ${fields.length} fields`, { fields: fields.map((f) => ({ label: f.label, kind: f.kind, required: f.required })) });
-    if (!fields.length) {
-      if (BLOCKED_RE.test(await bodyText(page))) {
-        const shot = await screenshot(page, ctx, opts.name, "blocked");
-        ctx.onEvent("needs_user", "The site turned automated access away; Nori does not try to get around that");
-        return {
-          outcome: "needs_user", receipt: receipt({ fields: [], files: [], screenshotPath: shot }),
-          pending: [{ label: "This site blocks automated applications: open the posting and apply yourself", type: "blocked", required: true }],
-        };
+      ctx.onEvent("navigate", `Opening ${ctx.applyUrl}`);
+      try {
+        await page.goto(ctx.applyUrl, { waitUntil: "networkidle", timeout: NAV_TIMEOUT });
+      } catch (err) {
+        // Pages with long-polling never go idle; continue if the document itself loaded.
+        if (!page.url() || page.url() === "about:blank") throw err;
+        ctx.onEvent("navigate_warn", "Page did not reach network idle; continuing");
       }
-      const shot = await screenshot(page, ctx, opts.name, "no-form");
-      return { outcome: "failed", error: "No application form fields found", screenshotPath: shot };
-    }
 
-    const jobContext = await runScript<string>(page, JOB_CONTEXT_SCRIPT).catch(() => "");
-    const { filled, pending, files } = await fillForm(page, ctx, fields, jobContext);
+      if (opts.beforeDiscover) await opts.beforeDiscover(page, ctx);
+      await revealForm(page, ctx, preferred);
 
-    if (!files.length && ctx.resumePdfPath && (await attachResumeFallback(page, ctx))) {
-      files.push(ctx.resumePdfPath);
-      filled.push({ label: "Resume/CV", value: path.basename(ctx.resumePdfPath), kind: "file" });
-      const i = pending.findIndex((p) => p.type === "file" && /resume|cv/i.test(p.label));
-      if (i >= 0) pending.splice(i, 1);
+      if (await runScript<boolean>(page, PASSWORD_SCRIPT)) {
+        const shot = await screenshot(page, ctx, opts.name, "account-wall");
+        const pending: PendingQuestion[] = [{ label: "Account sign-in or creation required", type: "account", required: true }];
+        ctx.onEvent("needs_user", "Site asks for a password; the driver never signs in or creates accounts");
+        return { outcome: "needs_user", pending, receipt: receipt({ fields: [], files: [], screenshotPath: shot }) };
+      }
+
+      fields = await discoverFields(page, preferred);
+      ctx.onEvent("discovered", `Found ${fields.length} fields`, { fields: fields.map((f) => ({ label: f.label, kind: f.kind, required: f.required })) });
+      if (!fields.length) {
+        if (BLOCKED_RE.test(await bodyText(page))) {
+          const shot = await screenshot(page, ctx, opts.name, "blocked");
+          ctx.onEvent("needs_user", "The site turned automated access away; Nori does not try to get around that");
+          return {
+            outcome: "needs_user", receipt: receipt({ fields: [], files: [], screenshotPath: shot }),
+            pending: [{ label: "This site blocks automated applications: open the posting and apply yourself", type: "blocked", required: true }],
+          };
+        }
+        const shot = await screenshot(page, ctx, opts.name, "no-form");
+        return { outcome: "failed", error: "No application form fields found", screenshotPath: shot };
+      }
+
+      const jobContext = await runScript<string>(page, JOB_CONTEXT_SCRIPT).catch(() => "");
+      ({ filled, pending, files } = await fillForm(page, ctx, fields, jobContext));
+
+      if (!files.length && ctx.resumePdfPath && (await attachResumeFallback(page, ctx))) {
+        files.push(ctx.resumePdfPath);
+        filled.push({ label: "Resume/CV", value: path.basename(ctx.resumePdfPath), kind: "file" });
+        const i = pending.findIndex((p) => p.type === "file" && /resume|cv/i.test(p.label));
+        if (i >= 0) pending.splice(i, 1);
+      }
     }
+    if (!page || !browser) throw new Error("The form page is not open");
 
     const captcha = await detectCaptcha(page);
     if (captcha) {
@@ -201,11 +304,13 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
 
     if (pending.length) {
       ctx.onEvent("needs_user", `${pending.length} question(s) need the user`, { pending });
+      if (!captcha) keep();
       return { outcome: "needs_user", pending, receipt: receipt({ fields: filled, files, screenshotPath: filledShot }) };
     }
 
     if (!submitAllowed(ctx)) {
       ctx.onEvent("submit_skipped", ctx.dryRun ? "Dry run: form filled, not submitted" : "ALLOW_REAL_SUBMIT is not \"true\": form filled, not submitted");
+      keep();
       return { outcome: "filled", fields, receipt: receipt({ fields: filled, files, screenshotPath: filledShot }) };
     }
 
@@ -263,6 +368,6 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     const shot = page ? await screenshot(page, ctx, opts.name, "error") : undefined;
     return { outcome: "failed", error, screenshotPath: shot, ...(clicked ? { submitClicked: true } : {}) };
   } finally {
-    await browser?.close().catch(() => {});
+    if (!keepOpen) await browser?.close().catch(() => {});
   }
 }

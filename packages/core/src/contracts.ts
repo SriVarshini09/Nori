@@ -118,6 +118,12 @@ export type DriverContext = {
   waitForCode: (hint: string) => Promise<string | null>;
   /** When true the driver fills everything, screenshots, and never clicks submit. */
   dryRun: boolean;
+  /**
+   * Names the application this run belongs to. The page a fill leaves behind (form complete, or waiting on an answer) is
+   * kept open for a few minutes under this key, so approving or answering carries on from it instead of opening the
+   * site and filling every field again. Without it, or when the kept page is gone, the run starts from scratch.
+   */
+  sessionKey?: string;
   onEvent: (step: string, message: string, data?: Record<string, unknown>) => void;
   artifactsDir: string;
   headless?: boolean;
