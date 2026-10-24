@@ -6,8 +6,10 @@ import { NextResponse, type NextRequest } from "next/server";
  * rejected session back to /login and an unfinished onboarding to /onboarding.
  */
 // Share images and the companion icon have no file extension, so the matcher catches them: they must stay public, or link
-// previews in Slack, X and LinkedIn get a redirect to /login instead of an image.
-const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email", "/privacy", "/terms", "/opengraph-image", "/twitter-image", "/icon", "/apple-icon", "/session-expired"];
+// previews in Slack, X and LinkedIn get a redirect to /login instead of an image. /monitoring is the Sentry tunnel
+// (next.config.ts): the browser posts error reports there, signed in or not, and a redirect to /login would swallow them
+// with a 200 the SDK reads as delivered.
+const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email", "/privacy", "/terms", "/opengraph-image", "/twitter-image", "/icon", "/apple-icon", "/session-expired", "/monitoring"];
 
 /**
  * Requests the web app proxies to the API (/api, /mcp) carry the visitor's address, signed with PROXY_SECRET, so the API's
