@@ -93,7 +93,7 @@ export function ModelPanel({ initial, presets: info, compact }: { initial: Model
     <Frame className="p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <IndexLabel marker={mode === "heuristic" ? "hollow" : "ink"} tone="ink">
-          <span role="status">{MODE_LINE[mode]}</span>
+          <span role="status">{saved?.source === "hosted" ? "Running on Nori's shared key" : MODE_LINE[mode]}</span>
         </IndexLabel>
         {preset.keyUrl && !hasKey && <TextLink href={preset.keyUrl} external>Get a {preset.label} key</TextLink>}
       </div>
