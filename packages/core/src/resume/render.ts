@@ -3,7 +3,7 @@ import { atsChecks } from "../tailor/ats.js";
 import { withPage } from "./browser.js";
 import { readFontFile } from "./fonts.js";
 import { PAGE_SIZES, type Density, type ResumeTheme } from "./theme.js";
-import { renderResumeHtml, themeFor, type TemplateId } from "./templates.js";
+import { DEFAULT_TEMPLATE, renderResumeHtml, themeFor, type TemplateId } from "./templates.js";
 
 /** Count pages in a PDF by its page objects ("/Type /Page", not "/Pages"). */
 export function countPdfPages(pdf: Buffer | Uint8Array): number {
@@ -102,7 +102,7 @@ async function toPdf(html: string, theme: ResumeTheme): Promise<Buffer> {
  * runs out. Returns the best attempt (the last one tried) with its real page count and ATS report.
  */
 export async function renderResume(content: ResumeContent, opts: ResumeRenderOptions = {}): Promise<ResumeRenderOutcome> {
-  const templateId = opts.templateId ?? "classic";
+  const templateId = opts.templateId ?? DEFAULT_TEMPLATE;
   const theme = themeFor(templateId, opts.theme);
   const maxPages = opts.maxPages ?? theme.pages;
   const steps: string[] = [];

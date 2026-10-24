@@ -6,7 +6,7 @@ import path from "node:path";
  * Fonts resumes can use. All are open-licence (SIL OFL) and ship in the repo through @fontsource, so a PDF looks the
  * same on a laptop, in CI and on the server. Text stays real text (Chromium embeds a subset), so ATS parsers read it.
  */
-export type FontId = "source-sans" | "inter" | "lora" | "garamond" | "mono";
+export type FontId = "source-sans" | "inter" | "lora" | "garamond" | "tinos" | "mono";
 
 type FontSpec = {
   id: FontId;
@@ -24,6 +24,8 @@ export const FONTS: Record<FontId, FontSpec> = {
   inter: { id: "inter", label: "Inter", pkg: "inter", stack: "'Inter', Arial, Helvetica, sans-serif", kind: "sans", weights: [400, 600, 700], italic: true },
   lora: { id: "lora", label: "Lora", pkg: "lora", stack: "'Lora', Georgia, 'Times New Roman', serif", kind: "serif", weights: [400, 700], italic: true },
   garamond: { id: "garamond", label: "EB Garamond", pkg: "eb-garamond", stack: "'EB Garamond', Garamond, Georgia, serif", kind: "serif", weights: [400, 700], italic: true },
+  /** Same metrics as Times New Roman (the Liberation Serif lineage), so a resume set in it lays out like a Times one. */
+  tinos: { id: "tinos", label: "Tinos (Times)", pkg: "tinos", stack: "'Tinos', 'Times New Roman', Times, 'Liberation Serif', serif", kind: "serif", weights: [400, 700], italic: true },
   mono: { id: "mono", label: "JetBrains Mono", pkg: "jetbrains-mono", stack: "'JetBrains Mono', 'Courier New', monospace", kind: "mono", weights: [400, 700], italic: false },
 };
 

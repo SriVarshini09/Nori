@@ -88,12 +88,12 @@ describe("auth", () => {
 });
 
 describe("templates", () => {
-  it("lists seven templates with fonts and page sizes", async () => {
+  it("lists eight templates with fonts and page sizes, ATS Standard first", async () => {
     const r = await req("GET", "/api/resume-templates", { cookie: A });
     expect(r.status).toBe(200);
-    expect(r.json.templates.map((t: any) => t.id)).toEqual(["classic", "modern", "compact", "executive", "minimal", "technical", "sidebar"]);
+    expect(r.json.templates.map((t: any) => t.id)).toEqual(["ats", "classic", "modern", "compact", "executive", "minimal", "technical", "sidebar"]);
     expect(r.json.templates.find((t: any) => t.id === "sidebar")).toMatchObject({ atsSafe: false, columns: 2 });
-    expect(r.json.templates[0].theme).toMatchObject({ font: "source-sans", pageSize: "letter" });
+    expect(r.json.templates[0].theme).toMatchObject({ font: "tinos", pageSize: "letter", headerAlign: "center" });
     expect(r.json.fonts.map((f: any) => f.id)).toContain("garamond");
     expect(r.json.pageSizes).toEqual([{ id: "letter", label: "US Letter" }, { id: "a4", label: "A4" }]);
   });
@@ -173,7 +173,7 @@ describe("resume library", () => {
     expect(versions.json[0].content).toBeUndefined();
     const back = await req("POST", `/api/resume-docs/${docId}/versions/1/restore`, { cookie: A });
     expect(back.status).toBe(200);
-    expect(back.json.templateId).toBe("classic");
+    expect(back.json.templateId).toBe("ats");
     expect(back.json.content.summary).toBeUndefined();
     expect((await req("POST", `/api/resume-docs/${docId}/versions/abc/restore`, { cookie: A })).status).toBe(400);
     expect((await req("POST", `/api/resume-docs/${docId}/versions/999/restore`, { cookie: A })).status).toBe(404);

@@ -154,8 +154,8 @@ describe("2. resume studio", () => {
 
   it("switches template and restyles, and the choice survives a reload", async () => {
     await page.getByRole("tab", { name: "design" }).click();
-    await expect(page.getByRole("radiogroup", { name: "Template" }).getByRole("radio")).toHaveCount(7);
-    await expect(page.getByRole("radio", { name: /Classic/ })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radiogroup", { name: "Template" }).getByRole("radio")).toHaveCount(8);
+    await expect(page.getByRole("radio", { name: /ATS Standard/ })).toHaveAttribute("aria-checked", "true");
     await shot("05-studio-design");
     await page.getByRole("radio", { name: /Modern/ }).click();
     await expect(page.getByRole("radio", { name: /Modern/ })).toHaveAttribute("aria-checked", "true");

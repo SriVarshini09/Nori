@@ -6,7 +6,7 @@ import { closeSharedBrowser } from "./browser.js";
 import { FONT_IDS, fontFaceCss, fontFiles, readFontFile } from "./fonts.js";
 import { renderResume } from "./render.js";
 import { SAMPLE_PERSONAS, SAMPLE_RESUME, STUDENT_RESUME } from "./sample-content.js";
-import { TEMPLATES, TEMPLATE_IDS, renderResumeHtml, resolveSections, themeFor } from "./templates.js";
+import { DEFAULT_TEMPLATE, TEMPLATES, TEMPLATE_IDS, renderResumeHtml, resolveSections, themeFor } from "./templates.js";
 import { DEFAULT_THEME, applyDensity, normalizeTheme, parseResumeContent } from "./theme.js";
 
 afterAll(async () => { await closeSharedBrowser(); });
@@ -35,10 +35,29 @@ function allText(c: ResumeContent): string[] {
 }
 
 describe("template registry", () => {
-  it("has seven templates, six ATS-safe and one flagged two-column", () => {
-    expect(TEMPLATE_IDS).toHaveLength(7);
-    expect(TEMPLATE_IDS.filter((id) => TEMPLATES[id].atsSafe)).toHaveLength(6);
+  it("has eight templates, seven ATS-safe and one flagged two-column, with ATS Standard first and default", () => {
+    expect(TEMPLATE_IDS).toHaveLength(8);
+    expect(TEMPLATE_IDS.filter((id) => TEMPLATES[id].atsSafe)).toHaveLength(7);
     expect(TEMPLATES.sidebar).toMatchObject({ atsSafe: false, columns: 2 });
+    expect(TEMPLATE_IDS[0]).toBe("ats");
+    expect(DEFAULT_TEMPLATE).toBe("ats");
+    expect(renderResumeHtml(SAMPLE_RESUME)).toBe(renderResumeHtml(SAMPLE_RESUME, "ats"));
+  });
+
+  it("ATS Standard mirrors the LaTeX one-pager: Times, centred header, company-first roles, labelled links, skills as bullets", () => {
+    expect(themeFor("ats")).toMatchObject({ font: "tinos", fontSize: 10.5, headerAlign: "center", accent: "#000000" });
+    const html = renderResumeHtml(SAMPLE_RESUME, "ats");
+    expect(html).toContain("tinos-latin-400-normal.woff2");
+    expect(html).toContain("header { text-align: center; }");
+    const role = SAMPLE_RESUME.experience[0];
+    expect(html).toContain(`<h3><span>${role.company}</span>`);
+    expect(html).toContain(`<p class="sub">${role.title}`);
+    expect(html).toMatch(/<a href="[^"]*linkedin[^"]*">LinkedIn<\/a>/);
+    expect(html).toMatch(/<a href="[^"]*github[^"]*">GitHub<\/a>/);
+    expect(html).toMatch(/<div class="skills">\s*<ul>\s*<li><strong>/);
+    const edu = SAMPLE_RESUME.education[0];
+    expect(html).toContain(`<div class="edu"><h3><span>${edu.school}</span>`);
+    expect(html).toMatch(/@page \{ margin: 0\.30in 0\.5in 0\.40in 0\.5in; \}/);
   });
 
   it("themeFor layers defaults, the template look and user overrides, and clamps bad input", () => {

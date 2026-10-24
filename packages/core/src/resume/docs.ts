@@ -3,7 +3,7 @@ import type { Db } from "../db/client.js";
 import { resumeDocs, resumeDocVersions, type ResumeContent } from "../db/schema.js";
 import { getProfile } from "../users.js";
 import { buildBaselineResume } from "../graph/query.js";
-import { isTemplateId, themeFor, type TemplateId } from "./templates.js";
+import { DEFAULT_TEMPLATE, isTemplateId, themeFor, type TemplateId } from "./templates.js";
 
 export type ResumeDoc = typeof resumeDocs.$inferSelect;
 export type ResumeDocVersion = typeof resumeDocVersions.$inferSelect;
@@ -28,7 +28,7 @@ export function stableJson(v: unknown): string {
  */
 export function mergeStyle(cur: { templateId: string; theme: Record<string, unknown> }, patch: { templateId?: string; theme?: unknown }): { templateId: TemplateId; theme: Record<string, unknown> } {
   if (patch.templateId !== undefined && !isTemplateId(patch.templateId)) throw new ResumeDocError("Unknown template");
-  const templateId: TemplateId = patch.templateId === undefined ? (isTemplateId(cur.templateId) ? cur.templateId : "classic") : (patch.templateId as TemplateId);
+  const templateId: TemplateId = patch.templateId === undefined ? (isTemplateId(cur.templateId) ? cur.templateId : DEFAULT_TEMPLATE) : (patch.templateId as TemplateId);
   const templateChanged = templateId !== cur.templateId;
   if (patch.theme === undefined && !templateChanged) return { templateId, theme: cur.theme };
   if (patch.theme !== undefined && (typeof patch.theme !== "object" || patch.theme === null)) throw new ResumeDocError("Theme must be an object");
@@ -71,7 +71,7 @@ export async function createResumeDoc(db: Db, userId: string, input: NewResumeDo
   const existing = await db.select({ id: resumeDocs.id }).from(resumeDocs).where(eq(resumeDocs.userId, userId));
   if (existing.length >= MAX_DOCS) throw new ResumeDocError(`You can keep up to ${MAX_DOCS} resumes. Delete one first.`, 409);
   const name = input.name.trim().slice(0, 120) || "Untitled resume";
-  const templateId: TemplateId = isTemplateId(input.templateId) ? input.templateId : "classic";
+  const templateId: TemplateId = isTemplateId(input.templateId) ? input.templateId : DEFAULT_TEMPLATE;
   const makeDefault = input.makeDefault || existing.length === 0;
   if (makeDefault && existing.length) await db.update(resumeDocs).set({ isDefault: false }).where(and(eq(resumeDocs.userId, userId), eq(resumeDocs.isDefault, true)));
   const [row] = await db.insert(resumeDocs).values({

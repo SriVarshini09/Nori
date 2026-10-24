@@ -7,6 +7,7 @@ export {
   type PageSize, type ResumeTheme, type SectionId,
 } from "./theme.js";
 export {
+  DEFAULT_TEMPLATE,
   DEFAULT_FONT_BASE, TEMPLATES, TEMPLATE_IDS, isTemplateId, renderResumeHtml, resolveSections, themeFor,
   type RenderHtmlOptions, type TemplateId, type TemplateMeta,
 } from "./templates.js";

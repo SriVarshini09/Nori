@@ -9,7 +9,7 @@ import type { FontId } from "./fonts.js";
 import { PAGE_SIZES } from "./theme.js";
 
 /** Word cannot embed our web fonts, so each maps to the closest font Word and Google Docs ship with. */
-const WORD_FONT: Record<FontId, string> = { "source-sans": "Calibri", inter: "Arial", lora: "Georgia", garamond: "Garamond", mono: "Courier New" };
+const WORD_FONT: Record<FontId, string> = { "source-sans": "Calibri", inter: "Arial", lora: "Georgia", garamond: "Garamond", tinos: "Times New Roman", mono: "Courier New" };
 
 const hex = (c: string) => c.replace("#", "").toUpperCase();
 const twips = (inches: number) => Math.round(inches * 1440);

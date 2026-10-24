@@ -41,7 +41,7 @@ describe("resume library", () => {
   it("creates the first document from the graph and makes it the default", async () => {
     expect(await getDefaultResumeDoc(db, a)).toBeNull();
     const first = await ensureResumeDoc(db, a);
-    expect(first).toMatchObject({ name: "My resume", source: "graph", isDefault: true, version: 1, templateId: "classic" });
+    expect(first).toMatchObject({ name: "My resume", source: "graph", isDefault: true, version: 1, templateId: "ats" });
     expect(first!.content.experience.length).toBeGreaterThan(0);
     expect(first!.content.experience[0].bullets.length).toBeGreaterThan(0);
     expect((await ensureResumeDoc(db, a))).toBeNull(); // already has one

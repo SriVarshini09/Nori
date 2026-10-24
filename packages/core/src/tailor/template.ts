@@ -1,5 +1,5 @@
 import type { ResumeContent } from "../db/schema.js";
-import { renderResumeHtml } from "../resume/templates.js";
+import { DEFAULT_TEMPLATE, renderResumeHtml } from "../resume/templates.js";
 import { SECTION_TITLES, type Density } from "../resume/theme.js";
 
 export type { Density };
@@ -11,5 +11,5 @@ void SECTION_TITLES;
 
 /** Single-column, ATS-safe resume HTML in the Classic template. Kept for callers that do not pick a template. */
 export function renderHtml(content: ResumeContent, density: Density = "normal"): string {
-  return renderResumeHtml(content, "classic", undefined, { density });
+  return renderResumeHtml(content, DEFAULT_TEMPLATE, undefined, { density });
 }

@@ -191,7 +191,7 @@ describe("template + ats", () => {
     expect(html).not.toMatch(/<table|<img|<svg/i);
     expect(html).toMatch(/<h1>Jordan Rivera<\/h1>/);
     const heads = [...html.matchAll(/<h2>(.*?)<\/h2>/g)].map((m) => m[1]);
-    expect(heads).toEqual(["Summary", "Experience", "Education", "Skills", "Certifications"]);
+    expect(heads).toEqual(["Summary", "Skills", "Experience", "Education", "Certifications"]);
     expect(html).toMatch(/@page \{ size: Letter; margin: [\d.]+in; \}/);
     expect(html).toContain("Apr 2021 – Present");
     const bodySize = (h: string) => Number(/body \{[^}]*?font-size: ([\d.]+)pt/.exec(h)![1]);
