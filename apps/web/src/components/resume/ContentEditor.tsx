@@ -26,10 +26,10 @@ function IconButton({ label, onClick, disabled, children }: { label: string; onC
 
 function Block({ id, title, hint, actions, children }: { id: string; title: string; hint?: string; actions?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-labelledby={`h-${id}`} className="rounded-2xl border border-line bg-paper p-4 sm:p-5">
+    <section aria-labelledby={`h-${id}`} className="rounded-card border border-line bg-surface p-4 sm:p-5">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 id={`h-${id}`} className="font-display text-title font-medium text-ink">{title}</h3>
+          <h3 id={`h-${id}`} className="text-title font-semibold text-ink">{title}</h3>
           {hint && <p className="mt-0.5 text-meta text-muted">{hint}</p>}
         </div>
         {actions && <div className="flex items-center gap-1.5">{actions}</div>}
@@ -54,8 +54,8 @@ function BulletList({ idPrefix, bullets, onChange, label }: { idPrefix: string; 
                   aria-label={`${label} bullet ${i + 1}`} rows={2} value={b.text} maxLength={600}
                   onChange={(e) => set(i, e.target.value)} className={cx(inputClass, "resize-y leading-snug")} placeholder="Start with a verb: what you did, and the result"
                 />
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[12px] text-faint">
-                  <span className={off ? "text-accent-ink" : ""}>{n} words{off ? (n < 8 ? " (aim for 8 to 30)" : " (long: aim for 8 to 30)") : ""}</span>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[12px] text-muted">
+                  <span className={off ? "text-danger-fg" : ""}>{n} words{off ? (n < 8 ? " (aim for 8 to 30)" : " (long: aim for 8 to 30)") : ""}</span>
                   {b.edited && <span>edited by you</span>}
                   {!b.edited && b.nodeIds.length > 0 && <span>from your career graph</span>}
                 </div>
@@ -89,9 +89,9 @@ export function ContentEditor({ content, onChange }: Props) {
     experience: (
       <>
         {content.experience.map((r, i) => (
-          <div key={i} className="space-y-3 rounded-xl border border-line p-3 sm:p-4">
+          <div key={i} className="space-y-3 rounded-control border border-line p-3 sm:p-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-label font-medium uppercase text-muted">Role {i + 1}</span>
+              <span className="text-meta font-medium text-muted">Role {i + 1}</span>
               <div className="flex gap-1.5">
                 <IconButton label={`Move role ${i + 1} up`} disabled={i === 0} onClick={() => edit((d) => { d.experience = move(d.experience, i, i - 1); })}><Icon icon={ArrowUp} /></IconButton>
                 <IconButton label={`Move role ${i + 1} down`} disabled={i === content.experience.length - 1} onClick={() => edit((d) => { d.experience = move(d.experience, i, i + 1); })}><Icon icon={ArrowDown} /></IconButton>
@@ -116,9 +116,9 @@ export function ContentEditor({ content, onChange }: Props) {
     education: (
       <>
         {content.education.map((e, i) => (
-          <div key={i} className="space-y-3 rounded-xl border border-line p-3 sm:p-4">
+          <div key={i} className="space-y-3 rounded-control border border-line p-3 sm:p-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-label font-medium uppercase text-muted">School {i + 1}</span>
+              <span className="text-meta font-medium text-muted">School {i + 1}</span>
               <IconButton label={`Remove school ${i + 1}`} onClick={() => edit((d) => { d.education.splice(i, 1); })}><Icon icon={Trash2} /></IconButton>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -141,7 +141,7 @@ export function ContentEditor({ content, onChange }: Props) {
           <div key={i} className="grid items-start gap-3 sm:grid-cols-[12rem_1fr_auto]">
             <Field label="Group"><input className={inputClass} placeholder="Languages" value={g.group} maxLength={80} onChange={(e) => edit((d) => { d.skills[i].group = e.target.value; })} /></Field>
             <div>
-              <span className="mb-1.5 block text-label font-medium uppercase text-muted">Skills</span>
+              <span className="mb-1.5 block text-meta font-medium text-muted">Skills</span>
               <ChipInput label={`Skills in group ${i + 1}`} placeholder="Type a skill, press Enter" value={g.items} onChange={(v) => edit((d) => { d.skills[i].items = v; })} />
             </div>
             <div className="pt-6"><IconButton label={`Remove skill group ${i + 1}`} onClick={() => edit((d) => { d.skills.splice(i, 1); })}><Icon icon={Trash2} /></IconButton></div>
@@ -153,7 +153,7 @@ export function ContentEditor({ content, onChange }: Props) {
     projects: (
       <>
         {(content.projects ?? []).map((p, i) => (
-          <div key={i} className="space-y-3 rounded-xl border border-line p-3 sm:p-4">
+          <div key={i} className="space-y-3 rounded-control border border-line p-3 sm:p-4">
             <div className="flex items-end gap-2">
               <Field label="Project name" className="flex-1"><input className={inputClass} value={p.name} maxLength={160} onChange={(e) => edit((d) => { d.projects![i].name = e.target.value; })} /></Field>
               <IconButton label={`Remove project ${i + 1}`} onClick={() => edit((d) => { d.projects!.splice(i, 1); })}><Icon icon={Trash2} /></IconButton>
@@ -186,10 +186,10 @@ export function ContentEditor({ content, onChange }: Props) {
       </Block>
 
       <Block id="sections" title="Sections" hint="Reorder or hide sections. Hidden sections stay in your document but do not print.">
-        <ul className="divide-y divide-line rounded-xl border border-line" aria-label="Section order">
+        <ul className="divide-y divide-line rounded-control border border-line" aria-label="Section order">
           {sections.map((s, i) => (
             <li key={s.id} className="flex items-center gap-2 px-3 py-2">
-              <span className={cx("flex-1 text-body-sm", s.hidden ? "text-faint line-through" : "text-ink")}>{SECTION_TITLES[s.id]}{s.hidden ? " (hidden)" : ""}</span>
+              <span className={cx("flex-1 text-body-sm", s.hidden ? "text-muted line-through" : "text-ink")}>{SECTION_TITLES[s.id]}{s.hidden ? " (hidden)" : ""}</span>
               <IconButton label={`Move ${SECTION_TITLES[s.id]} up`} disabled={i === 0} onClick={() => onChange(withSections(content, move(sections, i, i - 1)))}><Icon icon={ArrowUp} /></IconButton>
               <IconButton label={`Move ${SECTION_TITLES[s.id]} down`} disabled={i === sections.length - 1} onClick={() => onChange(withSections(content, move(sections, i, i + 1)))}><Icon icon={ArrowDown} /></IconButton>
               <IconButton label={s.hidden ? `Show ${SECTION_TITLES[s.id]}` : `Hide ${SECTION_TITLES[s.id]}`} onClick={() => onChange(withSections(content, sections.map((x) => (x.id === s.id ? { ...x, hidden: !x.hidden } : x))))}>
@@ -202,7 +202,7 @@ export function ContentEditor({ content, onChange }: Props) {
 
       {sections.map((s) => (
         <Block key={s.id} id={s.id} title={SECTION_TITLES[s.id]}>
-          {s.hidden && <p className="rounded-lg bg-stone/60 px-3 py-2 text-meta text-muted">This section is hidden and will not print. You can still edit it.</p>}
+          {s.hidden && <p className="rounded-lg bg-sunken/60 px-3 py-2 text-meta text-muted">This section is hidden and will not print. You can still edit it.</p>}
           {sectionBody[s.id]}
         </Block>
       ))}

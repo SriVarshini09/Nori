@@ -1,32 +1,24 @@
 "use client";
 
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, LoaderCircle, Plus, X } from "lucide-react";
-import { Icon, cx, inputClass } from "../ui";
+import { ArrowLeft, ArrowRight, Check, Plus, X } from "lucide-react";
+import { Icon, buttonClass, cx, inputClass } from "../ui";
 
-/** Rounded card used inside steps (replaces the old crop-tick frame). */
+/** Card used inside steps. `tint` gives the sunken tone for a side note or summary. */
 export function Soft({ children, className, tint = false }: { children: ReactNode; className?: string; tint?: boolean }) {
   return (
-    <div className={cx("rounded-2xl border border-black/[0.07] p-5", tint ? "bg-gradient-to-br from-emerald-50 via-white to-amber-50/60" : "bg-white", className)}>
+    <div className={cx("rounded-card p-4 sm:p-5", tint ? "bg-sunken" : "border border-line bg-surface", className)}>
       {children}
     </div>
   );
 }
 
-const obBase = "group inline-flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full px-6 text-[14px] font-semibold transition-all duration-150 disabled:pointer-events-none disabled:opacity-45";
-
-/** Onboarding button: `primary` is the glowing gradient pill, `soft` a quiet outline, `ghost` plain text. */
+/** Step button: `primary` warm ink, `soft` outlined, `ghost` text. */
 export function ObButton({ variant = "primary", className, children, ...rest }: { variant?: "primary" | "soft" | "ghost" } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className={cx(
-        obBase,
-        variant === "primary" && "dash-btn",
-        variant === "soft" && "border border-black/10 bg-white text-ink hover:-translate-y-px hover:border-black/25 hover:shadow-sm",
-        variant === "ghost" && "h-9 px-3 text-[13px] font-medium text-ink-2 hover:text-ink",
-        className,
-      )}
+      className={buttonClass({ variant: variant === "primary" ? "primary" : variant === "soft" ? "secondary" : "ghost", size: "md" }, cx("group", className))}
       {...rest}
     >
       {children}
@@ -34,12 +26,12 @@ export function ObButton({ variant = "primary", className, children, ...rest }: 
   );
 }
 
-/** Pill radio group: the chosen option fills with the nori gradient. */
+/** Radio group drawn as a segmented control. The chosen option is ink on a sunken track. */
 export function Segmented<T extends string>({ value, onChange, options, label }: {
   value: T | undefined; onChange: (v: T) => void; options: { value: T; label: string }[]; label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex flex-wrap gap-1 rounded-full bg-stone/70 p-1">
+    <div role="radiogroup" aria-label={label} className="inline-flex flex-wrap gap-1 rounded-control bg-sunken p-1">
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -49,10 +41,7 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
             role="radio"
             aria-checked={on}
             onClick={() => onChange(o.value)}
-            className={cx(
-              "h-8 rounded-full px-4 text-[13px] font-medium transition-all duration-200",
-              on ? "bg-gradient-to-br from-[#0f2a21] to-[#1d5a45] text-white shadow-[0_6px_14px_-6px_rgba(15,42,33,0.7)]" : "text-ink-2 hover:bg-white hover:text-ink",
-            )}
+            className={cx("h-8 rounded-[6px] px-4 text-[13px] font-medium", on ? "bg-ink text-on-ink" : "text-ink-2 hover:bg-surface hover:text-ink")}
           >
             {o.label}
           </button>
@@ -78,7 +67,7 @@ export function YesNo({ value, onChange, label }: { value: boolean | null | unde
 /** Question row: the question on the left, the control on the right; stacks on phones. */
 export function Question({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid gap-x-6 gap-y-2.5 border-b border-black/[0.06] py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <div className="grid gap-x-6 gap-y-2.5 border-b border-line py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0">
         <div className="text-[14.5px] font-medium text-ink">{label}</div>
         {hint && <div className="mt-0.5 text-meta text-muted">{hint}</div>}
@@ -99,11 +88,11 @@ export function ChipInput({ value, onChange, placeholder, label }: {
     setDraft("");
   };
   return (
-    <div className={cx(inputClass, "flex min-h-[44px] flex-wrap items-center gap-1.5 py-[6px] focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/15")}>
+    <div className={cx(inputClass, "flex flex-wrap items-center gap-1.5 py-[6px] focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25")}>
       {value.map((v) => (
-        <span key={v} className="ob-pop inline-flex h-7 items-center gap-1 rounded-full bg-gradient-to-br from-emerald-100 to-teal-50 pl-3 pr-1 text-[13px] font-medium text-emerald-900 ring-1 ring-inset ring-emerald-600/15">
+        <span key={v} className="inline-flex h-7 items-center gap-1 rounded-full bg-sunken pl-3 pr-1 text-[13px] font-medium text-ink">
           {v}
-          <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(value.filter((x) => x !== v))} className="flex h-5 w-5 items-center justify-center rounded-full text-emerald-800/70 transition-colors hover:bg-emerald-200 hover:text-emerald-950">
+          <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(value.filter((x) => x !== v))} className="flex h-5 w-5 items-center justify-center rounded-full text-muted hover:bg-line hover:text-ink">
             <Icon icon={X} size={13} />
           </button>
         </span>
@@ -118,7 +107,7 @@ export function ChipInput({ value, onChange, placeholder, label }: {
         }}
         onBlur={() => draft.trim() && add(draft)}
         placeholder={value.length ? "" : placeholder}
-        className="min-w-[8rem] flex-1 bg-transparent py-[2px] text-body-sm text-ink placeholder:text-faint focus:outline-none"
+        className="min-w-[8rem] flex-1 bg-transparent py-[2px] text-body-sm text-ink placeholder:text-muted focus:outline-none"
       />
     </div>
   );
@@ -137,12 +126,7 @@ export function PillSelect({ value, onChange, options }: { value: string[]; onCh
             type="button"
             aria-pressed={on}
             onClick={() => onChange(on ? value.filter((v) => v !== o) : [...value, o])}
-            className={cx(
-              "inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-[13px] font-medium transition-all duration-200",
-              on
-                ? "border-transparent bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-[0_8px_18px_-8px_rgba(16,185,129,0.8)]"
-                : "border-black/10 bg-white text-ink-2 hover:-translate-y-px hover:border-emerald-500/50 hover:text-ink",
-            )}
+            className={cx("inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium", on ? "border-ink bg-ink text-on-ink" : "border-line bg-surface text-ink-2 hover:border-control hover:text-ink")}
           >
             <Icon icon={on ? Check : Plus} size={14} />
             {o}
@@ -153,19 +137,13 @@ export function PillSelect({ value, onChange, options }: { value: string[]; onCh
   );
 }
 
-const GROUP_HUE = ["from-emerald-400 to-teal-500", "from-sky-400 to-indigo-500", "from-amber-300 to-orange-500", "from-rose-400 to-pink-500"];
-
-/** Lettered group heading inside a step. */
-export function Group({ letter, title, children, note }: { letter: string; title: string; children: ReactNode; note?: ReactNode }) {
-  const hue = GROUP_HUE[Math.max(0, letter.charCodeAt(0) - 65) % GROUP_HUE.length];
+/** Group heading inside a step. `letter` is kept for callers; groups read by their titles. */
+export function Group({ title, children, note }: { letter?: string; title: string; children: ReactNode; note?: ReactNode }) {
   return (
-    <section className="border-t border-black/[0.06] pt-6 first:border-t-0 first:pt-0">
-      <div className="flex items-center gap-3">
-        <span className={cx("flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br text-[12px] font-bold text-white shadow-sm", hue)}>{letter}</span>
-        <h3 className="font-display text-[17px] font-medium tracking-[-0.02em] text-ink">{title}</h3>
-      </div>
-      {note && <p className="mt-2 text-meta text-muted">{note}</p>}
-      <div className="mt-4">{children}</div>
+    <section className="border-t border-line pt-6 first:border-t-0 first:pt-0">
+      <h3 className="text-title font-semibold text-ink">{title}</h3>
+      {note && <p className="mt-1 text-meta text-muted">{note}</p>}
+      <div className="mt-3">{children}</div>
     </section>
   );
 }
@@ -175,12 +153,12 @@ export function StepFooter({ busy, onBack, label = "Continue", status, extra, di
   busy?: boolean; onBack?: () => void; label?: string; status?: ReactNode; extra?: ReactNode; disabled?: boolean;
 }) {
   return (
-    <div className="mt-9 flex flex-wrap items-center gap-3 border-t border-black/[0.06] pt-6">
+    <div className="mt-8 flex flex-wrap items-center gap-3 border-t border-line pt-5">
       {onBack && <ObButton variant="soft" onClick={onBack} disabled={busy}><Icon icon={ArrowLeft} />Back</ObButton>}
       <div className="min-w-0 flex-1">{status}</div>
       {extra}
       <ObButton type="submit" variant="primary" disabled={busy || disabled}>
-        {busy ? <><Icon icon={LoaderCircle} className="animate-spin" />Saving</> : <>{label}<Icon icon={ArrowRight} className="transition-transform duration-150 group-hover:translate-x-0.5" /></>}
+        {busy ? <span>Saving<span className="dots" /></span> : <>{label}<Icon icon={ArrowRight} className="transition-transform duration-150 group-hover:translate-x-0.5" /></>}
       </ObButton>
     </div>
   );

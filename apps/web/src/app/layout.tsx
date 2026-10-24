@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Inter_Tight } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const display = Inter_Tight({ subsets: ["latin"], variable: "--font-inter-tight", weight: ["400", "500", "600"], display: "swap" });
-const sans = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
+const sans = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 const SITE = process.env.WEB_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -18,15 +17,28 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: "Nori: a job agent that cannot lie about you", description: DESCRIPTION },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#f3efe8" };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fbfaf8" },
+    { media: "(prefers-color-scheme: dark)", color: "#151311" },
+  ],
+};
 
 // Every page reads live API data; never prerender at build time.
 export const dynamic = "force-dynamic";
 
+/** Applies a saved light or dark choice before first paint, so the page never flashes the other theme. */
+const THEME_BOOT = `try{var t=localStorage.getItem("nori-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
-      <body className="min-h-screen antialiased">{children}</body>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+      </head>
+      <body className="min-h-screen bg-bg text-ink antialiased">{children}</body>
     </html>
   );
 }

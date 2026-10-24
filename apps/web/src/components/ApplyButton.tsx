@@ -34,7 +34,7 @@ export function ApplyButton({ jobId, size = "sm", variant = "primary", label = "
       <Button variant={variant} size={size} arrow={!busy} onClick={apply} disabled={busy}>
         {busy ? "Starting..." : label}
       </Button>
-      {error && <span className="max-w-xs text-[12px] text-accent-ink">{error}</span>}
+      {error && <span className="max-w-xs text-[12px] text-danger-fg">{error}</span>}
     </span>
   );
 }

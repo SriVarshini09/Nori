@@ -21,14 +21,14 @@ export function ChipInput({ value, onChange, placeholder, label }: { value: stri
   return (
     <div
       className={cx(
-        "flex min-h-[38px] w-full flex-wrap items-center gap-1.5 rounded-[var(--radius-input)] border border-line bg-paper px-2 py-1.5 transition-colors duration-150",
-        "hover:border-line-strong focus-within:border-ink",
+        "flex min-h-[38px] w-full flex-wrap items-center gap-1.5 rounded-[var(--radius-input)] border border-line bg-surface px-2 py-1.5 transition-colors duration-150",
+        "hover:border-control focus-within:border-ink",
       )}
     >
       {value.map((v) => (
-        <span key={v} className="inline-flex max-w-full items-center gap-1 rounded-[var(--radius-tag)] border border-line px-1.5 py-[2px] text-[12px] leading-[1.35] text-ink-2">
+        <span key={v} className="inline-flex max-w-full items-center gap-1 rounded-full border border-line px-1.5 py-[2px] text-[12px] leading-[1.35] text-ink-2">
           <span className="truncate">{v}</span>
-          <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(value.filter((x) => x !== v))} className="text-faint transition-colors duration-150 hover:text-ink">
+          <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(value.filter((x) => x !== v))} className="text-muted transition-colors duration-150 hover:text-ink">
             <Icon icon={X} size={12} />
           </button>
         </span>
@@ -46,7 +46,7 @@ export function ChipInput({ value, onChange, placeholder, label }: { value: stri
           else if (e.key === "Backspace" && !text && value.length) onChange(value.slice(0, -1));
         }}
         onBlur={() => commit(text)}
-        className="min-w-[8ch] flex-1 bg-transparent px-1 text-body-sm text-ink placeholder:text-faint focus:outline-none"
+        className="min-w-[8ch] flex-1 bg-transparent px-1 text-body-sm text-ink placeholder:text-muted focus:outline-none"
       />
     </div>
   );
