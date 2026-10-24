@@ -189,8 +189,12 @@ async function stepTailoring(db: Db, app: Application, deps: RunnerDeps): Promis
   await emit(db, app.id, "render", `Rendered ${render.pages} page(s), ATS score ${render.atsScore}`,
     { resumeId: resume.id, version, pages: render.pages, atsScore: render.atsScore });
 
-  if (profile.resumeAutoApprove) {
-    return transition(db, app, "filling", { resumeId: resume.id, resumeApprovedAt: new Date(), error: null }, "Resume auto-approved (profile setting); filling the form");
+  // Hands-free runs must not wait on the resume either: with Autopilot on, or "review before submit" off, the tailored
+  // resume is approved here and the form is still held or sent by Autopilot's checks (see judgeByAutopilot).
+  const handsFree = profile.autopilot !== "off" || !profile.reviewBeforeSubmit;
+  if (profile.resumeAutoApprove || handsFree) {
+    return transition(db, app, "filling", { resumeId: resume.id, resumeApprovedAt: new Date(), error: null },
+      profile.resumeAutoApprove ? "Resume auto-approved (profile setting); filling the form" : "Resume auto-approved (Autopilot is on); filling the form");
   }
   return transition(db, app, "resume_review", { resumeId: resume.id, error: null }, "Resume ready for review");
 }

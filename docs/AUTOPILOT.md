@@ -45,3 +45,13 @@ It never creates accounts, solves CAPTCHAs, takes assessments or runs on sites t
 ## Tuning
 
 `AUTOPILOT_MIN_HUMAN_APPROVALS` (3), `AUTOPILOT_COMPANY_COOLDOWN_DAYS` (30), `AUTOPILOT_MIN_ATS_SCORE` (70) and `AUTOPILOT_PLATFORMS` live in `autopilot.ts`. Add a platform to the list only after a live dry run shows its form needs no account.
+
+## Running it hands-free (set it, close the laptop)
+
+The agent runs on the server, so it keeps working when your laptop is closed. A cycle runs every 20 minutes for every account that has a lane and a daily cap above zero: it finds roles, scores them, queues the best up to your cap, tailors, fills, and then either sends (Autopilot's checks all pass) or holds the application and messages you.
+
+- **The resume no longer waits.** With Autopilot on, or "Review before submit" off, the tailored resume is approved automatically. The form is still held or sent by the 11 checks.
+- **The trust rule is a setting.** `AUTOPILOT_MIN_APPROVALS` (default 3) is how many applications you must have approved by hand before Autopilot sends any. This deployment sets it to 1: approve one application yourself, then Autopilot is trusted.
+- **Choose "Safe + short answers"** if you want it to send forms that ask for a short free-text answer; "Safe" holds those.
+- **When something needs you** (a question it cannot answer from your profile, a held form, an emailed code) it messages your linked Telegram chat with the application link. Reply `skip 1` to drop one, or `approve 1` to send a held form. Answering form questions is done on the application page, from the link.
+- Real sending needs `ALLOW_REAL_SUBMIT=true` on the server (set in `fly.toml`); with it off, Autopilot holds everything.

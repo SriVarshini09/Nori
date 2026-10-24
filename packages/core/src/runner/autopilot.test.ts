@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { unprovenConstraints, checkDisqualifiers } from "../agent/gate.js";
 import {
   AUTOPILOT_MIN_ATS_SCORE, AUTOPILOT_MIN_HUMAN_APPROVALS, AUTOPILOT_PLATFORMS, autopilotVerdict, describeVerdict, type AutopilotInput,
@@ -108,5 +108,20 @@ describe("unprovenConstraints", () => {
     const text = "Applicants must be a US citizen.";
     expect(checkDisqualifiers(req(text), null, { workAuth: {} }).ok).toBe(true);
     expect(unprovenConstraints(req(text), null, { workAuth: {} })).toHaveLength(1);
+  });
+});
+
+describe("the trust ladder setting", () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
+  const load = async () => (await import("./autopilot.js")).AUTOPILOT_MIN_HUMAN_APPROVALS;
+
+  it("is 3 by default and AUTOPILOT_MIN_APPROVALS sets it; junk falls back to 3", async () => {
+    vi.resetModules();
+    expect(await load()).toBe(3);
+    for (const [raw, want] of [["1", 1], ["0", 0], ["5", 5], ["abc", 3], ["-2", 3], ["1.5", 3], ["", 3]] as const) {
+      vi.stubEnv("AUTOPILOT_MIN_APPROVALS", raw);
+      vi.resetModules();
+      expect(await load(), `AUTOPILOT_MIN_APPROVALS=${raw}`).toBe(want);
+    }
   });
 });

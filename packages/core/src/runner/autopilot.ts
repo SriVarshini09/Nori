@@ -13,8 +13,12 @@ export type AutopilotMode = "off" | "safe" | "written";
 /** Platforms whose forms need no account, CAPTCHA or assessment. Everything else is always held for the person. */
 export const AUTOPILOT_PLATFORMS: readonly AtsType[] = ["greenhouse", "lever", "ashby"];
 
-/** How many applications the person must have approved by hand before Autopilot may send any (the trust ladder). */
-export const AUTOPILOT_MIN_HUMAN_APPROVALS = 3;
+/**
+ * How many applications the person must have approved by hand before Autopilot may send any (the trust ladder).
+ * AUTOPILOT_MIN_APPROVALS sets it per deployment (a whole number, 0 or more); the default is 3.
+ */
+const approvalsFromEnv = Number(process.env.AUTOPILOT_MIN_APPROVALS);
+export const AUTOPILOT_MIN_HUMAN_APPROVALS = process.env.AUTOPILOT_MIN_APPROVALS?.trim() && Number.isInteger(approvalsFromEnv) && approvalsFromEnv >= 0 ? approvalsFromEnv : 3;
 /** Autopilot will not apply to a company again within this many days of an earlier application. */
 export const AUTOPILOT_COMPANY_COOLDOWN_DAYS = 30;
 /** The tailored resume must be at least this ATS-readable. */

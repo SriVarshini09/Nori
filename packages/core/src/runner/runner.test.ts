@@ -256,6 +256,35 @@ describe("runner", () => {
     expect(await steps(id)).not.toContain("approve_resume");
   });
 
+  it("Autopilot on (or review before submit off) approves the tailored resume too, so a hands-free run never waits on it", async () => {
+    await db.update(profiles).set({ autopilot: "safe" }).where(eq(profiles.userId, userId));
+    const { id } = await createApplication(db, userId, jobId);
+    await runApplication(db, id, deps(new FakeDriver()));
+    expect((await app(id)).resumeApprovedAt).toBeTruthy();
+    const evs = await db.select().from(runEvents).where(eq(runEvents.applicationId, id)).orderBy(asc(runEvents.ts));
+    expect(evs.some((e) => /Resume auto-approved \(Autopilot is on\)/.test(e.message))).toBe(true);
+
+    // review before submit off counts as hands-free too
+    const [other] = await db.insert(jobs).values({
+      companyName: "Beta", atsType: "web", externalId: "beta-1", title: "Senior Frontend Engineer",
+      descriptionText: JOB_TEXT, applyUrl: "https://example.com/jobs/2",
+    }).returning();
+    await db.update(profiles).set({ autopilot: "off", reviewBeforeSubmit: false }).where(eq(profiles.userId, userId));
+    const second = await createApplication(db, userId, other.id);
+    await runApplication(db, second.id, deps(new FakeDriver()));
+    expect((await app(second.id)).resumeApprovedAt).toBeTruthy();
+
+    // with both off, the resume still waits for the person
+    const [third] = await db.insert(jobs).values({
+      companyName: "Gamma", atsType: "web", externalId: "gamma-1", title: "Senior Frontend Engineer",
+      descriptionText: JOB_TEXT, applyUrl: "https://example.com/jobs/3",
+    }).returning();
+    await db.update(profiles).set({ autopilot: "off", reviewBeforeSubmit: true }).where(eq(profiles.userId, userId));
+    const waiting = await createApplication(db, userId, third.id);
+    expect(await runApplication(db, waiting.id, deps(new FakeDriver()))).toBe("resume_review");
+    expect((await app(waiting.id)).resumeApprovedAt).toBeNull();
+  });
+
   it("fails cleanly when the job has no driver", async () => {
     const { id } = await createApplication(db, userId, jobId);
     const d: RunnerDeps = { ...deps(new FakeDriver()), pickDriver: () => null };
