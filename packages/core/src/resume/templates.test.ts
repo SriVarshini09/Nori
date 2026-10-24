@@ -6,7 +6,7 @@ import { closeSharedBrowser } from "./browser.js";
 import { FONT_IDS, fontFaceCss, fontFiles, readFontFile } from "./fonts.js";
 import { renderResume } from "./render.js";
 import { SAMPLE_PERSONAS, SAMPLE_RESUME, STUDENT_RESUME } from "./sample-content.js";
-import { TEMPLATES, TEMPLATE_IDS, renderResumeHtml, resolveSections, themeFor } from "./templates.js";
+import { DEFAULT_TEMPLATE, TEMPLATES, TEMPLATE_IDS, renderResumeHtml, resolveSections, themeFor } from "./templates.js";
 import { DEFAULT_THEME, applyDensity, normalizeTheme, parseResumeContent } from "./theme.js";
 
 afterAll(async () => { await closeSharedBrowser(); });
@@ -35,18 +35,37 @@ function allText(c: ResumeContent): string[] {
 }
 
 describe("template registry", () => {
-  it("has seven templates, six ATS-safe and one flagged two-column", () => {
-    expect(TEMPLATE_IDS).toHaveLength(7);
-    expect(TEMPLATE_IDS.filter((id) => TEMPLATES[id].atsSafe)).toHaveLength(6);
-    expect(TEMPLATES.sidebar).toMatchObject({ atsSafe: false, columns: 2 });
+  it("has one template, ATS Standard, single column and ATS-safe, and it is the default", () => {
+    expect(TEMPLATE_IDS).toEqual(["ats"]);
+    expect(TEMPLATES.ats).toMatchObject({ atsSafe: true, columns: 1 });
+    expect(DEFAULT_TEMPLATE).toBe("ats");
+    // an id from a removed template renders as ATS Standard instead of failing
+    expect(renderResumeHtml(SAMPLE_RESUME, "classic" as never)).toBe(renderResumeHtml(SAMPLE_RESUME, "ats"));
+    expect(renderResumeHtml(SAMPLE_RESUME)).toBe(renderResumeHtml(SAMPLE_RESUME, "ats"));
+  });
+
+  it("ATS Standard mirrors the LaTeX one-pager: Times, centred header, company-first roles, labelled links, skills as bullets", () => {
+    expect(themeFor("ats")).toMatchObject({ font: "tinos", fontSize: 10.5, headerAlign: "center", accent: "#000000" });
+    const html = renderResumeHtml(SAMPLE_RESUME, "ats");
+    expect(html).toContain("tinos-latin-400-normal.woff2");
+    expect(html).toContain("header { text-align: center; }");
+    const role = SAMPLE_RESUME.experience[0];
+    expect(html).toContain(`<h3><span>${role.company}</span>`);
+    expect(html).toContain(`<p class="sub">${role.title}`);
+    expect(html).toMatch(/<a href="[^"]*linkedin[^"]*">LinkedIn<\/a>/);
+    expect(html).toMatch(/<a href="[^"]*github[^"]*">GitHub<\/a>/);
+    expect(html).toMatch(/<div class="skills">\s*<ul>\s*<li><strong>/);
+    const edu = SAMPLE_RESUME.education[0];
+    expect(html).toContain(`<div class="edu"><h3><span>${edu.school}</span>`);
+    expect(html).toMatch(/@page \{ margin: 0\.30in 0\.5in 0\.40in 0\.5in; \}/);
   });
 
   it("themeFor layers defaults, the template look and user overrides, and clamps bad input", () => {
-    expect(themeFor("modern").font).toBe("inter");
-    expect(themeFor("modern", { accent: "#ff0000", fontSize: 99, margin: -3, font: "nope" })).toMatchObject({ accent: "#ff0000", fontSize: 13, margin: 0.35, font: "inter" });
+    expect(themeFor("ats").font).toBe("tinos");
+    expect(themeFor("ats", { accent: "#ff0000", fontSize: 99, margin: -3, font: "nope" })).toMatchObject({ accent: "#ff0000", fontSize: 13, margin: 0.35, font: "tinos" });
     expect(normalizeTheme(null)).toEqual(DEFAULT_THEME);
     expect(normalizeTheme({ accent: "red" }).accent).toBe(DEFAULT_THEME.accent);
-    const t = themeFor("classic");
+    const t = themeFor("ats");
     expect(applyDensity(t, "tight").fontSize).toBeLessThan(applyDensity(t, "compact").fontSize);
     expect(applyDensity(t, "compact").fontSize).toBeLessThan(t.fontSize);
   });
@@ -96,23 +115,24 @@ describe.each(TEMPLATE_IDS)("template %s", (id) => {
 
 describe("page size and fitting", () => {
   it("renders A4 with the A4 page rule and still fits", async () => {
-    const r = await renderResume(SAMPLE_RESUME, { templateId: "classic", theme: { pageSize: "a4" } });
+    const r = await renderResume(SAMPLE_RESUME, { templateId: "ats", theme: { pageSize: "a4" } });
     expect(r.html).toMatch(/@page \{ size: A4;/);
     expect(r.pages).toBe(1);
   }, 60_000);
 
   it("never drops content unless asked to trim", async () => {
-    const long = SAMPLE_PERSONAS.long;
-    const kept = await renderResume(long, { templateId: "classic", maxPages: 1, trim: false });
+    // The long persona alone fits one page in this template, so double its roles to force an overflow.
+    const long = { ...SAMPLE_PERSONAS.long, experience: [...SAMPLE_PERSONAS.long.experience, ...SAMPLE_PERSONAS.long.experience] };
+    const kept = await renderResume(long, { templateId: "ats", maxPages: 1, trim: false });
     expect(kept.content.experience).toHaveLength(long.experience.length);
     expect(kept.pages).toBeGreaterThan(1);
-    const trimmed = await renderResume(long, { templateId: "classic", maxPages: 1, trim: true });
+    const trimmed = await renderResume(long, { templateId: "ats", maxPages: 1, trim: true });
     expect(trimmed.pages).toBe(1);
     expect(trimmed.steps.some((s) => s.startsWith("drop:") || s.startsWith("trim:"))).toBe(true);
   }, 120_000);
 
   it("honours a two-page target for long careers", async () => {
-    const r = await renderResume(SAMPLE_PERSONAS.long, { templateId: "modern", theme: { pages: 2 }, trim: false });
+    const r = await renderResume(SAMPLE_PERSONAS.long, { templateId: "ats", theme: { pages: 2 }, trim: false });
     expect(r.pages).toBeLessThanOrEqual(2);
     expect(r.atsChecks.find((c) => c.id === "one_page")).toMatchObject({ pass: true, label: "Fits within 2 pages" });
   }, 60_000);
@@ -121,20 +141,20 @@ describe("page size and fitting", () => {
 describe("sections", () => {
   it("follows the resume's own order, hides sections, and keeps extras last", () => {
     const c: ResumeContent = { ...STUDENT_RESUME, layout: { sections: ["education", "skills", "experience"], hidden: ["projects"] } };
-    const ids = resolveSections(c, TEMPLATES.classic).map((s) => s.id);
+    const ids = resolveSections(c, TEMPLATES.ats).map((s) => s.id);
     expect(ids.slice(0, 3)).toEqual(["education", "skills", "experience"]);
     expect(ids).not.toContain("projects");
     expect(ids[ids.length - 1]).toBe("awards");
   });
 
   it("uses the template's preferred order when the resume sets none", () => {
-    const ids = resolveSections(SAMPLE_RESUME, TEMPLATES.technical).map((s) => s.id);
+    const ids = resolveSections(SAMPLE_RESUME, TEMPLATES.ats).map((s) => s.id);
     expect(ids.indexOf("skills")).toBeLessThan(ids.indexOf("experience"));
   });
 
   it("omits empty sections", () => {
-    const ids = resolveSections({ ...SAMPLE_RESUME, summary: "", certifications: [], projects: [] }, TEMPLATES.classic).map((s) => s.id);
-    expect(ids).toEqual(["experience", "education", "skills"]);
+    const ids = resolveSections({ ...SAMPLE_RESUME, summary: "", certifications: [], projects: [] }, TEMPLATES.ats).map((s) => s.id);
+    expect(ids).toEqual(["skills", "experience", "education"]);
   });
 });
 

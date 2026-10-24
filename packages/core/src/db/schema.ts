@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, timestamp, jsonb, integer, boolean, real, uniqueIndex, index,
+  pgTable, uuid, text, timestamp, jsonb, integer, boolean, real, uniqueIndex, index, date, primaryKey,
 } from "drizzle-orm/pg-core";
 
 /** Node types in the career graph. Everything the agent knows about a person is a node. */
@@ -33,11 +33,11 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/** One-time links for password reset and email verification. Only the sha256 of the token is stored. */
+/** One-time tokens: password reset and email verification links, and short codes that link a chat (Telegram) to an account. Only the sha256 is stored. */
 export const authTokens = pgTable("auth_tokens", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  kind: text("kind").$type<"reset" | "verify">().notNull(),
+  kind: text("kind").$type<"reset" | "verify" | "telegram_link">().notNull(),
   tokenHash: text("token_hash").notNull().unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
@@ -322,7 +322,7 @@ export const resumes = pgTable("resumes", {
   atsChecks: jsonb("ats_checks").$type<AtsCheck[]>().default([]).notNull(),
   keywordCoverage: real("keyword_coverage"),
   /** Template and theme the PDF was rendered with. */
-  templateId: text("template_id").default("classic").notNull(),
+  templateId: text("template_id").default("ats").notNull(),
   theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
   /** True when the user changed this version by hand after tailoring. */
   edited: boolean("edited").default(false).notNull(),
@@ -336,7 +336,7 @@ export const resumeDocs = pgTable("resume_docs", {
   name: text("name").notNull(),
   source: text("source").$type<"graph" | "upload" | "manual" | "copy" | "text">().default("manual").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
-  templateId: text("template_id").default("classic").notNull(),
+  templateId: text("template_id").default("ats").notNull(),
   theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   version: integer("version").default(1).notNull(),
@@ -351,7 +351,7 @@ export const resumeDocVersions = pgTable("resume_doc_versions", {
   version: integer("version").notNull(),
   name: text("name").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
-  templateId: text("template_id").default("classic").notNull(),
+  templateId: text("template_id").default("ats").notNull(),
   theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
   label: text("label"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -448,25 +448,9 @@ export const agentEvents = pgTable("agent_events", {
   data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
 }, (t) => [index("agent_events_user_idx").on(t.userId, t.ts), index("agent_events_job_idx").on(t.userId, t.jobId)]);
 
-export const LLM_PROVIDERS = ["cline", "openai-compatible", "anthropic", "ollama"] as const;
-export type LlmProviderId = (typeof LLM_PROVIDERS)[number];
-
-/** Per-user model credentials ("Sign in with Cline", own key). The key is AES-256-GCM encrypted at rest. */
-export const userCredentials = pgTable("user_credentials", {
-  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  provider: text("provider").$type<LlmProviderId>().notNull(),
-  /** v1:iv:tag:ciphertext (base64). Null for keyless endpoints such as a local Ollama. */
-  encryptedKey: text("encrypted_key"),
-  baseUrl: text("base_url"),
-  qualityModel: text("quality_model"),
-  bulkModel: text("bulk_model"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
 export const schema = {
   users, sessions, profiles, graphNodes, graphEdges, companies, jobs, matches, applications,
-  resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents, userCredentials,
+  resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents,
 };
 
 /**
@@ -486,3 +470,13 @@ export const runtimeState = pgTable("runtime_state", {
   value: jsonb("value").$type<unknown>().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** Model tokens spent per user per UTC day, on whichever key served them. The shared (hosted) key is capped on it. */
+export const llmUsage = pgTable("llm_usage", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  day: date("day").notNull(),
+  promptTokens: integer("prompt_tokens").default(0).notNull(),
+  completionTokens: integer("completion_tokens").default(0).notNull(),
+  calls: integer("calls").default(0).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.day] })]);

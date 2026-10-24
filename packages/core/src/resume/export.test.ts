@@ -21,7 +21,7 @@ describe("DOCX export", () => {
 
   it("keeps the section order and hides hidden sections", async () => {
     const c = { ...SAMPLE_RESUME, layout: { sections: ["skills", "experience", "education"] as ("skills" | "experience" | "education")[], hidden: ["projects" as const] } };
-    const { value } = await mammoth.extractRawText({ buffer: await renderResumeDocx(c, "classic") });
+    const { value } = await mammoth.extractRawText({ buffer: await renderResumeDocx(c, "ats") });
     expect(value.indexOf("Skills")).toBeLessThan(value.indexOf("Experience"));
     expect(value.indexOf("Experience")).toBeLessThan(value.indexOf("Education"));
     expect(value).not.toContain("Open-source charts library");
@@ -45,8 +45,8 @@ describe("text and JSON export", () => {
   });
 
   it("round-trips JSON", () => {
-    const j = JSON.parse(renderResumeJson(SAMPLE_RESUME, "modern", { accent: "#112233" }));
-    expect(j).toMatchObject({ format: "nori-resume", template: "modern", theme: { accent: "#112233" } });
+    const j = JSON.parse(renderResumeJson(SAMPLE_RESUME, "ats", { accent: "#112233" }));
+    expect(j).toMatchObject({ format: "nori-resume", template: "ats", theme: { accent: "#112233" } });
     expect(j.content.name).toBe("Alex Morgan");
   });
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { NoriMark } from "@/components/Logo";
 import { Button, Frame, buttonClass } from "@/components/ui";
 
@@ -9,7 +10,7 @@ const DEV = process.env.NODE_ENV !== "production";
 
 /** What happened, what was not affected, what to do. */
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  useEffect(() => { console.error("[nori] page error", error.digest ?? "", error.message); }, [error]);
+  useEffect(() => { console.error("[nori] page error", error.digest ?? "", error.message); Sentry.captureException(error); }, [error]);
   return (
     <Frame className="mx-auto mt-6 flex max-w-xl flex-col items-start gap-3 p-6 sm:mt-16 sm:p-8">
       <NoriMark size={44} />

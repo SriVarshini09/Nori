@@ -17,7 +17,7 @@ export type NormalizedJob = {
   descriptionHtml?: string;
   applyUrl: string;
   postedAt?: Date;
-  discoveredVia: "feed" | "parallel_search" | "pasted" | "extension";
+  discoveredVia: "feed" | "parallel_search" | "exa_search" | "exa_social" | "pasted" | "extension";
   raw?: unknown;
 };
 

@@ -6,7 +6,7 @@ import {
   ArrowRight, BadgeCheck, Check, FileText, FileUp, ListChecks, Network, Plug, ShieldCheck, SlidersHorizontal, UserRound, type LucideIcon,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { ONBOARDING_STEPS, type IngestResult, type Integration, type ModelPresetsInfo, type ModelSettings, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
+import { ONBOARDING_STEPS, type IngestResult, type Integration, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
 import { Icon, Notice, buttonClass, cx } from "../ui";
 import { IntegrationsStep } from "./IntegrationsStep";
 import { ResumeStep } from "./ResumeStep";
@@ -20,7 +20,7 @@ export const STEP_META: Meta[] = [
   { id: "authorization", label: "Work authorization", icon: BadgeCheck, title: "Where you can work", lead: "Every US form asks these.", why: "Nori never guesses legal answers. A gap here makes it stop and ask you on each form.", skippable: true },
   { id: "screening", label: "Screening answers", icon: ListChecks, title: "Answers forms always ask", lead: "Set once, reused on every application.", why: "Salary, start date, how you heard about the role. Answering now saves a question on almost every application.", skippable: true },
   { id: "preferences", label: "Preferences and first lane", icon: SlidersHorizontal, title: "What should Nori look for?", lead: "This becomes your first lane. You can add more later.", why: "A lane is a rule for which jobs Nori may queue. Without one it queues nothing on its own.", skippable: true },
-  { id: "integrations", label: "Model and channels", icon: Plug, title: "Pick a model, connect your tools", lead: "Optional. You can do this later in Settings.", why: "With no model Nori still works on rules alone. A model writes better resumes; a channel lets you approve from your phone.", skippable: true },
+  { id: "integrations", label: "Apps and channels", icon: Plug, title: "Connect your tools", lead: "Optional. You can do this later in Settings.", why: "Mail lets Nori read codes and replies for you; a channel lets you approve from your phone. The model is included, so there is nothing to set up for it.", skippable: true },
 ];
 
 /** Index of the first unfinished step; "done" sits one past the last so every step reads as complete. */
@@ -83,13 +83,11 @@ function Steps({ current, furthest, onSelect }: { current: number; furthest: num
   );
 }
 
-export function OnboardingWizard({ initialStep, serverStep, profile: initialProfile, integrations, model, presets, replayWelcome = false }: {
+export function OnboardingWizard({ initialStep, serverStep, profile: initialProfile, integrations, replayWelcome = false }: {
   initialStep: OnboardingStepId;
   serverStep: OnboardingStep;
   profile: Profile;
   integrations: Integration[];
-  model: ModelSettings | null;
-  presets: ModelPresetsInfo;
   /** `/onboarding?welcome=1` shows the intro again. */
   replayWelcome?: boolean;
 }) {
@@ -219,7 +217,7 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
           {meta.id === "preferences" && <PreferencesStep {...common} />}
           {meta.id === "integrations" && (
             <>
-              <IntegrationsStep initial={integrations} model={model} presets={presets} busy={busy} onBack={back} onFinish={finish} />
+              <IntegrationsStep initial={integrations} busy={busy} onBack={back} onFinish={finish} />
               {error && <div className="mt-5"><Notice tone="red">{error}</Notice></div>}
             </>
           )}

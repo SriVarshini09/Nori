@@ -7,8 +7,8 @@
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
-  InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelPresetsInfo, ModelProvider, ModelSettings, ModelSettingsInput, ModelTestResult, OnboardingState, OnboardingStepId,
-  BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
+  InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, OnboardingState, OnboardingStepId,
+  BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TelegramInfo, TelegramLink, TrackerStats, User,
 } from "./types";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
@@ -114,16 +114,6 @@ async function live<T>(method: string, path: string, body?: unknown): Promise<T>
 export const resumeDocUrl = (id: string, format: ResumeFormat, inline = false) => `/api/resume-docs/${id}/download?format=${format}${inline ? "&inline=1" : ""}`;
 export const resumeUrl = (id: string, format: ResumeFormat, inline = false) => `/api/resumes/${id}/download?format=${format}${inline ? "&inline=1" : ""}`;
 export const templatePreviewUrl = (id: string) => `/api/resume-templates/${id}/preview`;
-
-/** Demo mode has no server to ask, so it offers a short fixed list. */
-const MOCK_PRESETS: ModelPresetsInfo = {
-  strictUrls: false, localOnly: false,
-  presets: [
-    { id: "openai", label: "OpenAI", line: "GPT models with your OpenAI API key", provider: "openai-compatible", baseUrl: "https://api.openai.com/v1", editableUrl: false, needsKey: true, local: false, keyUrl: "https://platform.openai.com/api-keys" },
-    { id: "anthropic", label: "Anthropic", line: "Claude models with your API key", provider: "anthropic", baseUrl: null, editableUrl: false, needsKey: true, local: false, keyUrl: "https://console.anthropic.com/settings/keys", defaults: { quality: "claude-opus-5-5", bulk: "claude-haiku-5-5" } },
-    { id: "ollama", label: "Ollama (on this computer)", line: "Runs on your machine, no key, nothing leaves it", provider: "ollama", baseUrl: "http://localhost:11434", editableUrl: true, needsKey: false, local: true, defaults: { quality: "qwen3:14b", bulk: "qwen3:4b" } },
-  ],
-};
 
 export const api = {
   // ---- auth
@@ -285,14 +275,8 @@ export const api = {
   agentChat: async (text: string): Promise<{ reply: string }> =>
     USE_MOCK ? (await mock()).agentReply(text) : request("POST", "/api/agent/chat", { text }),
 
-  // ---- model settings and lanes (hackathon)
+  // ---- model (read-only: Nori's hosted model serves every account) and lanes
   modelSettings: async (): Promise<ModelSettings> => (USE_MOCK ? (await mock()).modelSettings() : request("GET", "/api/settings/model")),
-  saveModelSettings: async (input: ModelSettingsInput): Promise<ModelSettings> =>
-    USE_MOCK ? (await mock()).saveModelSettings(input) : request("PUT", "/api/settings/model", input),
-  modelPresets: async (): Promise<ModelPresetsInfo> => (USE_MOCK ? MOCK_PRESETS : request("GET", "/api/settings/model/presets")),
-  listModels: (input: { provider: ModelProvider; apiKey?: string; baseUrl?: string | null }): Promise<{ models: string[] }> =>
-    live("POST", "/api/settings/model/models", input),
-  testModel: async (): Promise<ModelTestResult> => (USE_MOCK ? (await mock()).testModel() : request("POST", "/api/settings/model/test")),
   lanes: async (): Promise<Lane[]> => (USE_MOCK ? (await mock()).lanes() : request("GET", "/api/lanes")),
   saveLanes: async (lanes: Lane[]): Promise<Lane[]> => (USE_MOCK ? (await mock()).saveLanes(lanes) : request("PUT", "/api/lanes", lanes)),
 
@@ -317,6 +301,8 @@ export const api = {
 
   // ---- channels / integrations
   listChannels: async (): Promise<Channel[]> => (USE_MOCK ? (await mock()).channels : request("GET", "/api/channels")),
+  telegramInfo: async (): Promise<TelegramInfo> => (USE_MOCK ? (await mock()).telegramInfo() : request("GET", "/api/channels/telegram")),
+  telegramLink: async (): Promise<TelegramLink> => (USE_MOCK ? (await mock()).telegramLink() : request("POST", "/api/channels/telegram/link")),
   listIntegrations: async (): Promise<Integration[]> => (USE_MOCK ? (await mock()).integrations : request("GET", "/api/integrations")),
   connectIntegration: async (toolkit: string): Promise<{ redirectUrl: string }> =>
     USE_MOCK ? { redirectUrl: `https://connect.composio.dev/mock/${toolkit}` } : request("POST", `/api/integrations/${toolkit}/connect`),

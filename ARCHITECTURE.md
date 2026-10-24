@@ -10,7 +10,7 @@ packages/core/src
   contracts.ts  Shared types every package codes against. Coordinator-owned.
   llm/          getLLM(): Anthropic or any OpenAI-compatible endpoint; withFallback() for heuristics
   graph/        career graph: skills dictionary, resume ingestion, subgraph retrieval, conversational facts
-  feeds/        ATS feed pollers (greenhouse, lever, ashby, smartrecruiters), Parallel search/extract, normalize+upsert, requirement extraction
+  feeds/        ATS feed pollers (greenhouse, lever, ashby, smartrecruiters), web search (Exa: exa.ts + social.ts for X, Hacker News, Wellfound, YC, LinkedIn pages; Parallel), normalize+upsert, requirement extraction
   research/     Parallel Task API company research with citations
   match/        job <-> graph scoring with explanation
   tailor/       baseline resume from graph, bullet rewrite with provenance, HTML template, PDF fitting loop, ATS checks
@@ -36,7 +36,7 @@ apps/web               Next.js dashboard
 
 ## Env (see .env.example)
 
-`DATABASE_URL` (optional), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `OPENAI_COMPAT_BASE_URL` / `OPENAI_COMPAT_API_KEY` / `OPENAI_COMPAT_MODEL` (Cline: `https://api.cline.bot/api/v1`, Ollama: `http://localhost:11434/v1`), `LLM_PROVIDER` override, `PARALLEL_API_KEY`, `COMPOSIO_API_KEY`, `TELEGRAM_BOT_TOKEN`, `DEFAULT_USER_EMAIL`, `ALLOW_REAL_SUBMIT` (driver never clicks submit unless `true`), `API_PORT`, `WEB_URL`.
+`DATABASE_URL` (optional), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `OPENAI_COMPAT_BASE_URL` / `OPENAI_COMPAT_API_KEY` / `OPENAI_COMPAT_MODEL` (Cline: `https://api.cline.bot/api/v1`, Ollama: `http://localhost:11434/v1`), `LLM_PROVIDER` override, `PARALLEL_API_KEY`, `COMPOSIO_API_KEY`, `TELEGRAM_BOT_TOKEN`, `DEFAULT_USER_EMAIL`, `ALLOW_REAL_SUBMIT` (driver never clicks submit unless `true`), `API_PORT`, `WEB_URL`, `SENTRY_DSN_API` (API error reporting; `NEXT_PUBLIC_SENTRY_DSN` on the web side, tunnelled through `/monitoring`).
 
 ## Auth and onboarding
 
@@ -91,6 +91,8 @@ POST /api/inbox/sync                          -> { imported }
 GET  /api/tracker/stats                       -> { byStatus: Record<string, number>, thisWeek: {...} }
 POST /api/tracker/sync-sheet                  -> { spreadsheetUrl }
 GET  /api/channels                            -> linked channels
+GET  /api/channels/telegram                   -> { configured, botUsername, linked }
+POST /api/channels/telegram/link              -> { code, expiresAt, botUsername, link }   (send the code to the bot, or open `link`; the chat is then linked to this account)
 GET  /api/integrations                        -> [{ toolkit, connected }]
 POST /api/integrations/:toolkit/connect       -> { redirectUrl }
 POST /mcp                                     MCP streamable HTTP (tools: find_jobs, research_company, tailor_resume, apply, status)
@@ -98,9 +100,9 @@ POST /mcp                                     MCP streamable HTTP (tools: find_j
 
 ## Hackathon version (branch `hackathon`)
 
-Headline: a personal job agent you talk to from your phone (Telegram, WhatsApp) or a small companion in the laptop menu bar or tray, that applies hands-free within lanes and a daily cap ("Auto apply"), runs on open-weight models through the user's own Cline credits ("Sign in with Cline") or a local Ollama, and is fully open source.
+Headline: a personal job agent you talk to from your phone (Telegram, WhatsApp) or a small companion in the laptop menu bar or tray, that applies hands-free within lanes and a daily cap ("Auto apply"), runs on the operator's hosted model (every account, no keys to paste) or a local Ollama, and is fully open source.
 
-Model tiers: `getLLM("quality")` for writing (bullets, answers, chat) and `getLLM("bulk")` for extraction and classification. Per-user credentials (migration 0004 `user_credentials`: user_id, provider, encrypted_key, base_url, quality_model, bulk_model) override process env. Resolution order per user: own key > hosted key (HOSTED_LLM_* env) > local Ollama if reachable > heuristics. `LOCAL_ONLY=1` forces Ollama and refuses cloud LLM calls.
+Model tiers: `getLLM("quality")` for writing (bullets, answers, chat) and `getLLM("bulk")` for extraction and classification. There are no per-user keys (the `user_credentials` table from migration 0004 is dropped in 0010): resolution per user is hosted key (HOSTED_LLM_* env) > local Ollama if reachable > heuristics. Every call is counted in `llm_usage` (user, UTC day) and the hosted key is capped per user per day by `HOSTED_LLM_DAILY_TOKEN_CAP` (default 300000); past the cap the heuristic fallback runs until midnight UTC. `LOCAL_ONLY=1` forces Ollama and refuses cloud LLM calls.
 
 Lanes: `profiles.preferences.lanes = [{ id, name, titles[], locations[], remote: "only"|"ok"|"no", minScore, enabled }]`. The agent tick considers every enabled lane, best matches first, drawing from one shared `autoApplyDailyCap`. A job qualifies for a lane when its title matches any lane title (case-insensitive substring or canonical skill) and location/remote constraints hold.
 
@@ -114,9 +116,8 @@ How a cycle stays fast and honest (`agentTick`, one at a time per user):
 Single process: `npm run demo` starts the API with the scheduler and channel listeners inside it (`EMBED_WORKER=1`), so the embedded database has one owner.
 
 ```
-GET  /api/settings/model              -> { provider, baseUrl, qualityModel, bulkModel, hasKey, mode: "cline"|"openai-compatible"|"anthropic"|"ollama"|"heuristic" }
-PUT  /api/settings/model              { provider, apiKey?, baseUrl?, qualityModel?, bulkModel? } -> same
-POST /api/settings/model/test         -> { ok, model, latencyMs, sample } (one tiny completion)
+GET  /api/settings/model              -> { mode, source: "hosted"|"local"|"none", tiers, localOnly, usage: { totalTokens, capTokens, remainingTokens, exhausted, resetsAt } } (read-only)
+POST /api/settings/error-reporting/test -> { sent, delivered } (operator account only, MCP_USER_EMAIL; sends one Sentry message; 503 without SENTRY_DSN_API)
 GET  /api/lanes                       -> Lane[]
 PUT  /api/lanes                       Lane[] -> Lane[]
 GET  /api/graph/export                -> application/json download of nodes + edges + profile (no credentials)
@@ -126,4 +127,4 @@ POST /api/agent/tick?quick=1          starts the cycle in the background, 202 { 
 GET  /api/agent/tick                  -> { running, startedAt?, last?: TickSummary, error? }
 GET  /companion                       (web) compact view for the tray popover: status line, waiting-on-you with Approve/Skip, chat box; 360x560
 ```
-Cline endpoint: base URL `https://api.cline.bot/api/v1`, OpenAI-compatible `/chat/completions`, bearer = the user's Cline API key. Default quality model `deepseek/deepseek-v4-pro`, bulk `qwen/qwen3.7-plus` (confirm live; model ids may need the `cline-pass/` prefix on ClinePass accounts).
+Cline as the hosted provider: base URL `https://api.cline.bot/api/v1`, OpenAI-compatible `/chat/completions`, bearer = the operator's Cline API key. Default quality model `deepseek/deepseek-v4-pro`, bulk `qwen/qwen3.7-plus`.

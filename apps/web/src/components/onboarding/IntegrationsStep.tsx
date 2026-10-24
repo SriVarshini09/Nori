@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, Hash, Mail, RefreshCw, Send, Sheet, type LucideIcon } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Integration, ModelPresetsInfo, ModelSettings } from "@/lib/types";
+import type { Integration } from "@/lib/types";
 import { Icon, Notice, cx } from "../ui";
-import { ModelPanel } from "../ModelPanel";
 import { ObButton, Soft } from "./controls";
 
 const CARDS: { toolkit: string; name: string; icon: LucideIcon; what: string }[] = [
@@ -41,10 +40,8 @@ function Heading({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
-export function IntegrationsStep({ initial, model, presets, busy, onBack, onFinish }: {
+export function IntegrationsStep({ initial, busy, onBack, onFinish }: {
   initial: Integration[];
-  model: ModelSettings | null;
-  presets: ModelPresetsInfo;
   busy?: boolean;
   onBack?: () => void;
   onFinish: () => void;
@@ -75,9 +72,7 @@ export function IntegrationsStep({ initial, model, presets, busy, onBack, onFini
 
   return (
     <div>
-      <Heading title="Model" />
-      <ModelPanel initial={model} presets={presets} compact />
-      <div className="mt-8"><Heading title="Apps" hint="Optional" /></div>
+      <Heading title="Apps" hint="Optional" />
       <ul className="grid gap-3 sm:grid-cols-2">
         {CARDS.map((c) => {
           const on = connected(c.toolkit);
@@ -107,9 +102,9 @@ export function IntegrationsStep({ initial, model, presets, busy, onBack, onFini
           <div className="text-[15px] font-semibold text-ink">Telegram</div>
         </div>
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-meta text-ink-2">
-          <li>Open your Nori bot in Telegram.</li>
-          <li>Send /start.</li>
-          <li>Approve, skip and answer from the chat.</li>
+          <li>After setup, open Settings, Channels and press Link Telegram.</li>
+          <li>Send the code it shows to your Nori bot.</li>
+          <li>Review requests then reach your phone. Reply there.</li>
         </ol>
       </Soft>
 

@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
-  FONTS, PAGE_SIZES, ResumeDocError, SAMPLE_RESUME, TEMPLATES, TEMPLATE_IDS, applications, createBlankResumeDoc, createResumeDoc, createResumeDocFromGraph,
+  DEFAULT_TEMPLATE, FONTS, PAGE_SIZES, ResumeDocError, SAMPLE_RESUME, TEMPLATES, TEMPLATE_IDS, applications, createBlankResumeDoc, createResumeDoc, createResumeDocFromGraph,
   deleteResumeDoc, duplicateResumeDoc, editApplicationResume, getResumeDoc, isTemplateId, listResumeDocVersions, listResumeDocs, parseResumeContent,
   readFontFile, rebuildResumeDocFromGraph, renderResume, renderResumeDocx, renderResumeHtml, renderResumeJson, renderResumeText, resumeFileBase, resumes,
   restoreResumeDocVersion, setDefaultResumeDoc, themeFor, updateResumeDoc,
@@ -104,7 +104,7 @@ export function mountResumeRoutes(app: Hono<AppEnv>, ctx: { db: Db; deps: Runner
   app.post("/api/resume/preview", bodyLimit({ maxSize: 512 * 1024, onError: () => { throw bad("Resume is too large", 413); } }), async (c) => {
     const b = await body(c, z.object({ content: ContentIn, ...StyleIn, requirements: z.unknown().optional() }));
     const content = asContent(b.content);
-    const templateId = b.templateId && isTemplateId(b.templateId) ? b.templateId : "classic";
+    const templateId = b.templateId && isTemplateId(b.templateId) ? b.templateId : DEFAULT_TEMPLATE;
     const r = await renderResume(content, { templateId, theme: b.theme, trim: false });
     return c.json({ html: r.html, pages: r.pages, targetPages: r.theme.pages, atsScore: r.atsScore, atsChecks: r.atsChecks, density: r.density, steps: r.steps, theme: r.theme, templateId: r.templateId });
   });
@@ -184,11 +184,11 @@ export function mountResumeRoutes(app: Hono<AppEnv>, ctx: { db: Db; deps: Runner
     if (!buf) {
       const theme = doc.theme;
       switch (format) {
-        case "pdf": buf = (await renderResume(doc.content, { templateId: isTemplateId(doc.templateId) ? doc.templateId : "classic", theme, trim: false })).pdf; break;
+        case "pdf": buf = (await renderResume(doc.content, { templateId: isTemplateId(doc.templateId) ? doc.templateId : DEFAULT_TEMPLATE, theme, trim: false })).pdf; break;
         case "docx": buf = await renderResumeDocx(doc.content, doc.templateId, theme); break;
         case "txt": buf = Buffer.from(renderResumeText(doc.content, doc.templateId), "utf8"); break;
         case "json": buf = Buffer.from(renderResumeJson(doc.content, doc.templateId, theme), "utf8"); break;
-        case "html": buf = Buffer.from(renderResumeHtml(doc.content, isTemplateId(doc.templateId) ? doc.templateId : "classic", theme), "utf8"); break;
+        case "html": buf = Buffer.from(renderResumeHtml(doc.content, isTemplateId(doc.templateId) ? doc.templateId : DEFAULT_TEMPLATE, theme), "utf8"); break;
       }
       remember(key, buf);
     }
@@ -218,7 +218,7 @@ export function mountResumeRoutes(app: Hono<AppEnv>, ctx: { db: Db; deps: Runner
         case "docx": buf = await renderResumeDocx(r.content, r.templateId, r.theme); break;
         case "txt": buf = Buffer.from(renderResumeText(r.content, r.templateId), "utf8"); break;
         case "json": buf = Buffer.from(renderResumeJson(r.content, r.templateId, r.theme), "utf8"); break;
-        case "html": buf = Buffer.from(r.html ?? renderResumeHtml(r.content, isTemplateId(r.templateId) ? r.templateId : "classic", r.theme), "utf8"); break;
+        case "html": buf = Buffer.from(r.html ?? renderResumeHtml(r.content, isTemplateId(r.templateId) ? r.templateId : DEFAULT_TEMPLATE, r.theme), "utf8"); break;
       }
       remember(key, buf);
     }

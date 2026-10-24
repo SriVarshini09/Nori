@@ -22,12 +22,11 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     state = res as OnboardingState;
   }
   const integrations = await api.listIntegrations().catch(() => []);
-  const [model, presets] = await Promise.all([api.modelSettings().catch(() => null), api.modelPresets()]);
 
   // Resume where the user left off; a finished user (or ?step=) can revisit any step.
   const initial: OnboardingStepId = asked && ONBOARDING_STEPS.includes(asked)
     ? asked
     : state.step === "done" ? "resume" : state.step;
 
-  return <OnboardingWizard initialStep={initial} serverStep={state.step} profile={state.profile} integrations={integrations} model={model} presets={presets} replayWelcome={replay} />;
+  return <OnboardingWizard initialStep={initial} serverStep={state.step} profile={state.profile} integrations={integrations} replayWelcome={replay} />;
 }

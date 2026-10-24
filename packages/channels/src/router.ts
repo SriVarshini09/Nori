@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import {
-  channels, conversations, ensureDefaultUser, getState, setState,
+  channels, consumeChannelLinkCode, conversations, ensureDefaultUser, extractLinkCode, getState, setState,
   type ChannelAdapter, type ChannelKind, type Db, type InboundMessage, type OutboundMessage,
 } from "@jobgraph/core";
 import { EmailChannel } from "./email.js";
@@ -17,10 +17,14 @@ export type RouterOptions = {
   adapters?: ChannelAdapter[];
 };
 
-const UNLINKED: Record<string, string> = {
-  telegram: "This chat is not linked to a jobgraph account yet. Link it from the dashboard (Settings, Channels).",
-  whatsapp: "This number is not linked to a jobgraph account yet. Link it from the dashboard (Settings, Channels).",
+/** Where to link a chat from, for the notice an unknown chat gets back. */
+const settingsPlace = () => (process.env.WEB_URL ? `${process.env.WEB_URL.replace(/\/$/, "")}/settings` : "Settings on the dashboard");
+const UNLINKED: Record<string, () => string> = {
+  telegram: () => `This chat is not linked to a Nori account yet. Open ${settingsPlace()}, press "Link Telegram", and send me the code it shows.`,
+  whatsapp: () => `This number is not linked to a Nori account yet. Link it from ${settingsPlace()} (Channels).`,
 };
+const LINKED_TEXT = "Linked. This chat now reaches your Nori account. Say 'status' to see where things stand.";
+const BAD_CODE_TEXT = "That code is not valid or has expired. Press \"Link Telegram\" in Settings, Channels for a new one and send it here.";
 
 /** Adapter for sending as a given user. Slack and email go through that user's Composio connections. */
 function adapterFor(kind: ChannelKind, userId: string, shared: ChannelAdapter[], overridden = false): ChannelAdapter | undefined {
@@ -59,7 +63,20 @@ export function createChannelRouter(db: Db, handlers: RouterHandlers, options: R
   async function handleInbound(msg: InboundMessage): Promise<OutboundMessage | null> {
     const channel = await resolveChannel(msg);
     if (!channel) {
-      const note = UNLINKED[msg.channel];
+      // A link code (alone, or as "/start CODE" from a t.me deep link) ties this chat to the account that issued it.
+      const code = msg.channel === "telegram" ? extractLinkCode(msg.text) : null;
+      if (code) {
+        const userId = await consumeChannelLinkCode(db, code);
+        let text = BAD_CODE_TEXT;
+        if (userId) {
+          const [row] = await db.insert(channels).values({ userId, kind: "telegram", address: msg.address, meta: { linkedWithCode: true, ...(msg.meta ?? {}) } })
+            .onConflictDoNothing().returning();
+          text = row ? LINKED_TEXT : "This chat is already linked to another Nori account.";
+        }
+        await reply(msg, userId ?? "", { text }).catch((e) => console.warn("[router] link reply failed:", (e as Error).message));
+        return { text };
+      }
+      const note = UNLINKED[msg.channel]?.();
       if (note) await reply(msg, "", { text: note }).catch((e) => console.warn("[router] unlinked notice failed:", (e as Error).message));
       return null;
     }

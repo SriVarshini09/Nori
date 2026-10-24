@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@sentry/nextjs": "^11.9.0",
     "@types/d3-force": "^3.0.10",
     "@types/d3-selection": "^3.0.12",
     "@types/d3-zoom": "^3.0.9",

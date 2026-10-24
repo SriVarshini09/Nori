@@ -41,7 +41,7 @@ describe("resume library", () => {
   it("creates the first document from the graph and makes it the default", async () => {
     expect(await getDefaultResumeDoc(db, a)).toBeNull();
     const first = await ensureResumeDoc(db, a);
-    expect(first).toMatchObject({ name: "My resume", source: "graph", isDefault: true, version: 1, templateId: "classic" });
+    expect(first).toMatchObject({ name: "My resume", source: "graph", isDefault: true, version: 1, templateId: "ats" });
     expect(first!.content.experience.length).toBeGreaterThan(0);
     expect(first!.content.experience[0].bullets.length).toBeGreaterThan(0);
     expect((await ensureResumeDoc(db, a))).toBeNull(); // already has one
@@ -49,9 +49,9 @@ describe("resume library", () => {
   });
 
   it("keeps exactly one default and switches it", async () => {
-    const second = await createResumeDoc(db, a, { name: "Sales version", content: SAMPLE_RESUME, templateId: "modern", theme: { accent: "#ff5500" } });
+    const second = await createResumeDoc(db, a, { name: "Sales version", content: SAMPLE_RESUME, templateId: "ats", theme: { accent: "#ff5500" } });
     expect(second.isDefault).toBe(false);
-    expect(second.theme).toMatchObject({ accent: "#ff5500", font: "inter" });
+    expect(second.theme).toMatchObject({ accent: "#ff5500", font: "tinos" });
     const made = await setDefaultResumeDoc(db, a, second.id);
     expect(made.isDefault).toBe(true);
     const docs = await listResumeDocs(db, a);
@@ -93,15 +93,13 @@ describe("resume library", () => {
     expect((await getResumeDoc(db, a, doc.id)).name).toBe("Tab one");
   });
 
-  it("applies the new template's look when the template changes, and keeps the user's theme when it does not", async () => {
-    const doc = await createResumeDoc(db, a, { name: "Theme", content: structuredClone(STUDENT_RESUME), templateId: "classic" });
+  it("keeps the user's theme across edits, and refuses a template that does not exist", async () => {
+    const doc = await createResumeDoc(db, a, { name: "Theme", content: structuredClone(STUDENT_RESUME), templateId: "ats" });
     const tweaked = await updateResumeDoc(db, a, doc.id, { theme: { accent: "#123456" } });
-    expect(tweaked.theme).toMatchObject({ accent: "#123456", font: "source-sans" });
+    expect(tweaked.theme).toMatchObject({ accent: "#123456", font: "tinos", headerAlign: "center" });
     const same = await updateResumeDoc(db, a, doc.id, { theme: { margin: 0.8 } });
     expect(same.theme).toMatchObject({ accent: "#123456", margin: 0.8 });
-    const switched = await updateResumeDoc(db, a, doc.id, { templateId: "executive" });
-    expect(switched.theme).toMatchObject({ font: "garamond", headerAlign: "center" });
-    expect((switched.theme as { accent: string }).accent).not.toBe("#123456");
+    expect((await err(updateResumeDoc(db, a, doc.id, { templateId: "executive" }))).message).toMatch(/template/i);
     expect((await err(updateResumeDoc(db, a, doc.id, { templateId: "wordart" }))).message).toMatch(/template/i);
   });
 

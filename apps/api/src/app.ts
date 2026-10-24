@@ -21,13 +21,14 @@ import {
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
   agentTick, tickRunning, type TickSummary, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
-  LLM_PROVIDERS, MODEL_PRESETS, savedApiKey, UnsafeUrlError, assertModelUrlAllowed, listProviderModels, presetIdFor, strictModelUrls, deleteUserCredentials, effectiveLanes, exportGraph, getUserCredentials, isLocalUrl, localOnly, modeOf, modelSettings,
-  normalizeLanes, processLLM, queuedTodayByLane, saveUserCredentials, storedLanes, testUserModel, withUserLLM, LaneInput,
+  effectiveLanes, exportGraph, issueChannelLinkCode, localOnly, modeOf, modelSettings,
+  normalizeLanes, processLLM, queuedTodayByLane, storedLanes, withUserLLM, LaneInput,
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
+import { captureError, sentryEnabled, sentrySelfTest } from "./sentry.js";
 import {
-  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
+  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, telegramBotUsername, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
@@ -242,6 +243,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     // The full error (file paths, SQL, upstream replies) goes to the server log only; the person gets a reference to quote.
     const ref = Math.random().toString(36).slice(2, 10);
     console.warn(`[api] ${ref} ${c.req.method} ${c.req.path}: ${message}`, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : "");
+    captureError(err, { ref, method: c.req.method, path: c.req.path, userId: c.get("user")?.id });
     if (/PARALLEL_API_KEY|Parallel/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Web job search is not set up on this server." }, 503);
     if (/COMPOSIO_API_KEY|Composio/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Connected apps (Gmail, Sheets, Slack) are not set up on this server." }, 503);
     if (/not set|not configured/i.test(message)) return c.json({ error: "This feature is not set up on this server." }, 503);
@@ -389,7 +391,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     })),
     localOnly: localOnly(),
     embeddedWorker: process.env.EMBED_WORKER === "1",
-    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode !== "console" && !mailerState().blockedBy },
+    integrations: { parallel: Boolean(process.env.PARALLEL_API_KEY), exa: Boolean(process.env.EXA_API_KEY), composio: composioAvailable(), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN), email: mailerState().mode !== "console" && !mailerState().blockedBy },
     allowRealSubmit: process.env.ALLOW_REAL_SUBMIT === "true",
   }));
 
@@ -485,66 +487,22 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return c.body(JSON.stringify(data, null, 2), 200, { "content-type": "application/json; charset=utf-8" });
   });
 
-  // ---------- model settings (own key / Sign in with Cline) ----------
-  const ModelBody = z.object({
-    provider: z.enum(LLM_PROVIDERS),
-    apiKey: z.string().trim().max(1000).optional(),
-    baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
-    qualityModel: z.string().trim().max(200).nullable().optional(),
-    bulkModel: z.string().trim().max(200).nullable().optional(),
-  });
+  // ---------- model (Nori's hosted model serves every account; no keys to manage) ----------
+  /** Which model does the work for this user, and today's token use against the daily allowance. */
+  app.get("/api/settings/model", async (c) => c.json(await modelSettings(db, c.get("user").id)));
 
-  const savedKeyOf = (userId: string) => savedApiKey(db, userId);
-
-  // What a person can pick, plus the rules this server applies (so the screen can explain a refusal before it happens).
-  app.get("/api/settings/model/presets", (c) => c.json({
-    presets: MODEL_PRESETS, strictUrls: strictModelUrls(), localOnly: localOnly(),
-  }));
-
-  app.get("/api/settings/model", async (c) => {
-    const s = await modelSettings(db, c.get("user").id);
-    return c.json({ ...s, preset: presetIdFor(s.provider, s.baseUrl) });
-  });
-
-  // The provider's own list of model ids, using the key typed in the form or else the saved one. The key is never echoed.
-  app.post("/api/settings/model/models", async (c) => {
+  /**
+   * Operator-only wiring check for error reporting: sends one message to Sentry and waits for delivery. Allowed for the
+   * account named by MCP_USER_EMAIL (the operator), so a stranger cannot fill the project with noise.
+   */
+  app.post("/api/settings/error-reporting/test", async (c) => {
     const user = c.get("user");
-    const b = await body(c, z.object({
-      provider: z.enum(LLM_PROVIDERS), apiKey: z.string().trim().max(1000).optional(),
-      baseUrl: z.string().trim().url("baseUrl must be a URL").max(500).refine((u) => /^https?:\/\//i.test(u), "baseUrl must start with http:// or https://").nullable().optional().or(z.literal("").transform(() => null)),
-    }));
-    const current = await getUserCredentials(db, user.id);
-    const same = current?.provider === b.provider;
-    const apiKey = b.apiKey || (same ? await savedKeyOf(user.id) : null);
-    const baseUrl = b.baseUrl !== undefined ? b.baseUrl : same ? current?.baseUrl ?? null : null;
-    if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
-    try {
-      return c.json({ models: await listProviderModels({ provider: b.provider, baseUrl, apiKey }) });
-    } catch (err) {
-      throw bad(err instanceof Error ? err.message : "Could not list models", 422);
-    }
+    const operator = process.env.MCP_USER_EMAIL?.trim().toLowerCase();
+    if (!operator || user.email.toLowerCase() !== operator) throw bad("Only the operator account can run this check", 403);
+    if (!sentryEnabled()) throw bad("Error reporting is not set up on this server (SENTRY_DSN_API)", 503);
+    const delivered = await sentrySelfTest();
+    return c.json({ sent: true, delivered });
   });
-
-  app.put("/api/settings/model", async (c) => {
-    const user = c.get("user");
-    const b = await body(c, ModelBody);
-    const current = await getUserCredentials(db, user.id);
-    const baseUrl = b.baseUrl !== undefined ? b.baseUrl : current?.provider === b.provider ? current.baseUrl : null;
-    if (localOnly() && b.provider !== "ollama" && !isLocalUrl(baseUrl)) throw bad("LOCAL_ONLY is set: only a local model (Ollama) is allowed", 409);
-    if (b.provider === "openai-compatible" && !baseUrl) throw bad("baseUrl is required for an OpenAI-compatible provider");
-    if (b.provider === "ollama" && strictModelUrls()) throw bad("This server cannot reach a model on your own computer. Add a hosted provider's key, or run Nori on your computer.", 422);
-    await assertModelUrlAllowed(baseUrl).catch((err) => { throw bad(err instanceof UnsafeUrlError ? err.message : "That model address cannot be used", 422); });
-    await saveUserCredentials(db, user.id, b);
-    return c.json(await modelSettings(db, user.id));
-  });
-
-  app.delete("/api/settings/model", async (c) => {
-    await deleteUserCredentials(db, c.get("user").id);
-    return c.json(await modelSettings(db, c.get("user").id));
-  });
-
-  /** One tiny completion with the user's quality model; 15 s timeout; the key is never echoed. */
-  app.post("/api/settings/model/test", async (c) => c.json(await testUserModel(db, c.get("user").id, { timeoutMs: 15_000 })));
 
   // ---------- lanes ----------
   const lanesOf = async (userId: string) => {
@@ -894,6 +852,23 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, setWhere: eq(channels.userId, user.id) }).returning();
     if (!row) throw bad("That address is already linked to another account", 409);
     return c.json(row, 201);
+  });
+
+  // ---------- linking a Telegram chat ----------
+  /** Whether the bot is set up, its handle, and whether this account has a chat linked. */
+  app.get("/api/channels/telegram", async (c) => {
+    const user = c.get("user");
+    const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+    const [linked] = await db.select({ id: channels.id }).from(channels).where(and(eq(channels.userId, user.id), eq(channels.kind, "telegram"))).limit(1);
+    return c.json({ configured, botUsername: configured ? await telegramBotUsername() : null, linked: Boolean(linked) });
+  });
+
+  /** A one-time code (15 minutes) the person sends to the bot; the chat it arrives from is then linked to this account. */
+  app.post("/api/channels/telegram/link", async (c) => {
+    if (!process.env.TELEGRAM_BOT_TOKEN) throw bad("Telegram is not set up on this server (TELEGRAM_BOT_TOKEN)", 503);
+    const { code, expiresAt } = await issueChannelLinkCode(db, c.get("user").id);
+    const botUsername = await telegramBotUsername();
+    return c.json({ code, expiresAt: expiresAt.toISOString(), botUsername, link: botUsername ? `https://t.me/${botUsername}?start=${code}` : null });
   });
 
   app.delete("/api/channels/:id", async (c) => {

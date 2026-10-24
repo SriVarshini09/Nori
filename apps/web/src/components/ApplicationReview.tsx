@@ -195,7 +195,7 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
         </h2>
         <p className="flex flex-wrap items-center gap-x-2 text-meta text-muted tnum">
           {resume.edited && <span className="rounded-full bg-sunken px-2 py-0.5 text-[12px] font-medium text-ink">Edited by you</span>}
-          {resume.templateId && <span>{resume.templateId.charAt(0).toUpperCase() + resume.templateId.slice(1)} template ·</span>}
+          {resume.templateId && <span>{resume.templateId === "ats" ? "ATS Standard" : resume.templateId.charAt(0).toUpperCase() + resume.templateId.slice(1)} template ·</span>}
           <span>ATS {resume.atsScore ?? "?"} · {resume.pages ?? "?"} page{resume.pages === 1 ? "" : "s"}</span>
           {resume.keywordCoverage != null && <span>· keywords {Math.round(resume.keywordCoverage * 100)}%</span>}
         </p>

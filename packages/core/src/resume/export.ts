@@ -4,12 +4,12 @@ import {
 } from "docx";
 import type { ResumeContent } from "../db/schema.js";
 import { dateRange, displayUrl, hrefOf } from "./format.js";
-import { TEMPLATES, isTemplateId, resolveSections, themeFor, type TemplateId } from "./templates.js";
+import { DEFAULT_TEMPLATE, TEMPLATES, isTemplateId, resolveSections, themeFor, type TemplateId } from "./templates.js";
 import type { FontId } from "./fonts.js";
 import { PAGE_SIZES } from "./theme.js";
 
 /** Word cannot embed our web fonts, so each maps to the closest font Word and Google Docs ship with. */
-const WORD_FONT: Record<FontId, string> = { "source-sans": "Calibri", inter: "Arial", lora: "Georgia", garamond: "Garamond", mono: "Courier New" };
+const WORD_FONT: Record<FontId, string> = { "source-sans": "Calibri", inter: "Arial", lora: "Georgia", garamond: "Garamond", tinos: "Times New Roman", mono: "Courier New" };
 
 const hex = (c: string) => c.replace("#", "").toUpperCase();
 const twips = (inches: number) => Math.round(inches * 1440);
@@ -24,8 +24,8 @@ function contactParts(c: ResumeContent["contact"]): { text: string; link?: strin
 }
 
 /** An ATS-friendly Word document: one column, real headings, real bullets, the template's accent colour and section order. */
-export async function renderResumeDocx(content: ResumeContent, templateId: string = "classic", themeIn?: unknown): Promise<Buffer> {
-  const id: TemplateId = isTemplateId(templateId) ? templateId : "classic";
+export async function renderResumeDocx(content: ResumeContent, templateId: string = DEFAULT_TEMPLATE, themeIn?: unknown): Promise<Buffer> {
+  const id: TemplateId = isTemplateId(templateId) ? templateId : DEFAULT_TEMPLATE;
   const template = TEMPLATES[id];
   const theme = themeFor(id, themeIn);
   const font = WORD_FONT[theme.font];
@@ -55,7 +55,7 @@ export async function renderResumeDocx(content: ResumeContent, templateId: strin
   });
 
   // header
-  P({ alignment: align, spacing: { before: 0, after: 40 }, children: [run(content.name || "Your Name", { bold: true, size: Math.round(size * 1.9), font: headFont, color: id === "classic" ? undefined : accent })] });
+  P({ alignment: align, spacing: { before: 0, after: 40 }, children: [run(content.name || "Your Name", { bold: true, size: Math.round(size * 1.9), font: headFont, color: accent === "000000" ? undefined : accent })] });
   const parts = contactParts(content.contact);
   if (parts.length) {
     const kids: (TextRun | ExternalHyperlink)[] = [];
@@ -110,8 +110,8 @@ export async function renderResumeDocx(content: ResumeContent, templateId: strin
 }
 
 /** Plain text for pasting into an application form or an email. */
-export function renderResumeText(content: ResumeContent, templateId: string = "classic"): string {
-  const template = TEMPLATES[isTemplateId(templateId) ? templateId : "classic"];
+export function renderResumeText(content: ResumeContent, templateId: string = DEFAULT_TEMPLATE): string {
+  const template = TEMPLATES[isTemplateId(templateId) ? templateId : DEFAULT_TEMPLATE];
   const out: string[] = [content.name || ""];
   const contact = contactParts(content.contact).map((p) => p.text);
   if (contact.length) out.push(contact.join(" | "));

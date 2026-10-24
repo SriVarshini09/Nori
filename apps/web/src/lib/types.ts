@@ -345,6 +345,11 @@ export type Channel = {
   createdAt: string;
 };
 
+/** Whether the Telegram bot exists on this server, its handle, and whether this account has a chat linked. */
+export type TelegramInfo = { configured: boolean; botUsername: string | null; linked: boolean };
+/** A one-time code to send to the bot; `link` opens the bot with the code prefilled. */
+export type TelegramLink = { code: string; expiresAt: string; botUsername: string | null; link: string | null };
+
 /** `available: false` means this server has no connection provider configured, so Connect cannot work yet. */
 export type Integration = { toolkit: string; connected: boolean; error?: string; available?: boolean };
 
@@ -393,36 +398,31 @@ export type AgentStatus = {
   lanes?: { id: string; name: string; enabled: boolean; queuedToday: number }[];
 };
 
-// ---- hackathon: model settings and lanes
-export type ModelProvider = "cline" | "ollama" | "openai-compatible" | "anthropic";
+// ---- model (read-only) and lanes
 export type ModelMode = "cline" | "openai-compatible" | "anthropic" | "ollama" | "heuristic";
 
-export type ModelPreset = {
-  id: string; label: string; line: string; provider: ModelProvider; baseUrl: string | null; editableUrl: boolean;
-  needsKey: boolean; local: boolean; keyUrl?: string; defaults?: { quality?: string; bulk?: string };
-};
-export type ModelPresetsInfo = { presets: ModelPreset[]; strictUrls: boolean; localOnly: boolean };
-
+/** Which model serves this account. Nothing here is editable: Nori's hosted model is part of the plan. */
 export type ModelSettings = {
-  /** The preset the saved provider and URL correspond to (set by the server). */
-  preset?: string | null;
-  provider: ModelProvider;
-  baseUrl: string | null;
-  qualityModel: string | null;
-  bulkModel: string | null;
-  hasKey: boolean;
   mode: ModelMode;
+  /** The operator's hosted key, a local model (development), or nothing (rules only). */
+  source: "hosted" | "local" | "none";
+  tiers?: Record<"quality" | "bulk", { mode: ModelMode; model: string | null }>;
+  localOnly?: boolean;
+  usage?: ModelUsage;
 };
 
-export type ModelSettingsInput = {
-  provider: ModelProvider;
-  apiKey?: string;
-  baseUrl?: string;
-  qualityModel?: string;
-  bulkModel?: string;
+/** Today's model tokens for this account. `capTokens` is set on the hosted key. */
+export type ModelUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  calls: number;
+  shared: boolean;
+  capTokens: number | null;
+  remainingTokens: number | null;
+  exhausted: boolean;
+  resetsAt: string;
 };
-
-export type ModelTestResult = { ok: boolean; model: string; latencyMs: number; sample: string; error?: string };
 
 export type Lane = {
   id: string;

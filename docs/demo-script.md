@@ -1,6 +1,6 @@
 # Demo script (3 minutes)
 
-Warm state before the slot: `npm run demo`, `npm run web`, `npm run companion` running; seed loaded with your real resume; Cline key saved in Settings; Slack (or Telegram) linked; one application already waiting for approval; Google Sheet open in a tab; a recruiter-style email drafted in a second mailbox ready to send.
+Warm state before the slot: `npm run demo`, `npm run web`, `npm run companion` running; seed loaded with your real resume; `HOSTED_LLM_*` set; Slack (or Telegram) linked; one application already waiting for approval; Google Sheet open in a tab; a recruiter-style email drafted in a second mailbox ready to send.
 
 ## 0:00 The line
 "Everyone's shipping closed personal agents. This one is open: open models through Cline, your own data in a graph you can export, and it applies honestly because it cannot invent a claim."

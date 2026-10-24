@@ -152,14 +152,11 @@ describe("2. resume studio", () => {
     await page.getByRole("button", { name: "Move Skills down" }).click();
   });
 
-  it("switches template and restyles, and the choice survives a reload", async () => {
+  it("restyles the one template, and the choice survives a reload", async () => {
     await page.getByRole("tab", { name: "design" }).click();
-    await expect(page.getByRole("radiogroup", { name: "Template" }).getByRole("radio")).toHaveCount(7);
-    await expect(page.getByRole("radio", { name: /Classic/ })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radiogroup", { name: "Template" }).getByRole("radio")).toHaveCount(1);
+    await expect(page.getByRole("radio", { name: /ATS Standard/ })).toHaveAttribute("aria-checked", "true");
     await shot("05-studio-design");
-    await page.getByRole("radio", { name: /Modern/ }).click();
-    await expect(page.getByRole("radio", { name: /Modern/ })).toHaveAttribute("aria-checked", "true");
-    await expect.poll(async () => (await previewHtml(page)).includes("'Inter'"), { timeout: 20_000 }).toBe(true);
     await page.getByRole("radio", { name: "Accent #7c3aed" }).click();
     await expect.poll(async () => (await previewHtml(page)).includes("#7c3aed"), { timeout: 20_000 }).toBe(true);
     await page.getByLabel("Page size").selectOption("a4");
@@ -167,20 +164,11 @@ describe("2. resume studio", () => {
     await expect(page.getByRole("status").filter({ hasText: /^Saved · version/ })).toBeVisible({ timeout: 20_000 });
     await page.reload();
     await page.getByRole("tab", { name: "design" }).click();
-    await expect(page.getByRole("radio", { name: /Modern/ })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radio", { name: /ATS Standard/ })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByLabel("Page size")).toHaveValue("a4");
     const html = await previewHtml(page);
     expect(html).toContain("#7c3aed");
     expect(html).toContain("Orbit Labs");
-  });
-
-  it("warns that a two-column template is not ATS-safe, and lowers the score honestly", async () => {
-    await page.getByRole("radio", { name: /Sidebar/ }).click();
-    await expect(page.getByText(/two-column layouts can scramble/i)).toBeVisible();
-    await expect(page.getByRole("list", { name: "ATS checks" })).toContainText(/single column/i);
-    await expect.poll(async () => (await previewHtml(page)).includes("grid-template-columns"), { timeout: 20_000 }).toBe(true);
-    await shot("06-studio-sidebar");
-    await page.getByRole("radio", { name: /Modern/ }).click();
   });
 
   it("downloads PDF, Word, text, JSON and HTML that match the document", async () => {
@@ -277,8 +265,8 @@ describe("3. tailored resume for an application", () => {
     const first = page.getByLabel("Role 1 bullet 1", { exact: true });
     await first.fill("Shipped a faster checkout by moving the flow to React and TypeScript, cutting load time by forty-five percent");
     await page.getByRole("tab", { name: "design" }).click();
-    await page.getByRole("radio", { name: /Executive/ }).click();
-    await expect.poll(async () => (await previewHtml(page)).includes("Garamond"), { timeout: 20_000 }).toBe(true);
+    await page.getByRole("radio", { name: "Accent #7c3aed" }).click();
+    await expect.poll(async () => (await previewHtml(page)).includes("#7c3aed"), { timeout: 20_000 }).toBe(true);
     await shot("09-edit-application-resume");
     await page.getByRole("button", { name: "Save and re-render" }).click();
     await page.waitForURL(new RegExp(`/applications/${appId}$`), { timeout: 60_000 });
@@ -286,10 +274,10 @@ describe("3. tailored resume for an application", () => {
 
   it("shows the edit honestly in the review and keeps the application waiting for approval", async () => {
     await expect(page.getByText("Edited by you").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Executive template/)).toBeVisible();
+    await expect(page.getByText(/ATS Standard template/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve resume" })).toBeEnabled();
     const detail = (await api(`/api/applications/${appId}`)).json;
-    expect(detail.resume).toMatchObject({ version: 2, edited: true, templateId: "executive" });
+    expect(detail.resume).toMatchObject({ version: 2, edited: true, templateId: "ats" });
     expect(detail.resume.changes.some((c: { reason: string }) => c.reason === "Edited by you")).toBe(true);
     expect(detail.application.status).toBe("resume_review");
     await shot("10-review-after");

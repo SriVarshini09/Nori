@@ -16,9 +16,10 @@ import { renderPdf } from "../tailor/pdf.js";
 import { getProfile } from "../users.js";
 import { baselineFromDoc, getDefaultResumeDoc } from "../resume/docs.js";
 import { emit } from "./events.js";
+import { greenhouseFormUrl } from "../feeds/greenhouse.js";
 import { checkDisqualifiers, unprovenConstraints } from "../agent/gate.js";
 import { AUTOPILOT_COMPANY_COOLDOWN_DAYS, autopilotVerdict, describeVerdict, type AutopilotMode } from "./autopilot.js";
-import { withUserLLM } from "../llm/index.js";
+import { newUsage, runCollectingUsage, withUserLLM } from "../llm/index.js";
 import { LIKELY_QUESTIONS, isProfileField, makeAnswerQuestion, toApplicantProfile, type ComposedAnswer } from "./answers.js";
 
 export type Application = typeof applications.$inferSelect;
@@ -236,8 +237,11 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
   if (!app.resumeId) throw new Error("No resume on this application");
   const [resume] = await db.select().from(resumes).where(eq(resumes.id, app.resumeId)).limit(1);
   if (!resume?.pdfPath) throw new Error("Resume has no PDF");
-  const driver = deps.pickDriver(job.applyUrl);
-  if (!driver) throw new Error(`No apply driver supports ${job.applyUrl}`);
+  // A Greenhouse board that redirects to the company's own site: go straight to Greenhouse's embedded form instead.
+  const [board] = job.companyId ? await db.select({ token: companies.atsToken }).from(companies).where(eq(companies.id, job.companyId)).limit(1) : [];
+  const formUrl = greenhouseFormUrl(job, board?.token) ?? job.applyUrl;
+  const driver = deps.pickDriver(formUrl);
+  if (!driver) throw new Error(`No apply driver supports ${formUrl}`);
   const profileRow = await getProfile(db, app.userId);
   const [user] = await db.select().from(users).where(eq(users.id, app.userId)).limit(1);
   const profile = toApplicantProfile(profileRow, user?.email ?? "");
@@ -260,7 +264,7 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
     job, requirements, profileRow,
     reviewBeforeSubmit: profileRow.reviewBeforeSubmit,
     ctx: {
-      applyUrl: job.applyUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
+      applyUrl: formUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
       onEvent: (step, message, data) => { void emit(db, app.id, `driver:${step}`, message, data ?? {}); },
       artifactsDir: path.join(artifactsRootOf(deps), app.id),
       headless: deps.headless,
@@ -571,11 +575,23 @@ export function runApplication(db: Db, applicationId: string, deps: RunnerDeps):
     // Tailoring and answers use this user's models (own key, hosted, or local).
     return withUserLLM(db, first.userId, async () => {
       let status = first.status;
-      // Always step once: a gate status may already be approved. Stop when a step makes no progress.
-      for (let i = 0; i < 20; i++) {
-        const next = await stepApplication(db, applicationId, deps);
-        if (next === status) break; // waiting, terminal, or owned by another process
-        status = next;
+      const usage = newUsage();
+      try {
+        await runCollectingUsage(usage, async () => {
+          // Always step once: a gate status may already be approved. Stop when a step makes no progress.
+          for (let i = 0; i < 20; i++) {
+            const next = await stepApplication(db, applicationId, deps);
+            if (next === status) break; // waiting, terminal, or owned by another process
+            status = next;
+          }
+        });
+      } finally {
+        // What this run cost in model tokens, so the person can see it on the application page.
+        if (usage.calls) {
+          await emit(db, applicationId, "usage",
+            `Model use this run: about ${usage.totalTokens.toLocaleString("en-US")} tokens over ${usage.calls} call${usage.calls === 1 ? "" : "s"}${usage.model ? ` (${usage.model})` : ""}`,
+            { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens, calls: usage.calls, model: usage.model ?? null, estimated: usage.estimated ?? false });
+        }
       }
       return status;
     });

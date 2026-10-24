@@ -30,7 +30,7 @@ export default function PrivacyPage() {
         <h2>Who else sees it</h2>
         <p>Nori does not sell your data and does not show advertising. Parts of your data leave Nori only when a feature needs another service:</p>
         <ul>
-          <li><strong>The language model.</strong> When tailoring, answering questions or reading a resume uses a hosted model, the relevant text is sent to that model provider. If you add your own key, it goes to the provider you chose. If you run Nori with a local model, it stays on your machine.</li>
+          <li><strong>The language model.</strong> When tailoring, answering questions or reading a resume uses a hosted model, the relevant text is sent to Nori&apos;s model provider. If you run Nori yourself with a local model, it stays on your machine.</li>
           <li><strong>Job boards and company pages.</strong> Nori reads public job postings. When you approve an application, the form is filled on the employer&apos;s own site and the information you approved is sent to that employer, as if you had typed it.</li>
           <li><strong>Email delivery.</strong> Account emails (confirm your address, reset your password) are sent through an email provider.</li>
           <li><strong>Connected tools.</strong> If you connect Gmail, Sheets, Calendar or Slack, that access goes through Composio, and only for the features you turn on.</li>

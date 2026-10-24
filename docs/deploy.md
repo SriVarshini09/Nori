@@ -51,7 +51,7 @@ Then `fly certs add api.norinote.xyz` (Fly shows the exact record if it differs;
 - [ ] `curl https://api.norinote.xyz/api/health` returns `{"ok":true,...,"embeddedWorker":true}`
 - [ ] `https://jobs.norinote.xyz/signup` creates an account and lands on onboarding; the `jg_session` cookie is Secure
 - [ ] Onboarding: upload a resume, finish the wizard, the graph page shows nodes
-- [ ] Settings: save a Cline key, "Test" returns ok
+- [ ] Settings: the Model section shows the hosted model and today's allowance (not "rules alone")
 - [ ] Apply to one job with `ALLOW_REAL_SUBMIT` unset: the run reaches form review with a resume PDF (dry run), the PDF opens
 - [ ] Settings, Danger zone: delete a throwaway account and confirm you land on `/signup`
 - [ ] `fly logs` shows no restart loop

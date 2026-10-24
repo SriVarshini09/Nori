@@ -31,7 +31,7 @@ export function ResumeStudio(props: Props) {
   const initial = useMemo(() => {
     if (props.mode === "doc") return { content: props.doc.content, templateId: props.doc.templateId, theme: themeOf(options, props.doc.templateId, props.doc.theme as Partial<ResumeTheme>), name: props.doc.name, version: props.doc.version };
     const r = props.resume;
-    return { content: r.content, templateId: r.templateId ?? "classic", theme: themeOf(options, r.templateId ?? "classic", r.theme), name: "", version: r.version };
+    return { content: r.content, templateId: r.templateId ?? "ats", theme: themeOf(options, r.templateId ?? "ats", r.theme), name: "", version: r.version };
     // The studio is keyed by document/resume id in the page, so initial props are read once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

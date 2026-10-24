@@ -1,13 +1,16 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { userCredentials, type LlmProviderId } from "../db/schema.js";
-import { assertModelUrlAllowed } from "./presets.js";
 import {
-  CLINE_BASE_URL, CLINE_DEFAULT_MODELS, NONE_LLM, forgetUserModels, getLLM, hostedSpec, isLocalUrl, llmFromSpec, llmOverridden,
-  localOnly, modeOf, ollamaSpec, probeOllama, runWithModels, boundUserId, scrub,
-  type LLM, type LLMMode, type LLMSpec, type Tier, type UserModels,
+  NONE_LLM, getLLM, hostedSpec, llmFromSpec, llmOverridden, localOnly, meteredLLM, modeOf, ollamaSpec, probeOllama, runWithModels,
+  boundUserId, scrub, type LLM, type LLMMode, type LLMSpec, type Tier, type UserModels,
 } from "./index.js";
+import { meterForUser, usageView, type UsageView } from "./usage.js";
+
+/**
+ * Which model serves a user, and the encryption helpers for secrets stored on their behalf.
+ * Nori runs every account on the operator's model (HOSTED_LLM_* env), a local Ollama when developing, or rules alone.
+ * People do not bring their own keys: the product is a subscription, and the model is part of it.
+ */
 
 // ---------- encryption at rest ----------
 
@@ -55,109 +58,25 @@ export function decryptSecret(blob: string): string {
   return Buffer.concat([decipher.update(Buffer.from(ct, "base64")), decipher.final()]).toString("utf8");
 }
 
-// ---------- storage ----------
-
-export type UserCredentialsRow = typeof userCredentials.$inferSelect;
-export type CredentialsInput = {
-  provider: LlmProviderId;
-  /** Omit to keep the stored key; "" clears it. */
-  apiKey?: string;
-  baseUrl?: string | null;
-  qualityModel?: string | null;
-  bulkModel?: string | null;
-};
-
-export async function getUserCredentials(db: Db, userId: string): Promise<UserCredentialsRow | null> {
-  const [row] = await db.select().from(userCredentials).where(eq(userCredentials.userId, userId)).limit(1);
-  return row ?? null;
-}
-
-const defaultBaseUrl = (p: LlmProviderId): string | null => (p === "cline" ? CLINE_BASE_URL : p === "ollama" ? null : null);
-
-/** Upsert the user's model settings. The key is encrypted before it touches the database. */
-export async function saveUserCredentials(db: Db, userId: string, input: CredentialsInput): Promise<UserCredentialsRow> {
-  const current = await getUserCredentials(db, userId);
-  const sameProvider = current?.provider === input.provider;
-  const encryptedKey = input.apiKey === undefined ? (sameProvider ? current?.encryptedKey ?? null : null)
-    : input.apiKey.trim() === "" ? null : encryptSecret(input.apiKey.trim());
-  const pick = (v: string | null | undefined, keep: string | null | undefined) => (v === undefined ? (sameProvider ? keep ?? null : null) : v?.trim() || null);
-  const values = {
-    provider: input.provider,
-    encryptedKey,
-    baseUrl: pick(input.baseUrl, current?.baseUrl) ?? defaultBaseUrl(input.provider),
-    qualityModel: pick(input.qualityModel, current?.qualityModel),
-    bulkModel: pick(input.bulkModel, current?.bulkModel),
-    updatedAt: new Date(),
-  };
-  const [row] = await db.insert(userCredentials).values({ userId, ...values })
-    .onConflictDoUpdate({ target: userCredentials.userId, set: values }).returning();
-  forgetUserModels(userId);
-  return row;
-}
-
-export async function deleteUserCredentials(db: Db, userId: string): Promise<void> {
-  await db.delete(userCredentials).where(eq(userCredentials.userId, userId));
-  forgetUserModels(userId);
-}
-
 // ---------- resolution ----------
 
-export type ModelSource = "own" | "hosted" | "local" | "none";
-
-function decryptedKey(row: UserCredentialsRow): string | null {
-  if (!row.encryptedKey) return null;
-  try { return decryptSecret(row.encryptedKey); } catch (e) {
-    console.warn(`[credentials] could not decrypt the stored key for user ${row.userId} (${(e as Error).message}); ignoring it`);
-    return null;
-  }
-}
-
-const isLocalRow = (row: UserCredentialsRow) => row.provider === "ollama" || isLocalUrl(row.baseUrl);
-
-/** The user's own endpoint for a tier, or null when the row is unusable (no key for a cloud provider, LOCAL_ONLY). */
-export function specFromCredentials(row: UserCredentialsRow, tier: Tier, apiKey: string | null): LLMSpec | null {
-  const own = tier === "quality" ? row.qualityModel : row.bulkModel;
-  // Cline has a default per tier; elsewhere one model id serves both tiers when only one is set.
-  const model = own ?? (row.provider === "cline" ? null : tier === "quality" ? row.bulkModel : row.qualityModel);
-  if (localOnly() && !isLocalRow(row)) return null;
-  switch (row.provider) {
-    case "ollama":
-      return ollamaSpec(tier, model, row.baseUrl);
-    case "cline":
-      if (!apiKey) return null;
-      return { mode: "cline", baseUrl: (row.baseUrl || CLINE_BASE_URL).replace(/\/$/, ""), model: model || CLINE_DEFAULT_MODELS[tier], apiKey };
-    case "anthropic":
-      if (!apiKey) return null;
-      return { mode: "anthropic", model: model || (tier === "bulk" ? "claude-haiku-5-5" : "claude-opus-5-5"), apiKey, ...(row.baseUrl ? { baseUrl: row.baseUrl } : {}) };
-    case "openai-compatible":
-      if (!row.baseUrl || (!apiKey && !isLocalUrl(row.baseUrl))) return null;
-      return { mode: isLocalUrl(row.baseUrl) ? "ollama" : "openai-compatible", baseUrl: row.baseUrl.replace(/\/$/, ""), model: model || "qwen3:8b", apiKey: apiKey ?? "none" };
-    default:
-      return null;
-  }
-}
+/** What serves a user: the operator's hosted key, a local Ollama, or nothing (rules only). */
+export type ModelSource = "hosted" | "local" | "none";
 
 export type ResolvedModels = UserModels & { source: ModelSource };
 
 /**
- * Both tiers for a user. Order: own credentials > HOSTED_LLM_* (or legacy) env > local Ollama if a 2 s probe
- * succeeds > none (heuristics). LOCAL_ONLY=1 skips every cloud option.
+ * Both tiers for a user. Order: HOSTED_LLM_* (or legacy) env > local Ollama if a 2 s probe succeeds > none (heuristics).
+ * LOCAL_ONLY=1 skips the cloud option. Every call is counted per user and day (usage.ts); the hosted key is capped there.
  */
 export async function resolveUserModels(db: Db, userId: string): Promise<ResolvedModels> {
-  let row = await getUserCredentials(db, userId);
-  // On a shared server a stored endpoint that points at an internal address is never called (see presets.ts).
-  if (row?.baseUrl && !(await assertModelUrlAllowed(row.baseUrl).then(() => true, () => false))) {
-    console.warn(`[credentials] ignoring the model endpoint saved by user ${userId}: this server only calls public addresses`);
-    row = null;
-  }
-  if (row) {
-    const key = decryptedKey(row);
-    const q = specFromCredentials(row, "quality", key), b = specFromCredentials(row, "bulk", key);
-    if (q && b) return { userId, quality: llmFromSpec(q), bulk: llmFromSpec(b), source: isLocalRow(row) ? "local" : "own" };
-  }
+  const metered = (q: LLMSpec, b: LLMSpec, source: ModelSource): ResolvedModels => {
+    const meter = meterForUser(db, userId, source);
+    return { userId, quality: meteredLLM(llmFromSpec(q), meter), bulk: meteredLLM(llmFromSpec(b), meter), source };
+  };
   const hq = hostedSpec("quality"), hb = hostedSpec("bulk");
-  if (hq && hb) return { userId, quality: llmFromSpec(hq), bulk: llmFromSpec(hb), source: "hosted" };
-  if (await probeOllama()) return { userId, quality: llmFromSpec(ollamaSpec("quality")), bulk: llmFromSpec(ollamaSpec("bulk")), source: "local" };
+  if (hq && hb) return metered(hq, hb, "hosted");
+  if (await probeOllama()) return metered(ollamaSpec("quality"), ollamaSpec("bulk"), "local");
   return { userId, quality: NONE_LLM, bulk: NONE_LLM, source: "none" };
 }
 
@@ -169,7 +88,7 @@ export async function resolveUserLLM(db: Db, userId: string, tier: Tier): Promis
 
 /**
  * Run `fn` with the user's models bound, so every getLLM(tier) inside (tailoring, compose, extraction,
- * classification, chat) uses that user's credentials. Nested calls for the same user reuse the binding.
+ * classification, chat) is metered for that user. Nested calls for the same user reuse the binding.
  */
 export async function withUserLLM<T>(db: Db, userId: string, fn: () => Promise<T>): Promise<T> {
   if (llmOverridden() || boundUserId() === userId) return fn();
@@ -186,32 +105,24 @@ export async function withUserLLM<T>(db: Db, userId: string, fn: () => Promise<T
 // ---------- settings view + connection test ----------
 
 export type ModelSettings = {
-  provider: LlmProviderId | null;
-  baseUrl: string | null;
-  qualityModel: string | null;
-  bulkModel: string | null;
-  hasKey: boolean;
   /** What serves the quality tier right now. */
   mode: LLMMode;
   source: ModelSource;
   tiers: Record<Tier, { mode: LLMMode; model: string | null }>;
   localOnly: boolean;
+  /** Today's tokens and the daily allowance. */
+  usage: UsageView;
 };
 
 export async function modelSettings(db: Db, userId: string): Promise<ModelSettings> {
-  const row = await getUserCredentials(db, userId);
   const m = await resolveUserModels(db, userId);
   const tier = (llm: LLM) => ({ mode: modeOf(llm), model: llm.available ? llm.model : null });
   return {
-    provider: row?.provider ?? null,
-    baseUrl: row ? row.baseUrl ?? (row.provider === "cline" ? CLINE_BASE_URL : null) : null,
-    qualityModel: row ? row.qualityModel ?? (row.provider === "cline" ? CLINE_DEFAULT_MODELS.quality : null) : null,
-    bulkModel: row ? row.bulkModel ?? (row.provider === "cline" ? CLINE_DEFAULT_MODELS.bulk : null) : null,
-    hasKey: Boolean(row?.encryptedKey),
     mode: modeOf(m.quality),
     source: m.source,
     tiers: { quality: tier(m.quality), bulk: tier(m.bulk) },
     localOnly: localOnly(),
+    usage: await usageView(db, userId, m.source),
   };
 }
 
@@ -219,28 +130,20 @@ export type ModelTestResult = { ok: boolean; model: string | null; mode: LLMMode
 
 /** One tiny completion against the user's quality model (15 s timeout). Never includes the key. */
 export async function testUserModel(db: Db, userId: string, opts: { timeoutMs?: number } = {}): Promise<ModelTestResult> {
-  const row = await getUserCredentials(db, userId);
-  const key = row ? decryptedKey(row) : null;
-  if (row?.baseUrl) {
-    const refused = await assertModelUrlAllowed(row.baseUrl).then(() => null, (e: Error) => e.message);
-    if (refused) return { ok: false, model: null, mode: "heuristic", latencyMs: 0, sample: "", error: refused };
-  }
   const m = await resolveUserModels(db, userId);
   const llm = m.quality;
   if (!llm.available) {
-    const why = row && localOnly() && !isLocalRow(row) ? "LOCAL_ONLY is set, so cloud providers are refused; run Ollama locally"
-      : row && !key && row.provider !== "ollama" ? `No API key saved for ${row.provider}`
-      : "No model configured: add a Cline key, set HOSTED_LLM_* env, or run Ollama locally";
-    return { ok: false, model: null, mode: "heuristic", latencyMs: 0, sample: "", error: why };
+    return { ok: false, model: null, mode: "heuristic", latencyMs: 0, sample: "", error: "No model configured: set HOSTED_LLM_* env, or run Ollama locally" };
   }
   const started = Date.now();
+  const hostedKey = process.env.HOSTED_LLM_API_KEY;
   try {
     const timeoutMs = opts.timeoutMs ?? 15_000;
     const out = await Promise.race([
       llm.text({ system: "You are a connectivity check.", prompt: "Reply with the single word ready", maxTokens: 16, timeoutMs }),
       new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`No answer within ${timeoutMs / 1000} s`)), timeoutMs + 500).unref()),
     ]);
-    return { ok: true, model: llm.model, mode: modeOf(llm), latencyMs: Date.now() - started, sample: scrub(out.trim().slice(0, 80), key) };
+    return { ok: true, model: llm.model, mode: modeOf(llm), latencyMs: Date.now() - started, sample: scrub(out.trim().slice(0, 80), hostedKey) };
   } catch (e) {
     const raw = e instanceof Error ? (e.name === "TimeoutError" || e.name === "AbortError" ? "Timed out after 15 s" : e.message) : String(e);
     const cause = (e as { cause?: { code?: string; message?: string } }).cause;
@@ -258,12 +161,6 @@ export async function testUserModel(db: Db, userId: string, opts: { timeoutMs?: 
         : code === "404" ? `The ${who} endpoint does not know model "${llm.model}" (HTTP 404): ${said}`
         : `HTTP ${code} from the ${who} endpoint: ${said}`;
     }
-    return { ok: false, model: llm.model, mode: modeOf(llm), latencyMs: Date.now() - started, sample: "", error: scrub(scrub(detail, key), process.env.HOSTED_LLM_API_KEY) };
+    return { ok: false, model: llm.model, mode: modeOf(llm), latencyMs: Date.now() - started, sample: "", error: scrub(detail, hostedKey) };
   }
-}
-
-/** The user's saved key, decrypted, for server-side calls made on their behalf (never sent to the browser). */
-export async function savedApiKey(db: Db, userId: string): Promise<string | null> {
-  const row = await getUserCredentials(db, userId);
-  return row ? decryptedKey(row) : null;
 }

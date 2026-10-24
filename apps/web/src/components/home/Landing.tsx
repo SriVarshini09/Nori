@@ -20,7 +20,7 @@ export function Hero() {
     <section aria-labelledby="hero-title">
       <div className={cx(container, "grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-14")}>
         <div>
-          <p className={chip}>Open source · bring your own model</p>
+          <p className={chip}>Open source · model included</p>
           <h1 id="hero-title" className="mt-5 max-w-[17ch] text-[2.4rem] font-semibold leading-[1.08] tracking-[-0.03em] text-ink sm:text-[3.25rem]">
             A job agent that applies for you, and stops before it sends.
           </h1>
@@ -32,7 +32,7 @@ export function Hero() {
             <a href="#loop" className={btnSecondary}>How it works</a>
           </div>
           <ul className="mt-8 flex flex-col gap-2 text-[14.5px] text-ink-2 sm:flex-row sm:flex-wrap sm:gap-x-6">
-            {["Every line traces to a fact", "Nothing is sent without you", "Runs on your own key or locally"].map((t) => (
+            {["Every line traces to a fact", "Nothing is sent without you", "Nothing to configure"].map((t) => (
               <li key={t} className="flex items-center gap-2"><Check size={17} aria-hidden="true" className="shrink-0 text-accent" />{t}</li>
             ))}
           </ul>
@@ -138,7 +138,7 @@ export function PromiseSection() {
 /* ------------------------------------------------------------------ yours to run */
 
 const YOURS: { icon: LucideIcon; title: string; line: ReactNode }[] = [
-  { icon: Cpu, title: "Your model", line: "Your own API key, hosted credits, or a local model on your computer. With no model at all it still runs on rules." },
+  { icon: Cpu, title: "Model included", line: "Nori's own model does the writing, with a daily allowance. When the allowance runs out, it keeps going on rules and says so." },
   { icon: MessageCircle, title: "Your channels", line: "Telegram, WhatsApp, Slack, a small companion beside your clock, or the web. Same commands everywhere." },
   { icon: Download, title: "Your data", line: "Export your graph as a file any time. Delete your account and everything goes with it." },
 ];

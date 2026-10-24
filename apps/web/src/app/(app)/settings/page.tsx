@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import { Channels, DangerZone, Integrations, SettingsForm } from "@/components/SettingsForm";
 import { LogoutButton } from "@/components/LogoutButton";
-import { ModelPanel } from "@/components/ModelPanel";
+import { ModelUsage } from "@/components/ModelUsage";
 import { SecurityPanel } from "@/components/SecurityPanel";
 import { ThemeChoice } from "@/components/ThemeChoice";
 import { Frame, Notice, PageHeader } from "@/components/ui";
@@ -29,8 +29,8 @@ function Section({ id, title, line, children }: { id: string; title: string; lin
 }
 
 export default async function SettingsPage() {
-  const [me, integrations, channels, model, presets] = await Promise.all([
-    api.me().catch(() => null), api.listIntegrations().catch(() => []), api.listChannels().catch(() => []), api.modelSettings().catch(() => null), api.modelPresets().catch(() => null),
+  const [me, integrations, channels, model, telegram] = await Promise.all([
+    api.me().catch(() => null), api.listIntegrations().catch(() => []), api.listChannels().catch(() => []), api.modelSettings().catch(() => null), api.telegramInfo().catch(() => null),
   ]);
   if (!me) {
     return (
@@ -43,7 +43,7 @@ export default async function SettingsPage() {
   const { user, profile } = me;
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Where Nori's model comes from, where it reaches you, and your account." />
+      <PageHeader title="Settings" subtitle="Nori's model, where it reaches you, and your account." />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
         <nav aria-label="Settings sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-6 lg:mx-0 lg:flex-col lg:self-start lg:px-0">
           {SECTIONS.map((s) => (
@@ -51,13 +51,13 @@ export default async function SettingsPage() {
           ))}
         </nav>
         <div className="flex min-w-0 max-w-3xl flex-col gap-10">
-          <Section id="model" title="Model" line="Changes how fast a cycle runs, how good tailoring is, whether Nori can write short answers, and where your data goes.">
-            {presets ? <ModelPanel initial={model} presets={presets} /> : <Notice tone="red">Model options are unavailable right now.</Notice>}
+          <Section id="model" title="Model" line="Which model writes for you, and how much of today's allowance is left.">
+            <ModelUsage initial={model} />
           </Section>
           <Section id="channels" title="Channels and apps" line="Talk to Nori from your phone, and let it read mail, keep a sheet and hold interview times.">
             <div className="flex flex-col gap-5">
               <Frame className="p-4 sm:p-5"><Integrations initial={integrations} /></Frame>
-              <Channels channels={channels} />
+              <Channels channels={channels} telegram={telegram} />
             </div>
           </Section>
           <Section id="limits" title="Limits and approvals" line="The same switches as on Lanes and autopilot, gathered here with the minimum match.">

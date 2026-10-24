@@ -66,3 +66,34 @@ describe("channel router", () => {
     expect(tg.sent).toEqual([{ address: "5", msg: { text: "digest" } }]);
   });
 });
+
+describe("linking a chat with a code", () => {
+  it("links the chat that sends a valid code, once, and tells a bad code apart", async () => {
+    vi.stubEnv("TELEGRAM_AUTOLINK", "false");
+    const db = await openTestDb();
+    const { ensureDefaultUser, issueChannelLinkCode } = await import("@jobgraph/core");
+    const user = await ensureDefaultUser(db, "link@example.com");
+    const tg = fakeTelegram();
+    const onMessage = vi.fn(async (_u: string, m: InboundMessage) => ({ text: `echo: ${m.text}` }));
+    const router = createChannelRouter(db, { onMessage }, { adapters: [tg.adapter] });
+    await router.start();
+
+    await tg.emit({ channel: "telegram", address: "900", text: "/start ZZZZZZ" });
+    expect(tg.sent.at(-1)?.msg.text).toMatch(/not valid or has expired/);
+    expect(await db.select().from(channels)).toHaveLength(0);
+
+    const { code } = await issueChannelLinkCode(db, user.id);
+    await tg.emit({ channel: "telegram", address: "900", text: `/start ${code.toLowerCase()}`, meta: { username: "sri" } });
+    expect(tg.sent.at(-1)?.msg.text).toMatch(/^Linked\./);
+    const [ch] = await db.select().from(channels);
+    expect(ch).toMatchObject({ userId: user.id, kind: "telegram", address: "900" });
+    expect(ch.meta).toMatchObject({ linkedWithCode: true, username: "sri" });
+    expect(onMessage).not.toHaveBeenCalled(); // the code itself is not a command
+
+    // the same code cannot link a second chat; the first chat now talks to the agent
+    await tg.emit({ channel: "telegram", address: "901", text: code });
+    expect(tg.sent.at(-1)?.msg.text).toMatch(/not valid or has expired/);
+    await tg.emit({ channel: "telegram", address: "900", text: "status" });
+    expect(onMessage).toHaveBeenCalledWith(user.id, expect.objectContaining({ text: "status" }));
+  });
+});
