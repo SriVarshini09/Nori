@@ -30,9 +30,9 @@ export function describeWaiting(item: ApplicationListItem): { kind: string; line
 
 /** The model mode in words a person understands. */
 export const MODE_LABEL: Record<ModelMode, string> = {
-  cline: "Hosted open models",
+  cline: "Nori's model",
   ollama: "Local model on this computer",
-  "openai-compatible": "Your API key",
-  anthropic: "Your Anthropic key",
+  "openai-compatible": "Nori's model",
+  anthropic: "Nori's model",
   heuristic: "Rules only, no model",
 };
