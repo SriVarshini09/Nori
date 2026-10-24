@@ -4,7 +4,7 @@ import { useState, type ComponentType } from "react";
 import { api, ApiError } from "@/lib/api";
 import type { Profile } from "@/lib/types";
 import { AuthorizationStep, ContactStep, PreferencesStep, ScreeningStep, type StepProps } from "./onboarding/steps";
-import { Accordion, Notice, idx } from "./ui";
+import { Accordion, Notice } from "./ui";
 
 function PreferencesAnswers(p: StepProps) {
   return <PreferencesStep {...p} agent={false} />;
@@ -38,10 +38,10 @@ export function AnswersEditor({ profile: initial }: { profile: Profile }) {
   }
 
   return (
-    <div>
+    <div className="flex flex-col gap-3">
       {SECTIONS.map(({ id, title, Form }, i) => (
-        <Accordion key={id} index={idx(i + 1)} title={title} className={i > 0 ? "border-t-0" : undefined}>
-          <div className="pt-2">
+        <Accordion key={id} title={title} defaultOpen={i === 0}>
+          <div className="pt-1">
             <Form
               profile={profile}
               busy={busy === id}

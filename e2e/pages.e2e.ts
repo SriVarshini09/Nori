@@ -41,10 +41,10 @@ describe("jobs", () => {
   it("lists every role with its match and application state", async () => {
     await page.goto(`${WEB}/jobs`);
     await expect(cards()).toHaveCount(4);
-    await expect(page.getByText(/of 4 roles · by match/)).toBeVisible();
-    await expect(page.getByRole("link", { name: /Applied · Resume review/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Applied · Needs you/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Applied · Form review/ })).toBeVisible();
+    await expect(page.getByText(/of 4 roles, best match first/)).toBeVisible();
+    await expect(page.getByRole("link", { name: /Applied: Resume review/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Applied: Needs you/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Applied: Form review/ })).toBeVisible();
     await expect(cards().filter({ hasText: "Backend Engineer" }).getByRole("button", { name: "Apply" })).toBeVisible();
   });
 
@@ -68,11 +68,12 @@ describe("jobs", () => {
     await expect(cards()).toHaveCount(1);
     await expect(cards().first()).toContainText("Backend Engineer");
     await page.getByRole("switch", { name: /Hide applied/ }).click();
-    await page.getByRole("radio", { name: "Newest" }).click();
-    await expect(page.getByRole("radio", { name: "Newest" })).toHaveAttribute("aria-checked", "true");
-    await page.getByRole("radio", { name: "Match" }).click();
-    await page.getByLabel("Minimum match").fill("100");
-    await expect(cards()).toHaveCount(0);
+    await page.getByLabel("Sort").selectOption("new");
+    await expect(page.getByLabel("Sort")).toHaveValue("new");
+    await expect(page.getByText(/newest first/)).toBeVisible();
+    await page.getByLabel("Sort").selectOption("match");
+    await page.getByLabel("Minimum match").selectOption("90");
+    await expect(page).toHaveURL(/min=90/);
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect(cards()).toHaveCount(4);
   });
@@ -83,8 +84,8 @@ describe("jobs", () => {
     await expect(drawer).toBeVisible();
     await expect(page).toHaveURL(/job=/);
     await expect(drawer).toContainText("Senior Frontend Engineer");
-    await expect(drawer.getByRole("link", { name: /Posting/ })).toHaveAttribute("href", /example\.com/);
-    await drawer.getByRole("link", { name: "Close drawer" }).click();
+    await expect(drawer.getByRole("link", { name: /posting/i })).toHaveAttribute("href", /example\.com/);
+    await drawer.getByRole("link", { name: "Close job details" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.goto(`${WEB}/jobs?job=${seed.jobIds[0]}`); // a shared link opens the drawer directly
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -101,6 +102,7 @@ describe("jobs", () => {
 
   it("refuses a pasted URL that is not a job, with a message", async () => {
     await page.goto(`${WEB}/jobs`);
+    await page.getByRole("tab", { name: "Paste a link" }).click();
     await page.getByPlaceholder("https://boards.greenhouse.io/...").fill("http://127.0.0.1:1/not-a-job");
     await page.getByRole("button", { name: "Add job" }).click();
     await expect(page.getByRole("button", { name: "Add job" })).toBeEnabled({ timeout: 60_000 });
@@ -110,19 +112,23 @@ describe("jobs", () => {
 });
 
 describe("applications and the review gates", () => {
-  it("shows the list with tabs that filter by stage", async () => {
+  it("shows the list with stage filters and a search that can come up empty", async () => {
     await page.goto(`${WEB}/applications`);
-    await expect(page.getByRole("tab", { name: /^ALL/i })).toBeVisible();
-    await page.getByRole("tab", { name: /SUBMITTED/i }).click();
-    await expect(page.getByText(/nothing|no applications|empty/i).first()).toBeVisible();
-    await page.getByRole("tab", { name: /NEEDS YOU/i }).click();
+    const all = page.getByRole("button", { name: /^All/ });
+    await expect(all).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("searchbox", { name: "Search applications" }).fill("zzz-nothing");
+    await expect(page.getByText("Nothing in this view")).toBeVisible();
+    await page.getByRole("searchbox", { name: "Search applications" }).fill("");
+    await page.getByRole("button", { name: /^Waiting on you/ }).click();
+    await expect(page.getByRole("button", { name: /^Waiting on you/ })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("link", { name: /Needs Answers Co/ })).toBeVisible();
   });
 
   it("answers the pending questions, approves the form, and the application is submitted (no 409)", async () => {
     await page.goto(`${WEB}/applications/${seed.apps.needsAnswers}`);
     await expect(page.getByText("Will you require visa sponsorship?").first()).toBeVisible();
-    const approve = page.getByRole("button", { name: /Approve and send/i });
+    // This stack's submit lock is off, so the button says what really happens: the answer is saved and the run goes on, nothing is sent.
+    const approve = page.getByRole("button", { name: /^Answer and (send|continue)$/i });
     await expect(approve).toBeDisabled(); // a required question is still open
     await page.locator("main select").first().selectOption({ label: "No" });
     await expect(approve).toBeEnabled({ timeout: 15_000 });
@@ -152,25 +158,18 @@ describe("applications and the review gates", () => {
   });
 });
 
-describe("tracker", () => {
-  it("groups applications by stage and links each to its review", async () => {
+describe("tracker, now part of Applications", () => {
+  it("old tracker links land on Applications, which links each application to its review", async () => {
     await page.goto(`${WEB}/tracker`);
-    await expect(page.getByRole("heading", { level: 3, name: /SUBMITTED/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/applications$/);
+    await expect(page.getByRole("table")).toBeVisible();
     await page.getByRole("link", { name: /Globex/ }).first().click();
     await page.waitForURL(new RegExp(`/applications/${seed.apps.formReview}$`));
   });
 
-  it("switches between board and table", async () => {
-    await page.goto(`${WEB}/tracker`);
-    await page.getByRole("button", { name: "TABLE" }).click();
-    await expect(page.getByRole("button", { name: "TABLE" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("table")).toBeVisible();
-    await page.getByRole("button", { name: "BOARD" }).click();
-    await expect(page.getByRole("button", { name: "BOARD" })).toHaveAttribute("aria-pressed", "true");
-  });
-
   it("says plainly that the sheet needs Google when it is not connected", async () => {
-    await page.getByRole("button", { name: "Sync to Google Sheet" }).click();
+    await page.goto(`${WEB}/applications`);
+    await page.getByRole("button", { name: "Export to Google Sheets" }).click();
     await expect(page.getByText(/composio|connect|not configured|google/i).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible(); // the page did not crash
   });
@@ -179,7 +178,7 @@ describe("tracker", () => {
 describe("inbox", () => {
   it("is empty without a mailbox, and says what syncing needs instead of failing", async () => {
     await page.goto(`${WEB}/inbox`);
-    await page.getByRole("button", { name: "Sync inbox" }).click();
+    await page.getByRole("button", { name: "Check mail now" }).click();
     await expect(page.getByText(/composio|connect|gmail|no (messages|mail)|nothing/i).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
@@ -200,7 +199,7 @@ describe("auto apply", () => {
 
   it("toggles review-before-submit and auto-approve, and they persist", async () => {
     await page.goto(`${WEB}/agent`);
-    const review = page.getByRole("switch", { name: "Review before submit" });
+    const review = page.getByRole("switch", { name: "Review every form before it is sent" });
     const was = (await review.getAttribute("aria-checked")) === "true";
     await review.click();
     await expect.poll(async () => (await api("/api/me")).json.profile.reviewBeforeSubmit).toBe(!was);
@@ -211,13 +210,14 @@ describe("auto apply", () => {
   it("adds, edits and deletes a lane", async () => {
     await page.goto(`${WEB}/agent`);
     page.on("response", async (r) => { const m = r.request().method(); if (m !== "GET" || /api.lanes/.test(r.url())) if (/api\/(lanes|profile|agent|settings|me)/.test(r.url())) console.log("DBG", m, r.url().replace(WEB, ""), r.status(), m === "GET" ? (await r.text().catch(() => "")).slice(0, 90) : ""); });
-    await page.getByRole("button", { name: "Add lane" }).click();
+    await page.getByRole("button", { name: "Add a lane" }).click();
     await page.getByPlaceholder("Frontend, remote").fill("Platform, remote");
     await page.getByRole("button", { name: "Save lane" }).click();
     await expect(page.getByRole("button", { name: "Edit Platform, remote" })).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await expect(page.getByRole("button", { name: "Edit Platform, remote" })).toBeVisible();
-    await page.getByRole("button", { name: "Delete Platform, remote" }).click();
+    await page.getByRole("button", { name: "Edit Platform, remote" }).click();
+    await page.getByRole("button", { name: "Delete lane" }).click();
     await expect(page.getByRole("button", { name: "Edit Platform, remote" })).toHaveCount(0);
   });
 
@@ -228,35 +228,35 @@ describe("auto apply", () => {
 
     let warned = "";
     page.once("dialog", (d) => { warned = d.message(); void d.accept(); });
-    await group.getByRole("radio", { name: /^Safe Nori sends by itself/ }).click();
-    await expect(group.getByRole("radio", { name: /^Safe Nori sends by itself/ })).toHaveAttribute("aria-checked", "true");
+    await group.getByRole("radio", { name: /^On, profile answers only/ }).click();
+    await expect(group.getByRole("radio", { name: /^On, profile answers only/ })).toHaveAttribute("aria-checked", "true");
     expect(warned).toMatch(/send an application by itself, without asking/);
-    await expect(page.getByText(/Starts after you approve 3 yourself \(\d so far\)/)).toBeVisible(); // earlier steps approved one by hand
+    await expect(page.getByText(/Trust: \d of 3 hand approvals so far/)).toBeVisible(); // earlier steps approved one by hand
     await expect.poll(async () => (await api("/api/me")).json.profile).toMatchObject({ autopilot: "safe", reviewBeforeSubmit: true });
 
-    await page.getByText("What Autopilot checks before it sends").click();
-    await expect(page.getByText("Greenhouse, Lever or Ashby")).toBeVisible();
+    // The checks it runs for each application are always listed, not hidden behind a disclosure.
+    await expect(page.getByText(/Greenhouse, Lever or Ashby/)).toBeVisible();
     await expect(page.getByText("You have not applied to the same company in the last 30 days.")).toBeVisible();
 
     await page.reload();
-    await expect(page.getByRole("radiogroup", { name: "Autopilot" }).getByRole("radio", { name: /^Safe Nori sends by itself/ })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radiogroup", { name: "Autopilot" }).getByRole("radio", { name: /^On, profile answers only/ })).toHaveAttribute("aria-checked", "true");
     await page.getByRole("radiogroup", { name: "Autopilot" }).getByRole("radio", { name: /^Off/ }).click(); // turning off needs no warning
     await expect.poll(async () => (await api("/api/me")).json.profile.autopilot).toBe("off");
   });
 
-  it("runs the agent now and reports what it did", async () => {
-    await page.goto(`${WEB}/agent`);
-    await page.getByRole("button", { name: "Run now" }).click();
+  it("runs a cycle from Today and reports what it did", async () => {
+    await page.goto(`${WEB}/dashboard`);
+    await page.getByRole("button", { name: "Run a cycle now" }).click();
+    await expect(page.getByRole("button", { name: "Run a cycle now" })).toBeEnabled({ timeout: 90_000 });
     await expect(page.getByRole("status").filter({ hasText: /./ }).first()).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByRole("button", { name: "Run now" })).toBeEnabled({ timeout: 90_000 });
   });
 
   it("answers a message in the chat", async () => {
-    await page.goto(`${WEB}/agent`);
-    await page.getByLabel("Message the agent").fill("What did you do today?");
+    await page.goto(`${WEB}/chat`);
+    await page.getByLabel("Message Nori").fill("What did you do today?");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText("What did you do today?").first()).toBeVisible();
-    await expect(page.getByLabel("Agent is typing")).toHaveCount(0, { timeout: 90_000 });
+    await expect(page.getByText(/Nori is thinking/)).toHaveCount(0, { timeout: 90_000 });
     await expect(page.getByRole("alert").filter({ hasText: /./ })).toHaveCount(0);
   });
 });
@@ -295,7 +295,7 @@ describe("companies", () => {
 
   it("is reachable from the jobs page", async () => {
     await page.goto(`${WEB}/jobs`);
-    await page.getByRole("link", { name: "Browse and follow companies" }).click();
+    await page.getByRole("link", { name: "Followed companies" }).click();
     await page.waitForURL(/\/companies$/);
   });
 });

@@ -1,5 +1,6 @@
 import type { ModelSettings, ModelUsage as Usage } from "@/lib/types";
-import { Frame, IndexLabel } from "./ui";
+import { Frame } from "./ui";
+import { Square } from "./IndexLabel";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -21,17 +22,25 @@ export function usageText(u: Usage | undefined): string | null {
 export function ModelUsage({ initial }: { initial: ModelSettings | null }) {
   const mode = initial?.mode ?? "heuristic";
   const model = initial?.tiers?.quality.model ?? null;
+  const u = initial?.usage;
   const line = mode === "heuristic"
     ? "No model is configured on this server, so Nori works from rules alone."
     : `Nori's model does the work${model ? ` (${model})` : ""}. Nothing to set up.`;
-  const usage = usageText(initial?.usage);
+  const usage = usageText(u);
+  const share = u?.shared && u.capTokens ? Math.min(1, u.totalTokens / u.capTokens) : null;
   return (
-    <Frame className="p-5 sm:p-6">
-      <IndexLabel marker={mode === "heuristic" ? "hollow" : "ink"} tone="ink">
-        <span role="status">{line}</span>
-      </IndexLabel>
-      {usage && <p className={`mt-2 text-meta tnum ${initial?.usage?.exhausted ? "text-accent-ink" : "text-muted"}`} role="status">{usage}</p>}
-      <p className="mt-4 text-body-sm text-muted">Every resume line and answer it writes is checked against your career graph before it is used. When the allowance runs out for the day, the rule-based version takes over and the log says so.</p>
+    <Frame className="p-4 sm:p-5">
+      <p className="flex items-center gap-2 text-body-sm font-medium text-ink" role="status">
+        <Square tone={mode === "heuristic" ? "hollow" : "ink"} />
+        {line}
+      </p>
+      {share !== null && (
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-sunken" aria-hidden="true">
+          <div className={u?.exhausted ? "h-full bg-attn" : "h-full bg-accent"} style={{ width: `${Math.round(share * 100)}%` }} />
+        </div>
+      )}
+      {usage && <p className={`mt-2 text-meta tnum ${u?.exhausted ? "text-attn-fg" : "text-muted"}`} role="status">{usage}</p>}
+      <p className="mt-3 max-w-prose text-meta text-muted">Every resume line and answer it writes is checked against your career graph before it is used. When the allowance runs out for the day, the rule-based version takes over and the run log says so.</p>
     </Frame>
   );
 }

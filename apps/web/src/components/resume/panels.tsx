@@ -33,7 +33,7 @@ export function TemplateGallery({ templates, value, onPick }: { templates: Resum
         return (
           <button
             key={t.id} type="button" role="radio" aria-checked={on} onClick={() => onPick(t)}
-            className={cx("group rounded-xl border p-2.5 text-left transition-colors", on ? "border-ink bg-white ring-2 ring-ink/10" : "border-line hover:border-ink")}
+            className={cx("group rounded-control border p-2.5 text-left transition-colors", on ? "border-ink bg-surface ring-2 ring-ink/10" : "border-line hover:border-ink")}
           >
             <Thumb id={t.id} name={t.name} />
             <div className="mt-2.5 flex items-center justify-between gap-2">
@@ -83,7 +83,7 @@ export function ThemePanel({ theme, template, options, onChange, onReset }: {
       </div>
 
       <div>
-        <span className="mb-1.5 block text-label font-medium uppercase text-muted">Accent colour</span>
+        <span className="mb-1.5 block text-meta font-medium text-muted">Accent colour</span>
         <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Accent colour">
           {SWATCHES.map((c) => (
             <button
@@ -135,10 +135,10 @@ export function AtsPanel({ score, checks }: { score: number | null; checks: AtsC
   return (
     <div>
       <div className="flex items-baseline gap-3">
-        <span className="font-display text-display-md font-medium tnum text-ink" aria-label={`ATS score ${score} out of 100`}>{score}</span>
+        <span className="text-display-md font-semibold tnum text-ink" aria-label={`ATS score ${score} out of 100`}>{score}</span>
         <span className="text-meta text-muted">of 100 · {failed.length === 0 ? "every check passes" : `${failed.length} to fix`}</span>
       </div>
-      <ul className="mt-3 divide-y divide-line rounded-xl border border-line" aria-label="ATS checks">
+      <ul className="mt-3 divide-y divide-line rounded-control border border-line" aria-label="ATS checks">
         {checks.map((c) => (
           <li key={c.id} className="flex items-start gap-2.5 px-3 py-2 text-meta">
             <span className="mt-0.5 shrink-0 text-ink"><Icon icon={c.pass ? Check : Minus} /></span>
@@ -185,8 +185,8 @@ export function PreviewPane({ html, pages, target, loading, error }: { html: str
         {loading && <span className="text-meta text-muted">Updating preview…</span>}
         {over && <span className="text-meta text-muted">Try a smaller margin or text size, or the Compact template.</span>}
       </div>
-      {error && <p role="alert" className="mb-2 rounded-lg border border-line bg-paper px-3 py-2 text-meta text-accent-ink">{error}</p>}
-      <div ref={wrap} className="overflow-hidden rounded-xl border border-line bg-stone/60">
+      {error && <p role="alert" className="mb-2 rounded-lg border border-line bg-surface px-3 py-2 text-meta text-danger-fg">{error}</p>}
+      <div ref={wrap} className="overflow-hidden rounded-control border border-line bg-sunken/60">
         {html ? (
           <div style={{ height: height * scale }} className="relative">
             <iframe
@@ -227,17 +227,17 @@ export function ExportMenu({ href }: { href: (format: ResumeFormat, inline?: boo
       <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-full border border-line px-4 text-[13px] font-medium text-ink transition-colors hover:border-ink [&::-webkit-details-marker]:hidden">
         <Icon icon={Download} />Download<Icon icon={ChevronDown} />
       </summary>
-      <ul className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-line bg-paper p-1.5 shadow-lg" aria-label="Download formats">
+      <ul className="absolute right-0 z-20 mt-2 w-64 rounded-control border border-line bg-surface p-1.5 shadow-lg" aria-label="Download formats">
         {FORMATS.map((f) => (
           <li key={f.id}>
-            <a href={href(f.id)} download className="block rounded-lg px-3 py-2 hover:bg-stone/60">
+            <a href={href(f.id)} download className="block rounded-lg px-3 py-2 hover:bg-sunken/60">
               <span className="block text-body-sm font-medium text-ink">{f.label}</span>
               <span className="block text-[12px] text-muted">{f.hint}</span>
             </a>
           </li>
         ))}
         <li>
-          <a href={href("pdf", true)} target="_blank" rel="noreferrer" className="block rounded-lg px-3 py-2 hover:bg-stone/60">
+          <a href={href("pdf", true)} target="_blank" rel="noreferrer" className="block rounded-lg px-3 py-2 hover:bg-sunken/60">
             <span className="block text-body-sm font-medium text-ink">Open PDF in a new tab</span>
           </a>
         </li>
@@ -259,11 +259,11 @@ export function VersionList({ docId, currentVersion, onRestore }: { docId: strin
     return () => { live = false; };
   }, [docId, currentVersion]);
 
-  if (error) return <p role="alert" className="text-meta text-accent-ink">{error}</p>;
+  if (error) return <p role="alert" className="text-meta text-danger-fg">{error}</p>;
   if (!versions) return <p className="text-meta text-muted">Loading history…</p>;
   if (versions.length === 0) return <p className="text-meta text-muted">No earlier versions yet. Every change you save is kept here.</p>;
   return (
-    <ul className="divide-y divide-line rounded-xl border border-line" aria-label="Version history">
+    <ul className="divide-y divide-line rounded-control border border-line" aria-label="Version history">
       {versions.map((v) => (
         <li key={v.id} className="flex items-center gap-3 px-3 py-2.5">
           <div className="min-w-0 flex-1">

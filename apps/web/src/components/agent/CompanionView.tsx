@@ -4,21 +4,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, ArrowUpRight, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AgentActivity, AgentAwaitingReview, AgentStatus } from "@/lib/types";
-import { cx, Frame, Icon, IndexLabel, inputClass, Square } from "../ui";
+import { DryRunBand } from "../DryRunBand";
+import { NoriMark } from "../Logo";
+import { cx, Icon, inputClass } from "../ui";
 import { ago, headline, inMin, KIND_ICON, KIND_LABEL } from "./kinds";
 
 type Resolution = "approved" | "skipped";
 type Msg = { id: number; from: "you" | "agent"; text: string };
 
-function statusLine(s: AgentStatus, running: boolean, now: number): { tone: "ink" | "hollow"; text: string } {
+function statusLine(s: AgentStatus, running: boolean, now: number): string {
   const enabled = s.lanes ? s.lanes.some((l) => l.enabled) : true;
   const capped = s.dailyCap > 0 && s.usedToday >= s.dailyCap;
-  const state = running || (enabled && s.dailyCap > 0 && !capped) ? "Working" : capped ? "Cap reached" : "Paused";
-  const parts = [state, `${s.usedToday} of ${s.dailyCap} today`];
-  if (s.nextTickAt) parts.push(`next run in ${inMin(s.nextTickAt, now)}`);
-  return { tone: state === "Working" ? "ink" : "hollow", text: parts.join(" · ") };
+  const state = running ? "Running a cycle" : enabled && s.dailyCap > 0 && !capped ? "Idle" : capped ? "Cap reached" : "Paused";
+  const parts = [state];
+  if (!running && s.nextTickAt && state === "Idle") parts.push(`next cycle in ${inMin(s.nextTickAt, now)}`);
+  return parts.join(" · ");
 }
 
+/**
+ * The 360 by 560 tray popover: status, what waits on you, a chat box. A resume can be approved right here; a filled
+ * form may hold answers Nori wrote, so it always opens the full review in the browser.
+ */
 export function CompanionView({ initialStatus, initialActivity, initialError }: { initialStatus: AgentStatus | null; initialActivity: AgentActivity[]; initialError: string | null }) {
   const [status, setStatus] = useState(initialStatus);
   const [activity, setActivity] = useState(initialActivity);
@@ -67,9 +73,7 @@ export function CompanionView({ initialStatus, initialActivity, initialError }: 
     const id = a.applicationId;
     setBusyId(id);
     try {
-      // A filled form is approved (and sent) with approve-form; approve-resume on it changed nothing and the row came back.
       if (r === "skipped") await api.skipApplication(id);
-      else if (a.status === "form_review") await api.approveForm(id);
       else await api.approveResume(id);
       setResolved((m) => ({ ...m, [stepKey(a)]: r }));
       void refresh();
@@ -96,134 +100,104 @@ export function CompanionView({ initialStatus, initialActivity, initialError }: 
     }
   }
 
-  function openDashboard(e: React.MouseEvent) {
-    e.preventDefault();
-    window.open(`${window.location.origin}/agent`, "_blank");
+  /** Opens a page of the full app in the person's browser (the companion window stays small). */
+  function openPage(path: string) {
+    return (e: React.MouseEvent) => {
+      e.preventDefault();
+      window.open(`${window.location.origin}${path}`, "_blank");
+    };
   }
 
   const waiting = (status?.awaitingReview ?? []).filter((a) => !resolved[stepKey(a)]);
-  const line = status ? statusLine(status, running, now) : null;
-  const small = "inline-flex h-7 items-center rounded-full px-3 text-[12px] font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-40";
+  const small = "inline-flex h-8 items-center rounded-control px-3 text-[12px] font-semibold disabled:pointer-events-none disabled:opacity-40";
 
   return (
-    <div className="mx-auto flex h-dvh w-full max-w-[360px] flex-col overflow-hidden bg-canvas">
-      <header className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
-        <span className="inline-flex items-center gap-2">
-          <span aria-hidden="true" className="relative block h-[10px] w-[10px] bg-ink"><span className="absolute bottom-0 right-0 h-[3px] w-[3px] bg-accent" /></span>
-          <span className="font-display text-[15px] font-semibold tracking-[-0.04em] text-ink">Nori</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <a href="/agent" onClick={openDashboard} className="group inline-flex h-7 items-center gap-1 px-1.5 text-[12px] font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
-            Open dashboard<Icon icon={ArrowUpRight} size={14} className="transition-transform duration-150 group-hover:translate-x-px" />
-          </a>
-          <button
-            type="button"
-            onClick={run}
-            disabled={running}
-            aria-label="Run now"
-            title="Run now"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink text-paper transition-colors duration-150 hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-          >
-            <Icon icon={Play} size={14} />
-          </button>
-        </span>
+    <div className="mx-auto flex h-dvh w-full max-w-[360px] flex-col overflow-hidden bg-bg">
+      {status && status.liveSubmit === false && <DryRunBand compact />}
+      <header className="flex shrink-0 items-center gap-2.5 border-b border-line px-3 py-2.5">
+        <NoriMark size={24} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-ink" role="status" suppressHydrationWarning>{status ? statusLine(status, running, now) : "Status unavailable"}</p>
+          {status && <p className="text-[12px] text-muted tnum">{status.usedToday} of {status.dailyCap} today</p>}
+        </div>
+        <button type="button" onClick={run} disabled={running} aria-label="Run a cycle now" title="Run a cycle now" className="inline-flex h-8 w-8 items-center justify-center rounded-control border border-control text-ink hover:bg-sunken disabled:opacity-40">
+          <Icon icon={Play} size={14} />
+        </button>
+        <a href="/dashboard" onClick={openPage("/dashboard")} className="inline-flex h-8 items-center gap-1 rounded-control px-2 text-[12px] font-semibold text-accent hover:bg-accent-tint">
+          Open <Icon icon={ArrowUpRight} size={13} />
+        </a>
       </header>
 
-      <p className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3 text-meta text-ink tnum" role="status" suppressHydrationWarning>
-        {line ? (
-          <>
-            <Square tone={line.tone} size={6} pulse={line.tone === "ink" && running} />
-            <span className="truncate">{line.text}</span>
-          </>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {error && <p className="mb-2 text-[12px] text-danger-fg" role="alert">{error}</p>}
+
+        <h2 className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+          Waiting on you
+          {waiting.length > 0 && <span className="rounded-full bg-attn-tint px-1.5 text-[11px] font-semibold leading-5 text-attn-fg ring-1 ring-inset ring-attn tnum">{waiting.length}</span>}
+        </h2>
+        {waiting.length === 0 ? (
+          <p className="mt-1.5 text-[12.5px] text-muted">Nothing waiting. Nothing was sent without you.</p>
         ) : (
-          <span className="truncate text-muted">Status unavailable</span>
+          <ul className="mt-2 flex flex-col gap-2">
+            {waiting.map((a) => {
+              const form = a.status === "form_review";
+              return (
+                <li key={stepKey(a)} className="rounded-card border-2 border-attn bg-surface p-2.5">
+                  <p className="truncate text-[13px] font-semibold text-ink">{a.title}</p>
+                  <p className="truncate text-[12px] text-muted tnum">
+                    {a.companyName} · {form ? "form filled, read it before it goes" : `resume ready, ${a.changes} change${a.changes === 1 ? "" : "s"}`}{a.atsScore != null && <> · ATS {a.atsScore}</>}
+                  </p>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a, "skipped")} className={cx(small, "border border-control text-ink hover:bg-sunken")}>Skip</button>
+                    <div className="flex-1" />
+                    {form ? (
+                      <a href={`/applications/${a.applicationId}`} onClick={openPage(`/applications/${a.applicationId}`)} className={cx(small, "bg-ink text-on-ink hover:bg-ink-2")}>Read and approve</a>
+                    ) : (
+                      <>
+                        <a href={`/applications/${a.applicationId}`} onClick={openPage(`/applications/${a.applicationId}`)} className={cx(small, "text-accent hover:bg-accent-tint")}>Review</a>
+                        <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a, "approved")} className={cx(small, "bg-ink text-on-ink hover:bg-ink-2")}>Approve</button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </p>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {error && <p className="text-[12px] text-accent-ink" role="alert">{error}</p>}
-
-        <Frame as="section">
-          <header className="flex h-9 items-center justify-between border-b border-line px-3">
-            <IndexLabel index="01" marker={waiting.length > 0 ? "accent" : "hollow"} tone="ink">Waiting on you</IndexLabel>
-            <span className="text-[12px] text-muted tnum">{waiting.length}</span>
-          </header>
-          {waiting.length === 0 ? (
-            <p className="px-3 py-3 text-meta text-muted">Nothing waiting.</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {waiting.map((a) => (
-                <li key={a.applicationId} className="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium text-ink">{a.title}</div>
-                    <div className="truncate text-[12px] text-muted tnum">{a.companyName} &middot; {a.status === "form_review" ? "form filled" : "resume ready"}{a.atsScore != null && <> &middot; ATS {a.atsScore}</>}</div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a, "approved")} className={cx(small, "bg-ink text-paper hover:bg-accent")}><span className="text-[12px]">{a.status === "form_review" ? "Approve form" : "Approve"}</span></button>
-                    <button type="button" disabled={busyId === a.applicationId} onClick={() => resolve(a, "skipped")} className={cx(small, "border border-line text-ink hover:border-ink")}><span className="text-[12px]">Skip</span></button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Frame>
-
-        <Frame as="section">
-          <header className="flex h-9 items-center border-b border-line px-3">
-            <IndexLabel index="02" marker tone="ink">Recent</IndexLabel>
-          </header>
-          {activity.length === 0 ? (
-            <p className="px-3 py-3 text-meta text-muted">No activity yet.</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {activity.slice(0, 3).map((a) => (
-                <li key={a.id} className="flex items-center gap-2.5 px-3 py-2">
-                  <span title={KIND_LABEL[a.kind]} className="text-ink-2"><Icon icon={KIND_ICON[a.kind]} /></span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{headline(a)}</span>
-                  <time dateTime={a.ts} className="shrink-0 text-[11.5px] text-muted tnum" suppressHydrationWarning>{ago(a.ts, now).replace(" ago", "")}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Frame>
+        <h2 className="mt-4 text-[13px] font-semibold text-ink">Recent</h2>
+        {activity.length === 0 ? (
+          <p className="mt-1.5 text-[12.5px] text-muted">No activity yet.</p>
+        ) : (
+          <ul className="mt-1 divide-y divide-line">
+            {activity.slice(0, 3).map((a) => (
+              <li key={a.id} className="flex items-center gap-2.5 py-2">
+                <span title={KIND_LABEL[a.kind]} className="text-muted"><Icon icon={KIND_ICON[a.kind]} size={14} /></span>
+                <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{headline(a)}</span>
+                <time dateTime={a.ts} className="shrink-0 text-[11.5px] text-muted tnum" suppressHydrationWarning>{ago(a.ts, now).replace(" ago", "")}</time>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      <section className="shrink-0 border-t border-line bg-canvas" aria-label="Ask the agent">
+      <section className="shrink-0 border-t border-line" aria-label="Chat with Nori">
         {(msgs.length > 0 || sending) && (
-          <div ref={scroller} className="flex max-h-[104px] flex-col gap-1.5 overflow-y-auto px-3 pt-3">
+          <div ref={scroller} className="flex max-h-[104px] flex-col gap-1.5 overflow-y-auto px-3 pt-3" aria-live="polite">
             {msgs.map((m) => (
-              <div
-                key={m.id}
-                className={cx(
-                  "max-w-[90%] px-2.5 py-1.5 text-[13px] leading-[1.4] text-ink",
-                  m.from === "you" ? "self-end rounded-[10px] rounded-br-[2px] bg-stone" : "self-start rounded-[10px] rounded-bl-[2px] border border-line",
-                )}
-              >
+              <div key={m.id} className={cx("max-w-[90%] rounded-control px-2.5 py-1.5 text-[12.5px] leading-[1.4]", m.from === "you" ? "self-end bg-ink text-on-ink" : "self-start bg-sunken text-ink")}>
                 {m.text}
               </div>
             ))}
-            {sending && (
-              <div className="flex items-center gap-1.5 self-start rounded-[10px] rounded-bl-[2px] border border-line px-2.5 py-2" aria-label="Agent is typing">
-                {[0, 1, 2].map((i) => <span key={i} className="h-1 w-1 animate-pulse bg-muted" style={{ animationDelay: `${i * 150}ms` }} />)}
-              </div>
-            )}
-          </div>
-        )}
-        {msgs.length === 0 && !sending && (
-          <div className="px-3 pt-3">
-            <button type="button" onClick={() => send("What did you do today?")} className="rounded-full border border-line px-3 py-1 text-[12px] text-ink-2 transition-colors duration-150 hover:border-ink hover:text-ink">
-              What did you do today?
-            </button>
+            {sending && <div className="self-start rounded-control bg-sunken px-2.5 py-1.5 text-[12.5px] text-muted">Thinking<span className="dots" /></div>}
           </div>
         )}
         <form onSubmit={(e) => { e.preventDefault(); void send(text); }} className="flex items-center gap-2 p-3">
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message the agent" aria-label="Message the agent" className={cx(inputClass, "h-8")} />
-          <button
-            type="submit"
-            disabled={sending || !text.trim()}
-            aria-label="Send"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-paper transition-colors duration-150 hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-          >
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">Message Nori</span>
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tell Nori" className={cx(inputClass, "min-h-9 py-1.5 text-[13px]")} />
+          </label>
+          <button type="submit" disabled={sending || !text.trim()} aria-label="Send" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-ink text-on-ink hover:bg-ink-2 disabled:pointer-events-none disabled:opacity-40">
             <Icon icon={ArrowUp} />
           </button>
         </form>

@@ -60,12 +60,12 @@ describe("1. visitors and accounts", () => {
     await page.locator("input[type=password]").fill(PASSWORD);
     await page.getByRole("button", { name: /create account/i }).click();
     await page.waitForURL(/\/onboarding/, { timeout: 30_000 });
-    await expect(page.getByRole("button", { name: /get started/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /start with your resume/i })).toBeVisible();
     await shot("01-onboarding-welcome");
   });
 
   it("walks the onboarding wizard: paste a resume, confirm it, answer the basics", async () => {
-    await page.getByRole("button", { name: /get started/i }).click();
+    await page.getByRole("button", { name: /start with your resume/i }).click();
     await page.getByRole("button", { name: /paste text instead/i }).click();
     await page.locator("textarea").fill(RESUME_TEXT);
     await page.getByRole("button", { name: /^(continue|read|build)/i }).first().click();
@@ -73,7 +73,7 @@ describe("1. visitors and accounts", () => {
     await shot("02-onboarding-resume-read");
     for (let i = 0; i < 12 && !/\/dashboard/.test(page.url()); i++) {
       await settle(700);
-      const next = page.getByRole("button", { name: /^(continue|finish|go to dashboard|open (my )?dashboard|done|skip for now)/i }).first();
+      const next = page.getByRole("button", { name: /^(continue|finish|go to today|go to dashboard|open (my )?dashboard|done|skip for now)/i }).first();
       // The step can move on (and its button vanish) between count() and the click: try briefly, then look again.
       if (await next.count()) await next.click({ timeout: 5_000 }).catch(() => {});
     }
@@ -93,9 +93,9 @@ describe("1. visitors and accounts", () => {
 
 describe("2. resume studio", () => {
   it("shows the first resume, created from the uploaded one, in the library", async () => {
-    await page.getByRole("link", { name: "Resume", exact: true }).first().click();
+    await page.getByRole("link", { name: "Resumes", exact: true }).first().click();
     await page.waitForURL(/\/resume$/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(/your resumes/i);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/resumes/i);
     const cards = page.getByRole("list", { name: "Your resumes" }).getByRole("listitem");
     await expect(cards).toHaveCount(1);
     await expect(cards.first()).toContainText("My resume");

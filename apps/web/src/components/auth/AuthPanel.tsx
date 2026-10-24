@@ -16,10 +16,10 @@ function Field({ id, label, icon: Icon, hint, children }: { id: string; label: s
     <div>
       <label htmlFor={id} className={fieldLabel}>{label}</label>
       <div className="relative">
-        <Icon size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-bark-3" />
+        <Icon size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
         {children}
       </div>
-      {hint && <p id={`${id}-hint`} className="mt-1.5 text-[13px] text-bark-3">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className="mt-1.5 text-[13px] text-muted">{hint}</p>}
     </div>
   );
 }
@@ -60,10 +60,10 @@ export function AuthPanel({ mode, next }: { mode: "login" | "signup"; next?: str
   return (
     <div>
       <p className={chip}>{signup ? "Create account" : "Sign in"}</p>
-      <h1 className="mt-4 font-display text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.03em] text-bark sm:text-[2.6rem]">
+      <h1 className="mt-4 text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[2rem]">
         {signup ? "Create your account" : "Welcome back"}
       </h1>
-      <p className="mt-3 text-[16px] leading-relaxed text-bark-2">
+      <p className="mt-3 text-[16px] leading-relaxed text-ink-2">
         {signup
           ? "It takes about a minute. Next, Nori reads your resume, and nothing is sent anywhere until you approve it."
           : "Sign in to see what Nori found while you were away."}
@@ -96,7 +96,7 @@ export function AuthPanel({ mode, next }: { mode: "login" | "signup"; next?: str
             onClick={() => setShow((v) => !v)}
             aria-label={show ? "Hide password" : "Show password"}
             aria-pressed={show}
-            className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-bark-3 transition-colors hover:bg-sand hover:text-bark focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+            className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-muted transition-colors hover:bg-sunken hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
           >
             {show ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
           </button>
@@ -109,7 +109,7 @@ export function AuthPanel({ mode, next }: { mode: "login" | "signup"; next?: str
         )}
 
         {error && (
-          <p role="alert" className="flex items-start gap-2 rounded-xl border border-[#f3c6cf] bg-berry-soft px-3.5 py-3 text-[14px] font-medium text-berry">
+          <p role="alert" className="flex items-start gap-2 rounded-control border border-[#f3c6cf] bg-danger-tint px-3.5 py-3 text-[14px] font-medium text-danger-fg">
             <CircleAlert size={18} aria-hidden="true" className="mt-px shrink-0" />{error}
           </p>
         )}
@@ -122,11 +122,11 @@ export function AuthPanel({ mode, next }: { mode: "login" | "signup"; next?: str
       </form>
 
       {signup && (
-        <p className="mt-5 text-[13.5px] leading-relaxed text-bark-3">
+        <p className="mt-5 text-[13.5px] leading-relaxed text-muted">
           By creating an account you agree to the <Link href="/terms" className={textLink}>Terms</Link> and the <Link href="/privacy" className={textLink}>Privacy page</Link>.
         </p>
       )}
-      <p className="mt-8 border-t border-rule pt-6 text-[14.5px] text-bark-2">
+      <p className="mt-8 border-t border-line pt-6 text-[14.5px] text-ink-2">
         {signup ? "Already have an account? " : "New to Nori? "}
         <Link href={signup ? "/login" : "/signup"} className={textLink}>{signup ? "Sign in" : "Create an account"}</Link>
       </p>

@@ -1,22 +1,18 @@
 import type { Metadata } from "next";
 import { api } from "@/lib/api";
 import { InboxView } from "@/components/InboxView";
-import { PageHeader } from "@/components/ui";
+import { Notice, PageHeader } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Inbox" };
 
 export default async function InboxPage() {
-  const [messages, apps] = await Promise.all([api.listInbox(), api.listApplications()]);
+  const [messages, apps] = await Promise.all([api.listInbox().catch(() => null), api.listApplications().catch(() => [])]);
   const appTitles = Object.fromEntries(apps.map((a) => [a.application.id, `${a.job.title} at ${a.job.companyName}`]));
-  const sorted = messages.slice().sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt));
-  const unread = messages.filter((m) => !m.read).length;
+  const sorted = (messages ?? []).slice().sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt));
   return (
     <div>
-      <PageHeader
-        label="Inbox"
-        title={unread > 0 ? <>{unread} new since<br />you last looked.</> : <>Mail, sorted<br />and linked.</>}
-      />
-      <InboxView initial={sorted} appTitles={appTitles} />
+      <PageHeader title="Inbox" subtitle="Mail Nori read for you: codes, replies and invites, each linked to its application." />
+      {messages === null ? <Notice tone="red">Cannot load your inbox right now. Try again in a moment.</Notice> : <InboxView initial={sorted} appTitles={appTitles} />}
     </div>
   );
 }

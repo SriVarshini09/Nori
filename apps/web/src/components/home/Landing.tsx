@@ -1,115 +1,99 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowRight, Check, CircleAlert, FileText, Network, ScanSearch, ShieldCheck, Sparkles, Trash2, UserCheck, X, type LucideIcon } from "lucide-react";
+import { ArrowRight, Check, Cpu, Download, MessageCircle, Search, Send, FileText, Inbox, type LucideIcon } from "lucide-react";
 import { cx } from "@/components/cx";
-import { NoriBuddy } from "./NoriBuddy";
-import { btnPrimary, btnSecondary, btnSun, chip, container } from "./styles";
+import { btnPrimary, btnSecondary, chip, container } from "./styles";
+
+function SectionTitle({ id, title, line }: { id: string; title: string; line?: string }) {
+  return (
+    <div className="max-w-[60ch]">
+      <h2 id={id} className="text-[1.625rem] font-semibold leading-tight tracking-[-0.015em] text-ink sm:text-[2rem]">{title}</h2>
+      {line && <p className="mt-2 text-[16px] text-ink-2">{line}</p>}
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ hero */
 
 export function Hero() {
   return (
-    <section aria-labelledby="hero-title" className="bg-cream">
-      <div className={cx(container, "grid items-center gap-10 py-12 sm:py-16 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-14 lg:py-20")}>
+    <section aria-labelledby="hero-title">
+      <div className={cx(container, "grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] lg:gap-14")}>
         <div>
-          <p className={chip}><Sparkles size={14} aria-hidden="true" className="text-[#b07a00]" />Open-source job agent</p>
-          <h1 id="hero-title" className="mt-5 max-w-[14ch] font-display text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.035em] text-bark sm:text-[3.6rem] lg:text-[4.1rem]">
-            A job agent that cannot lie about you.
+          <p className={chip}>Open source · model included</p>
+          <h1 id="hero-title" className="mt-5 max-w-[17ch] text-[2.4rem] font-semibold leading-[1.08] tracking-[-0.03em] text-ink sm:text-[3.25rem]">
+            A job agent that applies for you, and stops before it sends.
           </h1>
-          <p className="mt-5 max-w-[48ch] text-[17px] leading-relaxed text-bark-2">
-            Nori turns your resume into a career graph, finds roles that fit, and tailors each application. Every line traces back to
-            something you really did, and nothing is sent until you approve it.
+          <p className="mt-5 max-w-[50ch] text-[17px] leading-relaxed text-ink-2">
+            Set the roles you want and a daily cap. Nori finds matches, tailors a one-page resume from facts about you, fills the form, and waits for your OK.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/signup" className={btnPrimary}>Create your account<ArrowRight size={18} aria-hidden="true" /></Link>
-            <a href="#how" className={btnSecondary}>See how it works</a>
+            <Link href="/signup" className={btnPrimary}>Create account<ArrowRight size={18} aria-hidden="true" /></Link>
+            <a href="#loop" className={btnSecondary}>How it works</a>
           </div>
-          <ul className="mt-8 grid gap-3 text-[14.5px] text-bark-2 sm:grid-cols-3">
-            {["Free and open source", "Your own model key, or a local one", "You approve every send"].map((t) => (
-              <li key={t} className="flex items-start gap-2"><Check size={18} aria-hidden="true" className="mt-px shrink-0 text-sage" />{t}</li>
+          <ul className="mt-8 flex flex-col gap-2 text-[14.5px] text-ink-2 sm:flex-row sm:flex-wrap sm:gap-x-6">
+            {["Every line traces to a fact", "Nothing is sent without you", "Nothing to configure"].map((t) => (
+              <li key={t} className="flex items-center gap-2"><Check size={17} aria-hidden="true" className="shrink-0 text-accent" />{t}</li>
             ))}
           </ul>
         </div>
-        <HeroArt />
+        <HeroSample />
       </div>
     </section>
   );
 }
 
-/** The mascot in its own sunny frame, with a sample of what waits for the person. Nothing sits behind text. */
-function HeroArt() {
+/** A real slice of the product, drawn in its own components' language: one item waiting, one sourced line. */
+function HeroSample() {
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-rule bg-sun-soft">
-      <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_75%_15%,#fffaf0_0%,#fff1c2_45%,#ffe39a_100%)]" />
-      <NoriBuddy className="relative mx-auto block h-auto w-full max-w-[460px] px-4 pt-6" signText={["Hi there,", "new", "friend!"]} note={["Takes about", "a minute."]} />
-      <div className="relative mx-4 mb-4 rounded-2xl border border-rule bg-white p-4 sm:mx-6 sm:mb-6 sm:p-5" role="group" aria-label="Sample: an application waiting for your approval">
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-semibold text-sage"><UserCheck size={14} aria-hidden="true" />Waiting on you</span>
-          <span className="text-[12px] text-bark-3">Sample</span>
+    <div className="rounded-card border border-line bg-surface p-4 sm:p-5" role="group" aria-label="Sample: the Today screen with one application waiting">
+      <div className="-mx-4 -mt-4 mb-4 rounded-t-card border-b border-sandbox-line bg-sandbox px-4 py-2 text-[12.5px] text-sandbox-fg sm:-mx-5 sm:-mt-5 sm:px-5">
+        <span className="font-semibold">Dry run</span> Forms are filled, nothing is sent.
+      </div>
+      <p className="text-[15px] font-semibold text-ink">Waiting on you</p>
+      <div className="mt-3 rounded-card border-2 border-attn bg-surface p-3.5">
+        <div className="flex items-center gap-2 text-[12px]">
+          <span className="rounded-full bg-attn-tint px-2 py-0.5 font-semibold text-attn-fg">Resume</span>
+          <span className="text-muted">Tidewater · 21 min ago</span>
         </div>
-        <p className="mt-3 text-[15px] font-semibold text-bark">Frontend Engineer, Design Systems</p>
-        <p className="mt-0.5 text-[13.5px] text-bark-3">Tidewater &middot; Resume tailored &middot; 6 changes, each with its source</p>
+        <p className="mt-1.5 text-[15px] font-semibold text-ink">Frontend Engineer, Design Systems</p>
+        <p className="text-[13px] text-ink-2">3 lines changed, each from your graph. ATS 96.</p>
+      </div>
+      <div className="mt-3 rounded-card border border-line p-3.5">
+        <p className="text-[12.5px] text-muted line-through">Built UI components for internal tools.</p>
+        <p className="mt-1 text-[14px] text-ink">Rebuilt the checkout UI in React and TypeScript, cutting load time 38%.</p>
+        <p className="mt-2 text-[12px] font-medium text-accent">Source: Project &ldquo;Checkout rewrite&rdquo; · result &ldquo;-38% load&rdquo;</p>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <span className="inline-flex h-10 items-center rounded-control border border-control px-4 text-[13px] font-semibold text-ink">Skip job</span>
+        <span className="inline-flex h-10 items-center rounded-control bg-ink px-4 text-[13px] font-semibold text-on-ink">Approve resume</span>
       </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ proof strip */
+/* ------------------------------------------------------------------ the loop */
 
-const PROOF: [LucideIcon, string][] = [
-  [ScanSearch, "Greenhouse, Lever, Ashby and SmartRecruiters"],
-  [Sparkles, "Nothing to configure: the model is included"],
-  [ShieldCheck, "Nothing sent without your approval"],
-  [Trash2, "Export or delete everything, anytime"],
-];
-
-export function ProofStrip() {
-  return (
-    <div className="border-y border-rule bg-white">
-      <ul className={cx(container, "grid gap-x-6 gap-y-3 py-5 sm:grid-cols-2 lg:grid-cols-4")}>
-        {PROOF.map(([Icon, text]) => (
-          <li key={text} className="flex items-center gap-3 text-[14px] font-medium text-bark-2">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sun-soft text-brand"><Icon size={18} aria-hidden="true" /></span>
-            {text}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ sections */
-
-function SectionTitle({ id, eyebrow, title, children }: { id: string; eyebrow: string; title: string; children?: ReactNode }) {
-  return (
-    <div className="max-w-[44rem]">
-      <p className={chip}>{eyebrow}</p>
-      <h2 id={id} className="mt-4 scroll-mt-6 font-display text-[2rem] font-semibold leading-[1.05] tracking-[-0.03em] text-bark sm:text-[2.75rem]">{title}</h2>
-      {children && <p className="mt-4 text-[16.5px] leading-relaxed text-bark-2">{children}</p>}
-    </div>
-  );
-}
-
-const STEPS: [LucideIcon, string, string][] = [
-  [Network, "It reads your history", "Add your resume once. Nori builds a career graph of your roles, projects, skills and results, and keeps a link from every fact to where it came from."],
-  [ScanSearch, "It finds and ranks roles", "Public postings are scored against your graph, with the reasons shown: what matches, what is missing, and what rules a role out."],
-  [FileText, "It tailors, then asks", "For each role it rewrites your resume from evidence only and fills the form, then stops. You review both and approve before anything is sent."],
+const LOOP: { icon: LucideIcon; title: string; line: string; gate?: boolean }[] = [
+  { icon: Search, title: "Find", line: "Polls company boards and web search inside your lanes. Anything it skips keeps its reason." },
+  { icon: FileText, title: "Prepare", line: "Tailors a one-page resume. Every changed line names the fact it came from. You approve it.", gate: true },
+  { icon: Send, title: "Apply", line: "Fills the form and shows every field and a screenshot. You approve, then it sends.", gate: true },
+  { icon: Inbox, title: "Follow", line: "Reads replies, codes and interview invites, and keeps every application's stage current." },
 ];
 
 export function HowItWorks() {
   return (
-    <section aria-labelledby="how" className="bg-cream py-16 sm:py-24">
-      <div className={container}>
-        <SectionTitle id="how" eyebrow="How it works" title="From resume to sent, with you in charge.">Three steps, and you decide at the end of each one.</SectionTitle>
-        <ol className="mt-10 grid gap-5 md:grid-cols-3">
-          {STEPS.map(([Icon, title, body], i) => (
-            <li key={title} className="rounded-3xl border border-rule bg-white p-6 sm:p-7">
-              <div className="flex items-center justify-between">
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand text-white"><Icon size={22} aria-hidden="true" /></span>
-                <span className="text-[13px] font-semibold text-bark-3">Step {i + 1}</span>
-              </div>
-              <h3 className="mt-5 font-display text-[1.35rem] font-semibold tracking-[-0.02em] text-bark">{title}</h3>
-              <p className="mt-2 text-[15px] leading-relaxed text-bark-2">{body}</p>
+    <section aria-labelledby="loop-title" id="loop" className="scroll-mt-16 border-t border-line bg-surface">
+      <div className={cx(container, "py-14 sm:py-20")}>
+        <SectionTitle id="loop-title" title="Four stages, two places it waits for you" line="The orange stages are gates: Nori does not move past them until you say so." />
+        <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {LOOP.map((s, i) => (
+            <li key={s.title} className={cx("flex flex-col gap-2 rounded-card p-5", s.gate ? "border-2 border-attn bg-surface" : "border border-line bg-bg")}>
+              <span className={cx("flex h-9 w-9 items-center justify-center rounded-control", s.gate ? "bg-attn-tint text-attn-fg" : "bg-sunken text-ink")}>
+                <s.icon size={18} aria-hidden="true" />
+              </span>
+              <p className="text-[16px] font-semibold text-ink">{i + 1}. {s.title}{s.gate && <span className="ml-2 text-[12px] font-semibold text-attn-fg">you approve</span>}</p>
+              <p className="text-[14px] leading-relaxed text-ink-2">{s.line}</p>
             </li>
           ))}
         </ol>
@@ -118,39 +102,58 @@ export function HowItWorks() {
   );
 }
 
-const PROMISES: [LucideIcon, string, string][] = [
-  [ShieldCheck, "Nothing is invented", "A rewritten line is accepted only if every number, tool and employer in it appears in your own graph. A line that fails is replaced by one you can prove."],
-  [UserCheck, "You hold the gate", "Resume review and form review are on by default. Edit the resume, change an answer or skip the role at any point."],
-  [Trash2, "Yours to take", "Export your graph and any resume, or delete the account and everything with it. Nori is open source and can run on a local model."],
-];
+/* ------------------------------------------------------------------ honesty */
 
 export function PromiseSection() {
   return (
-    <section aria-labelledby="promise" className="border-y border-rule bg-sand py-16 sm:py-24">
-      <div className={container}>
-        <SectionTitle id="promise" eyebrow="The promise" title="Built to be trusted with your name.">
-          Most tools hand you a flat resume and a prompt. Nori keeps a graph of what you did, so every claim has a source and a refusal has a reason.
-        </SectionTitle>
-
-        <div className="mt-10 grid overflow-hidden rounded-3xl border border-rule bg-white md:grid-cols-2" role="group" aria-label="Example: one rewritten line is accepted because it traces to your graph, another is refused">
-          <div className="p-6 sm:p-8">
-            <p className="inline-flex items-center gap-2 rounded-full bg-sage-soft px-2.5 py-1 text-[12.5px] font-semibold text-sage"><Check size={14} aria-hidden="true" />Accepted</p>
-            <p className="mt-4 font-display text-[1.3rem] font-semibold leading-snug tracking-[-0.015em] text-bark">Rebuilt the dashboard in React and Next.js, cutting p95 load from 4.2s to 1.1s.</p>
-            <p className="mt-4 text-[14px] text-bark-3">Traced to <span className="font-semibold text-bark-2">Senior Frontend Engineer at Lumen Analytics</span> in your career graph.</p>
+    <section aria-labelledby="honest-title" id="honest" className="scroll-mt-16 border-t border-line">
+      <div className={cx(container, "grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-2")}>
+        <div>
+          <SectionTitle id="honest-title" title="It cannot invent a claim" />
+          <p className="mt-4 max-w-[52ch] text-[16px] leading-relaxed text-ink-2">
+            Your history becomes a graph of roles, projects, skills and results. Resume lines and form answers are written only from that graph, and each one shows where it came from.
+          </p>
+          <p className="mt-3 max-w-[52ch] text-[16px] leading-relaxed text-ink-2">
+            When a posting asks for something you have not shown, Nori leaves it out and tells you. Add the fact yourself and it can use it next time.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3" role="group" aria-label="Sample: what a gap looks like">
+          <div className="rounded-card border border-line bg-surface p-4">
+            <p className="text-[13px] font-semibold text-ink">Matches 3 of 4 must-haves</p>
+            <div className="mt-2 flex flex-wrap gap-1.5 text-[12.5px]">
+              {["React", "TypeScript", "Next.js"].map((s) => <span key={s} className="rounded-full bg-sunken px-2.5 py-0.5 text-ink">{s}</span>)}
+              <span className="rounded-full border border-dashed border-control px-2.5 py-0.5 text-muted">GraphQL</span>
+            </div>
           </div>
-          <div className="border-t border-rule bg-berry-soft p-6 sm:p-8 md:border-l md:border-t-0">
-            <p className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-[12.5px] font-semibold text-berry"><X size={14} aria-hidden="true" />Refused</p>
-            <p className="mt-4 font-display text-[1.3rem] font-semibold leading-snug tracking-[-0.015em] text-bark-2 line-through decoration-berry">Managed a team of 40 engineers.</p>
-            <p className="mt-4 flex items-start gap-2 text-[14px] text-berry"><CircleAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0" />&ldquo;team of 40&rdquo; is not anywhere in your graph, so the line is replaced by the nearest one you can prove.</p>
+          <div className="rounded-card bg-sunken p-4">
+            <p className="text-[13px] font-semibold text-ink">Not claimed</p>
+            <p className="mt-1 text-[13.5px] text-ink-2">The posting asks for GraphQL. Nothing in your graph shows it, so it is left out.</p>
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
 
-        <ul className="mt-6 grid gap-5 md:grid-cols-3">
-          {PROMISES.map(([Icon, title, body]) => (
-            <li key={title} className="rounded-3xl border border-rule bg-white p-6">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-sun-soft text-brand"><Icon size={20} aria-hidden="true" /></span>
-              <h3 className="mt-4 font-display text-[1.2rem] font-semibold tracking-[-0.015em] text-bark">{title}</h3>
-              <p className="mt-2 text-[14.5px] leading-relaxed text-bark-2">{body}</p>
+/* ------------------------------------------------------------------ yours to run */
+
+const YOURS: { icon: LucideIcon; title: string; line: ReactNode }[] = [
+  { icon: Cpu, title: "Model included", line: "Nori's own model does the writing, with a daily allowance. When the allowance runs out, it keeps going on rules and says so." },
+  { icon: MessageCircle, title: "Your channels", line: "Telegram, WhatsApp, Slack, a small companion beside your clock, or the web. Same commands everywhere." },
+  { icon: Download, title: "Your data", line: "Export your graph as a file any time. Delete your account and everything goes with it." },
+];
+
+export function Studio() {
+  return (
+    <section aria-labelledby="yours-title" id="yours" className="scroll-mt-16 border-t border-line bg-surface">
+      <div className={cx(container, "py-14 sm:py-20")}>
+        <SectionTitle id="yours-title" title="Yours to run" />
+        <ul className="mt-8 grid gap-4 md:grid-cols-3">
+          {YOURS.map((y) => (
+            <li key={y.title} className="rounded-card border border-line bg-bg p-5">
+              <y.icon size={20} aria-hidden="true" className="text-ink" />
+              <p className="mt-3 text-[16px] font-semibold text-ink">{y.title}</p>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-2">{y.line}</p>
             </li>
           ))}
         </ul>
@@ -159,79 +162,21 @@ export function PromiseSection() {
   );
 }
 
-/* ------------------------------------------------------------------ resume studio */
-
-const STUDIO = [
-  "Seven templates, from a plain one-column classic to an executive serif",
-  "Fonts, accent colour, size, spacing and margins; Letter or A4",
-  "Live preview, section reordering and version history",
-  "PDF, Word, plain text and JSON export",
-  "An ATS check that warns when a layout could scramble in an applicant system",
-];
-
-const line = (w: string, c = "bg-[#e3d8c4]", h = "h-[3px]") => <span className={cx("block rounded-full", c, h)} style={{ width: w }} />;
-
-/** A tiny drawing of one resume template. Decorative: the list item's caption names it. */
-function Sheet({ id }: { id: string }) {
-  const lines = (n: number, c?: string) => Array.from({ length: n }, (_, i) => <span key={i} className="mt-[5px] block">{line(`${92 - ((i * 13) % 34)}%`, c)}</span>);
-  const body: Record<string, ReactNode> = {
-    classic: <div className="p-3"><div className="mx-auto w-2/3">{line("100%", "bg-bark", "h-[6px]")}</div><div className="mt-3 border-t border-rule-strong" />{lines(3)}<div className="mt-3 border-t border-rule-strong" />{lines(3)}</div>,
-    modern: <div><div className="h-9 bg-brand p-2.5">{line("55%", "bg-white", "h-[6px]")}</div><div className="p-3">{lines(3)}<div className="mt-3 w-1/3">{line("100%", "bg-sun", "h-[4px]")}</div>{lines(3)}</div></div>,
-    compact: <div className="p-2.5">{line("45%", "bg-bark", "h-[5px]")}{lines(10)}</div>,
-    executive: <div className="p-3 text-center"><div className="mx-auto w-3/4">{line("100%", "bg-bark", "h-[7px]")}</div><div className="mx-auto mt-2 w-1/3 border-t-2 border-sun" />{lines(7)}</div>,
-    minimal: <div className="p-4">{line("38%", "bg-bark-2", "h-[5px]")}<div className="mt-5" />{lines(4)}<div className="mt-5" />{lines(3)}</div>,
-    technical: <div className="p-3">{line("50%", "bg-bark", "h-[5px]")}<div className="mt-2 flex gap-1">{["w-5", "w-7", "w-4", "w-6"].map((w, i) => <span key={i} className={cx("h-[7px] rounded-sm bg-sun-soft", w)} />)}</div>{lines(7)}</div>,
-    sidebar: <div className="flex h-full"><div className="w-[34%] bg-bark p-2.5">{line("100%", "bg-white", "h-[5px]")}<div className="mt-3" />{lines(5, "bg-bark-3")}</div><div className="flex-1 p-2.5">{lines(9)}</div></div>,
-  };
-  return <div aria-hidden="true" className="aspect-[3/4] overflow-hidden rounded-lg border border-rule bg-white">{body[id]}</div>;
+/** Kept so older imports still compile; the proof points now live in the hero. */
+export function ProofStrip() {
+  return null;
 }
-
-const TEMPLATES = [["classic", "Classic"], ["modern", "Modern"], ["compact", "Compact"], ["executive", "Executive"], ["minimal", "Minimal"], ["technical", "Technical"], ["sidebar", "Sidebar"]] as const;
-
-export function Studio() {
-  return (
-    <section aria-labelledby="studio" className="bg-cream py-16 sm:py-24">
-      <div className={cx(container, "grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]")}>
-        <div>
-          <SectionTitle id="studio" eyebrow="Resume studio" title="A resume studio, not a template.">
-            Edit your resume as a document, change the look in one click, and keep every version. Each application gets its own tailored copy that you can still edit before you approve it.
-          </SectionTitle>
-          <ul className="mt-8 space-y-3 text-[15px] text-bark-2">
-            {STUDIO.map((t) => <li key={t} className="flex gap-3"><Check size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-sage" />{t}</li>)}
-          </ul>
-        </div>
-        <div className="rounded-3xl border border-rule bg-sand p-5 sm:p-8">
-          <ul className="grid grid-cols-3 gap-4 sm:grid-cols-4" aria-label="The seven resume templates">
-            {TEMPLATES.map(([id, name]) => (
-              <li key={id}>
-                <Sheet id={id} />
-                <p className="mt-2 text-center text-[13px] font-medium text-bark-2">{name}</p>
-              </li>
-            ))}
-            <li className="flex aspect-[3/4] flex-col items-center justify-center rounded-lg border-2 border-dashed border-rule-strong bg-white p-2 text-center">
-              <Sparkles size={20} aria-hidden="true" className="text-[#b07a00]" />
-              <span className="mt-1 text-[12px] font-semibold leading-tight text-bark-2">Fonts, colours, margins</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ------------------------------------------------------------------ final call */
 
 export function FinalCall() {
   return (
-    <section aria-labelledby="final-title" className="bg-bark py-16 text-cream sm:py-24">
-      <div className={cx(container, "text-center")}>
-        <h2 id="final-title" className="mx-auto max-w-[20ch] font-display text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.03em] sm:text-[3.2rem]">
-          Start with your resume. Nori does the rest.
-        </h2>
-        <p className="mx-auto mt-4 max-w-[46ch] text-[16.5px] leading-relaxed text-[#e9dcc4]">It takes about a minute to set up, and nothing leaves your account until you say so.</p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="/signup" className={btnSun}>Create your account<ArrowRight size={18} aria-hidden="true" /></Link>
-          <Link href="/login" className="inline-flex h-12 items-center rounded-full px-5 text-[15px] font-semibold text-cream underline decoration-[#8a7356] underline-offset-4 hover:decoration-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun">I already have an account</Link>
+    <section aria-labelledby="final-title" className="border-t border-line">
+      <div className={cx(container, "py-14 sm:py-20")}>
+        <div className="flex flex-col items-start gap-4 rounded-card bg-sunken p-7 sm:flex-row sm:items-center sm:justify-between sm:p-10">
+          <div>
+            <h2 id="final-title" className="text-[1.5rem] font-semibold tracking-[-0.015em] text-ink sm:text-[1.75rem]">Start with your resume</h2>
+            <p className="mt-1 text-[16px] text-ink-2">About ten minutes to set up. Nothing is sent until you say so.</p>
+          </div>
+          <Link href="/signup" className={btnPrimary}>Create account<ArrowRight size={18} aria-hidden="true" /></Link>
         </div>
       </div>
     </section>

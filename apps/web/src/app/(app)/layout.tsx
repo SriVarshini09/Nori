@@ -6,9 +6,9 @@ import { Shell, type ShellData } from "@/components/Shell";
 async function shellData(): Promise<ShellData> {
   const data: ShellData = {
     applicationsCount: 0, needsYouCount: 0, unreadCount: 0, appliedThisWeek: 0, repliedThisWeek: 0, interviewsThisWeek: 0,
-    hoursSaved: 0, userName: "you", mock: USE_MOCK,
+    hoursSaved: 0, userName: "you", mock: USE_MOCK, liveSubmit: true,
   };
-  const [apps, inbox, stats, me] = await Promise.allSettled([api.listApplications(), api.listInbox(), api.trackerStats(), api.me()]);
+  const [apps, inbox, stats, me, status] = await Promise.allSettled([api.listApplications(), api.listInbox(), api.trackerStats(), api.me(), api.agentStatus()]);
   if (apps.status === "fulfilled") {
     data.applicationsCount = apps.value.length;
     data.needsYouCount = apps.value.filter((a) => NEEDS_YOU.includes(a.application.status)).length;
@@ -22,6 +22,9 @@ async function shellData(): Promise<ShellData> {
     data.hoursSaved = w.hoursSaved ?? Math.round((w.applied ?? 0) * 0.8 * 10) / 10;
   }
   if (me.status === "fulfilled") data.userName = me.value.profile?.fullName ?? me.value.user.name ?? me.value.user.email;
+  // Demo mode never sends; an older API without the field is treated as live (no band) rather than guessed.
+  if (status.status === "fulfilled") data.liveSubmit = status.value.liveSubmit !== false && !USE_MOCK;
+  else if (USE_MOCK) data.liveSubmit = false;
   return data;
 }
 
