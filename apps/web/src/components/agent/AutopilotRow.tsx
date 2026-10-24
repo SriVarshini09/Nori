@@ -58,7 +58,7 @@ export function AutopilotRow({ status, onStatus, onError }: { status: AgentStatu
 
   async function choose(next: Mode) {
     if (next === mode || busy) return;
-    if (mode === "off" && !window.confirm("Turn on Autopilot?\n\nNori will send an application by itself, without asking, whenever every check passes. Anything unusual still waits for you. You can turn it off at any time.")) return;
+    if (mode === "off" && !window.confirm("Turn on Autopilot?\n\nNori will approve the resumes it tailors and send an application by itself, without asking, whenever every check passes. Anything unusual still waits for you, and you get a message on Telegram. You can turn it off at any time.")) return;
     setBusy(true);
     try {
       await api.updateProfile({ autopilot: next });
