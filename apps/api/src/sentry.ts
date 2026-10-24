@@ -14,8 +14,9 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || "development",
-    // Fly sets FLY_IMAGE_REF per deploy; it makes a usable release name.
-    release: process.env.SENTRY_RELEASE || process.env.FLY_IMAGE_REF || undefined,
+    // Fly sets FLY_IMAGE_REF per deploy (registry.fly.io/app:deployment-xxx). Sentry refuses release names with a
+    // slash, so only the tag after the colon is used.
+    release: process.env.SENTRY_RELEASE || process.env.FLY_IMAGE_REF?.split(":").pop() || undefined,
     tracesSampleRate: 0,
   });
   enabled = true;
