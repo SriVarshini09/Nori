@@ -26,6 +26,7 @@ import {
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
+import { captureError } from "./sentry.js";
 import {
   composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, telegramBotUsername, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
@@ -242,6 +243,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     // The full error (file paths, SQL, upstream replies) goes to the server log only; the person gets a reference to quote.
     const ref = Math.random().toString(36).slice(2, 10);
     console.warn(`[api] ${ref} ${c.req.method} ${c.req.path}: ${message}`, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : "");
+    captureError(err, { ref, method: c.req.method, path: c.req.path, userId: c.get("user")?.id });
     if (/PARALLEL_API_KEY|Parallel/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Web job search is not set up on this server." }, 503);
     if (/COMPOSIO_API_KEY|Composio/i.test(message) && /not set|not configured/i.test(message)) return c.json({ error: "Connected apps (Gmail, Sheets, Slack) are not set up on this server." }, 503);
     if (/not set|not configured/i.test(message)) return c.json({ error: "This feature is not set up on this server." }, 503);

@@ -1,4 +1,6 @@
 import "../../worker/src/env.js";
+// Error reporting (no-op without SENTRY_DSN_API). Before anything else so early failures are reported too.
+import { sentryEnabled, watchRunner } from "./sentry.js";
 import { serve } from "@hono/node-server";
 import { createAgent, getDb, warmLLM, type OutboundMessage } from "@jobgraph/core";
 import { createChannelRouter, sendToUser, type ChannelRouter } from "@jobgraph/channels";
@@ -52,6 +54,7 @@ if (embed) {
 }
 
 const app = createApp(db, { router, runnerDeps: runner, notify });
+if (sentryEnabled()) { watchRunner(); console.log("[api] error reporting on (Sentry)"); }
 const server = serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   const msg = `[api] listening on http://localhost:${info.port} (MCP at /mcp${process.env.MCP_TOKEN || process.env.NODE_ENV === "production" ? ", bearer token required" : ", no auth: localhost only"})${embed ? "; scheduler and channel listeners embedded" : ""}`;
   (runtime?.consoleMode ? console.error : console.log)(msg);
