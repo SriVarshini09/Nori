@@ -4,7 +4,7 @@ Written 23 October 2026. Goal: not a demo. A product a stranger can sign up for,
 
 Stages are in build order. Each stage leaves a usable product. A stage is **done** only when every line under "Proven when" has actually run; nothing is called working from a unit test alone.
 
-Stack decisions (23 Oct): keep home-built auth, Neon Postgres, Hono API, Next.js web, Fly + Vercel hosting, bring-your-own-key models. Add Resend (send and inbound), Browserbase (hosted browser with live view), Exa and context.dev (discovery), Web Push, Twilio SMS, Stripe, Sentry. Not switching to Supabase, Clerk, Omnara runtime, Freestyle or Unikraft.
+Stack decisions (23 and 24 Oct): keep home-built auth, Neon Postgres, Hono API, Next.js web, Fly + Vercel hosting. The model is part of the product: every account runs on Nori's hosted key with a daily allowance, and bring-your-own-key was removed (subscription only, no keys to paste). Add Resend (send and inbound), Browserbase (hosted browser with live view), Exa and context.dev (discovery), Web Push, Twilio SMS, Stripe, Sentry. Not switching to Supabase, Clerk, Omnara runtime, Freestyle or Unikraft.
 
 ## What you must provide (I cannot create these)
 
@@ -26,7 +26,7 @@ Put keys in `.env` at the repo root (gitignored) or in Fly secrets. Never paste 
 ## Stage 0: the deploy works for a stranger
 
 **Build**
-- Set `HOSTED_LLM_*` on Fly so every account has a model. Per-user daily token cap with a visible "this run used about N tokens" line (TOOLS A6).
+- Set `HOSTED_LLM_*` on Fly so every account has a model (done 24 Oct). Per-user daily token cap with a visible "this run used about N tokens" line (done, PR 9). Bring-your-own-key removed (PR 10).
 - Resend for account email (`RESEND_API_KEY`, `EMAIL_FROM`), domain verified.
 - Telegram bot token on Fly; bot handle shown on Auto apply and in onboarding's integrations step.
 - Sentry in API and web; uptime monitor on `/api/health` and `/login`; Neon point-in-time restore confirmed on.
@@ -121,7 +121,7 @@ Put keys in `.env` at the repo root (gitignored) or in Fly secrets. Never paste 
 ## Stage 6: plans and billing
 
 **Build**
-- Stripe Checkout and Customer Portal. Free: 3 applications a day, 1 resume, 2 lanes. Pro: 20 a day, resume library, unlimited lanes, Autopilot.
+- Stripe Checkout and Customer Portal. Free: 3 applications a day, 1 resume, 2 lanes, the standard daily model allowance. Pro: 20 a day, resume library, unlimited lanes, Autopilot, a larger model allowance. Since Nori is subscription only, this stage can move up to right after stage 2 so there is something to sell before discovery and Workday.
 - `plan` on `users`, set by the webhook; cap enforcement in the agent gate; counter on the dashboard ("12 applications left today").
 - Referral: share link, both sides get extra applications.
 
