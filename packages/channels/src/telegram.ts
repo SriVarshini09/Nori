@@ -127,6 +127,27 @@ export class TelegramChannel implements ChannelAdapter {
   }
 }
 
+let botInfo: { username: string | null; token: string; at: number } | null = null;
+
+/**
+ * The bot's @username from getMe, cached per token (a failed lookup is retried after a minute). Null when there is no
+ * token, the lookup fails, or under tests without an explicit token.
+ */
+export async function telegramBotUsername(opts: { token?: string } = {}): Promise<string | null> {
+  const token = opts.token ?? process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return null;
+  if (process.env.VITEST && !opts.token) return null;
+  if (botInfo && botInfo.token === token && (botInfo.username || Date.now() - botInfo.at < 60_000)) return botInfo.username;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(8000) });
+    const json = (await res.json()) as { ok?: boolean; result?: { username?: string } };
+    botInfo = { username: json.ok && json.result?.username ? json.result.username : null, token, at: Date.now() };
+  } catch {
+    botInfo = { username: null, token, at: Date.now() };
+  }
+  return botInfo.username;
+}
+
 function redact(s: string, secret: string) { return s.split(secret).join("***"); }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

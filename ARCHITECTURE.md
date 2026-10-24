@@ -91,6 +91,8 @@ POST /api/inbox/sync                          -> { imported }
 GET  /api/tracker/stats                       -> { byStatus: Record<string, number>, thisWeek: {...} }
 POST /api/tracker/sync-sheet                  -> { spreadsheetUrl }
 GET  /api/channels                            -> linked channels
+GET  /api/channels/telegram                   -> { configured, botUsername, linked }
+POST /api/channels/telegram/link              -> { code, expiresAt, botUsername, link }   (send the code to the bot, or open `link`; the chat is then linked to this account)
 GET  /api/integrations                        -> [{ toolkit, connected }]
 POST /api/integrations/:toolkit/connect       -> { redirectUrl }
 POST /mcp                                     MCP streamable HTTP (tools: find_jobs, research_company, tailor_resume, apply, status)

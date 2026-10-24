@@ -105,7 +105,7 @@ export function IntegrationsStep({ initial, busy, onBack, onFinish }: {
           <div className="text-[15px] font-medium text-ink">Telegram</div>
         </div>
         <ol className="mt-4 grid gap-3 text-meta text-ink-2 sm:grid-cols-3 sm:gap-5">
-          {["Open your Nori bot in Telegram.", "Send /start.", "Reply to review requests from the chat."].map((s, i) => (
+          {["After setup, open Settings, Channels and press Link Telegram.", "Send the code it shows to your Nori bot.", "Review requests then reach your phone; reply there."].map((s, i) => (
             <li key={s} className="flex items-start gap-2.5">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[11px] font-semibold text-ink ring-1 ring-black/10">{i + 1}</span>
               {s}

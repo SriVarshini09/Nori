@@ -1,12 +1,12 @@
 "use client";
 
-import { CalendarDays, Check, Hash, Mail, Plug, Sheet, Trash2, type LucideIcon } from "lucide-react";
+import { CalendarDays, Check, Hash, Link2, Mail, Plug, RefreshCw, Sheet, Trash2, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { USE_MOCK, api } from "@/lib/api";
+import { USE_MOCK, api, ApiError } from "@/lib/api";
 import { pct } from "@/lib/format";
-import type { Channel, Integration, Profile } from "@/lib/types";
-import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, Toggle, idx, inputClass } from "./ui";
+import type { Channel, Integration, Profile, TelegramInfo, TelegramLink } from "@/lib/types";
+import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, TextLink, Toggle, idx, inputClass } from "./ui";
 
 export function SettingsForm({ profile }: { profile: Profile }) {
   const [autoApprove, setAutoApprove] = useState(profile.resumeAutoApprove);
@@ -116,8 +116,32 @@ export function Integrations({ initial }: { initial: Integration[] }) {
   );
 }
 
-export function Channels({ channels }: { channels: Channel[] }) {
+export function Channels({ channels: initial, telegram }: { channels: Channel[]; telegram?: TelegramInfo | null }) {
+  const [channels, setChannels] = useState(initial);
+  const [link, setLink] = useState<TelegramLink | null>(null);
+  const [busy, setBusy] = useState<"link" | "check" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const has = (k: Channel["kind"]) => channels.some((c) => c.kind === k);
+  const tgLinked = has("telegram");
+  const bot = link?.botUsername ?? telegram?.botUsername ?? null;
+  const fail = (e: unknown) => setError(e instanceof ApiError ? e.detail : (e as Error).message);
+
+  async function getCode() {
+    setBusy("link"); setError(null); setNote(null);
+    try { setLink(await api.telegramLink()); } catch (e) { fail(e); } finally { setBusy(null); }
+  }
+  async function check() {
+    setBusy("check"); setError(null);
+    try {
+      const next = await api.listChannels();
+      setChannels(next);
+      const ok = next.some((c) => c.kind === "telegram");
+      setNote(ok ? "Linked. Review requests now reach your phone." : "Not linked yet. Send the code to the bot, then check again.");
+      if (ok) setLink(null);
+    } catch (e) { fail(e); } finally { setBusy(null); }
+  }
+
   return (
     <div className="space-y-6 text-body-sm">
       {channels.length > 0 && (
@@ -135,20 +159,41 @@ export function Channels({ channels }: { channels: Channel[] }) {
       <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         <Frame className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <IndexLabel index="A" marker tone="ink">Telegram</IndexLabel>
-            {has("telegram") ? <Pill mark="ink">Linked</Pill> : <Pill mark="hollow">Not linked</Pill>}
+            <IndexLabel index="A" marker tone="ink">Telegram{bot ? <span className="ml-2 font-normal text-muted">@{bot}</span> : null}</IndexLabel>
+            {tgLinked ? <Pill mark="ink">Linked</Pill> : <Pill mark="hollow">Not linked</Pill>}
           </div>
-          <ol className="mt-4 space-y-2 text-meta text-ink-2">
-            {[
-              "Make sure the server has TELEGRAM_BOT_TOKEN set.",
-              "Open Telegram and start a chat with your Nori bot.",
-              "Send /start. The chat appears here once linked, and you can say things like “apply to #2”.",
-            ].map((s, i) => (
-              <li key={i} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-1">
-                <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>{s}
-              </li>
-            ))}
-          </ol>
+          {telegram && !telegram.configured ? (
+            <p className="mt-4 text-meta text-ink-2">Telegram is not switched on for this Nori yet.</p>
+          ) : tgLinked ? (
+            <p className="mt-4 text-meta text-ink-2">Your phone is linked. Say <span className="font-medium text-ink">status</span> to the bot any time, or reply to a review request with <span className="font-medium text-ink">approve 1</span>.</p>
+          ) : (
+            <>
+              <ol className="mt-4 space-y-2 text-meta text-ink-2">
+                {[
+                  "Press Link Telegram to get a one-time code.",
+                  bot ? `Open @${bot} in Telegram and send the code.` : "Open your Nori bot in Telegram and send the code.",
+                  "Press Check. The chat appears above once linked.",
+                ].map((s, i) => (
+                  <li key={i} className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-1">
+                    <span className="text-label font-medium text-faint tnum">{idx(i + 1)}</span>{s}
+                  </li>
+                ))}
+              </ol>
+              {link && (
+                <div className="mt-4 rounded-md border border-line bg-stone/40 p-4" role="status">
+                  <div className="text-label font-medium uppercase text-muted">Your code, valid 15 minutes</div>
+                  <div className="mt-1 font-mono text-[26px] font-semibold tracking-[0.3em] text-ink">{link.code}</div>
+                  {link.link && <div className="mt-2"><TextLink href={link.link} external>Open @{link.botUsername} with the code filled in</TextLink></div>}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button icon={Link2} onClick={getCode} disabled={busy !== null}>{busy === "link" ? "Getting a code..." : link ? "New code" : "Link Telegram"}</Button>
+                <Button variant="secondary" icon={RefreshCw} onClick={check} disabled={busy !== null}>{busy === "check" ? "Checking..." : "Check"}</Button>
+              </div>
+            </>
+          )}
+          {note && <p className="mt-3 text-meta text-ink-2" role="status">{note}</p>}
+          {error && <div className="mt-3"><Notice tone="red">{error}</Notice></div>}
         </Frame>
         <Frame className="p-5">
           <div className="flex items-center justify-between gap-3">

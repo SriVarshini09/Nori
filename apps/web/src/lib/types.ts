@@ -345,6 +345,11 @@ export type Channel = {
   createdAt: string;
 };
 
+/** Whether the Telegram bot exists on this server, its handle, and whether this account has a chat linked. */
+export type TelegramInfo = { configured: boolean; botUsername: string | null; linked: boolean };
+/** A one-time code to send to the bot; `link` opens the bot with the code prefilled. */
+export type TelegramLink = { code: string; expiresAt: string; botUsername: string | null; link: string | null };
+
 /** `available: false` means this server has no connection provider configured, so Connect cannot work yet. */
 export type Integration = { toolkit: string; connected: boolean; error?: string; available?: boolean };
 
