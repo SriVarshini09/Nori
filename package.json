@@ -42,7 +42,11 @@
     "embedded-postgres": "^17.10.0-beta.17",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "body-parser": "^2.4.0",
+    "fast-uri": "^3.1.9"
   },
   "dependencies": {
     "@neon/config": "^1.9.2",
