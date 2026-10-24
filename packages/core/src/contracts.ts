@@ -35,6 +35,11 @@ export type DiscoverQuery = {
   locations?: string[];
   remote?: boolean;
   maxResults?: number;
+  /**
+   * Wall-clock budget in ms for the whole find-and-rank call (a tool caller that gives up after 30 s sets about 22 000).
+   * Searches and page reads that have not finished are dropped, and jobs not yet scored come back unscored.
+   */
+  budgetMs?: number;
 };
 
 // ---------- career graph ----------

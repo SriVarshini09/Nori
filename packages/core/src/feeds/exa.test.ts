@@ -4,12 +4,16 @@ import { eq } from "drizzle-orm";
 import { openTestDb, type Db } from "../db/client.js";
 import { jobs } from "../db/schema.js";
 import { discoverJobs, searchAvailable } from "./discover.js";
+import { matchJobs, rowsForNormalized } from "../runner/jobs.js";
+import { ensureDefaultUser } from "../users.js";
 import { exaAvailable, exaSearch } from "./exa.js";
 import { SOCIAL_SOURCES, applyLinkIn, heuristicPosting, sourceFor } from "./social.js";
 
 let db: Db;
 let server: Server;
 let requests: { body: any; key: string | undefined }[] = [];
+/** Per-domain answer delays in ms, for the budget test. */
+let delays: Record<string, number> = {};
 
 /** A stand-in for api.exa.ai: answers by the domains asked for. */
 const RESULTS: Record<string, any[]> = {
@@ -43,7 +47,8 @@ beforeAll(async () => {
       if (req.headers["x-api-key"] !== "exa-test-key") { res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "bad key" })); return; }
       const domains: string[] = parsed.includeDomains ?? [];
       const results = domains.flatMap((d) => RESULTS[d] ?? []);
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ results }));
+      const wait = Math.max(0, ...domains.map((d) => delays[d] ?? 0));
+      setTimeout(() => { if (!res.writableEnded) res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ results })); }, wait);
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -58,6 +63,7 @@ beforeEach(async () => {
   saved = Object.fromEntries(SAVED.map((k) => [k, process.env[k]]));
   for (const k of SAVED) delete process.env[k];
   requests = [];
+  delays = {};
   await db.delete(jobs);
 });
 afterEach(() => { for (const k of SAVED) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
@@ -131,4 +137,32 @@ describe("discovery through Exa", () => {
     expect(again.added).toBe(0);
     expect(await db.select().from(jobs)).toHaveLength(3);
   });
+});
+
+describe("a time budget", () => {
+  it("returns what has arrived when a source is slow, instead of waiting for it", async () => {
+    process.env.EXA_API_KEY = "exa-test-key";
+    delays = { "linkedin.com": 8000 };
+    const started = Date.now();
+    const r = await discoverJobs(db, { objective: "senior backend engineer", titles: ["Senior Backend Engineer"], maxResults: 6, budgetMs: 4000 });
+    const took = Date.now() - started;
+    expect(took).toBeLessThan(6000);
+    const rows = await db.select().from(jobs);
+    const companies = rows.map((j) => j.companyName);
+    expect(companies).toContain("acmeai");
+    expect(companies).toContain("Northwind Labs");
+    expect(companies).not.toContain("Brightside Analytics"); // the slow LinkedIn sweep was dropped
+    expect(r.added).toBe(2);
+  }, 30_000);
+
+  it("scoring stops at its deadline and returns the jobs unscored rather than waiting", async () => {
+    process.env.EXA_API_KEY = "exa-test-key";
+    const user = await ensureDefaultUser(db, "budget@example.com");
+    const r = await discoverJobs(db, { objective: "senior backend engineer", maxResults: 6 });
+    const rows = await rowsForNormalized(db, r.jobs);
+    expect(rows.length).toBe(3);
+    const out = await matchJobs(db, user.id, rows.map((x) => x.id), { deadline: Date.now() - 1 });
+    expect(out).toHaveLength(3);
+    expect(out.every((x) => x.match === null)).toBe(true);
+  }, 30_000);
 });

@@ -144,6 +144,7 @@ export async function discoverJobsExa(db: Db, query: DiscoverQuery): Promise<{ a
   const cache: TenantCache = new Map();
   const seen = new Set<string>();
   const found: NormalizedJob[] = [];
+  let closed = false;
   const since = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
   const claim = (raw: string): string | null => {
     let url: string;
@@ -153,40 +154,57 @@ export async function discoverJobsExa(db: Db, query: DiscoverQuery): Promise<{ a
     return url;
   };
 
-  // Every search runs at once; a person is waiting on the other end, and the sources are independent.
+  // At most four page reads at once; each source is read as soon as its own results arrive, so a slow source never
+  // holds up a fast one.
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const limited = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active >= 4) await new Promise<void>((resolve) => waiting.push(resolve));
+    active++;
+    try { return await fn(); } finally { active--; waiting.shift()?.(); }
+  };
+
   const atsSweeps = queries.map((q) => exaSearch({ query: q, numResults: max, includeDomains: ATS_DOMAINS, startPublishedDate: since(60), maxCharacters: 2000 })
-    .catch((e) => { console.warn(`[discover] exa ats: ${(e as Error).message}`); return []; }));
+    .catch((e) => { console.warn(`[discover] exa ats: ${(e as Error).message}`); return []; })
+    .then((hits) => Promise.all(hits.map(async (r) => {
+      const url = claim(r.url);
+      if (!url || closed) return;
+      const m = matchFeedUrl(url);
+      if (m && !m.externalId) return;
+      try {
+        const job = await resolveUrl(url, "exa_search", cache, { title: r.title, excerpts: r.text ? [r.text] : [] });
+        if (job && !closed) found.push(job);
+      } catch (err) { console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`); }
+    }))));
   const socialSweeps = SOCIAL_SOURCES.map((source) => {
     const q = `${queries[0]} ${source.id === "x" || source.id === "hn" ? "hiring" : ""}`.trim();
     return exaSearch({ query: q, numResults: Math.max(5, Math.ceil(max / 2)), includeDomains: source.domains, category: source.category, startPublishedDate: since(source.freshDays) })
-      .then((hits) => hits.map((r) => ({ r, source })))
-      .catch((e) => { console.warn(`[discover] exa ${source.id}: ${(e as Error).message}`); return [] as { r: Awaited<ReturnType<typeof exaSearch>>[number]; source: typeof source }[]; });
+      .catch((e) => { console.warn(`[discover] exa ${source.id}: ${(e as Error).message}`); return []; })
+      .then((hits) => Promise.all(hits.map(async (r) => {
+        const url = claim(r.url);
+        if (!url || closed) return;
+        try {
+          const job = await limited(() => (closed ? Promise.resolve(null) : postingFromResult(r, sourceFor(url) ?? source)));
+          if (job && !closed) found.push(job);
+        } catch (err) { console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`); }
+      })));
   });
-  const [atsHits, socialHits] = await Promise.all([Promise.all(atsSweeps), Promise.all(socialSweeps)]);
+  const work = Promise.all([...atsSweeps, ...socialSweeps]);
+  work.catch(() => undefined);
 
-  // ATS hits resolve through their feeds (cached per board); social hits are read as postings, a few at a time.
-  const atsTasks: Promise<void>[] = [];
-  for (const r of atsHits.flat()) {
-    const url = claim(r.url);
-    if (!url) continue;
-    const m = matchFeedUrl(url);
-    if (m && !m.externalId) continue;
-    atsTasks.push(resolveUrl(url, "exa_search", cache, { title: r.title, excerpts: r.text ? [r.text] : [] })
-      .then((job) => { if (job) found.push(job); })
-      .catch((err) => console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`)));
+  // With a budget, take whatever has arrived when it runs out; the rest is dropped rather than waited for.
+  const budget = query.budgetMs ? Math.max(3000, Math.round(query.budgetMs * 0.6)) : 0;
+  if (budget) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([work, new Promise<void>((resolve) => { timer = setTimeout(resolve, budget); })]);
+    if (timer) clearTimeout(timer);
+  } else {
+    await work;
   }
-  const socialTasks: (() => Promise<void>)[] = [];
-  for (const { r, source } of socialHits.flat()) {
-    const url = claim(r.url);
-    if (!url) continue;
-    socialTasks.push(() => postingFromResult(r, sourceFor(url) ?? source)
-      .then((job) => { if (job) found.push(job); })
-      .catch((err) => console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`)));
-  }
-  const limited = socialTasks.slice(0, 24);
-  await Promise.all([...atsTasks, ...Array.from({ length: 4 }, async () => { while (limited.length) await limited.shift()!(); })]);
-  const { added } = await upsertJobs(db, found);
-  return { added, jobs: found };
+  closed = true;
+  const done = found.slice();
+  const { added } = await upsertJobs(db, done);
+  return { added, jobs: done };
 }
 
 /** Web search for postings: Exa when its key is set, else Parallel. Each hit becomes a structured job and is upserted. */
