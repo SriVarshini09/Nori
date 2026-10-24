@@ -20,24 +20,15 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fbfaf8" },
-    { media: "(prefers-color-scheme: dark)", color: "#151311" },
-  ],
+  themeColor: "#fbfaf8",
 };
 
 // Every page reads live API data; never prerender at build time.
 export const dynamic = "force-dynamic";
 
-/** Applies a saved light or dark choice before first paint, so the page never flashes the other theme. */
-const THEME_BOOT = `try{var t=localStorage.getItem("nori-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
-      </head>
       <body className="min-h-screen bg-bg text-ink antialiased">{children}</body>
     </html>
   );

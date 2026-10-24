@@ -5,7 +5,7 @@
  *   orange (attn)   = the person must act before the agent continues. Nothing decorative is ever orange.
  *   violet (sandbox)= dry run: forms are filled, nothing is sent.
  *   brick (danger)  = something broke, or the action cannot be undone.
- * Every text pairing passes WCAG AA (4.5:1) in light and dark; control edges pass 3:1.
+ * Every text pairing passes WCAG AA (4.5:1); control edges pass 3:1. Light only: there is no dark theme.
  */
 :root {
   --bg: #fbfaf8;
@@ -38,28 +38,6 @@
   --content-max: 1200px;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: light;
-}
-
-/* Dark values, twice: once for the system setting, once for an explicit choice in Settings. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #151311; --surface: #1d1a17; --sunken: #252220; --line: #34302b; --control: #7a7268;
-    --ink: #ece7e0; --ink-2: #cfc8be; --muted: #a8a096; --on-ink: #1d1a17;
-    --accent: #8fb4e0; --accent-tint: #1b2735; --accent-fg: #bcd3ef;
-    --attn: #e8a062; --attn-tint: #3a2414; --attn-fg: #f4c69c;
-    --sandbox: #241d31; --sandbox-fg: #cfc2e8; --sandbox-line: #41355a;
-    --danger: #ef7a6a; --danger-tint: #3b1915; --danger-fg: #f5b1a6;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #151311; --surface: #1d1a17; --sunken: #252220; --line: #34302b; --control: #7a7268;
-  --ink: #ece7e0; --ink-2: #cfc8be; --muted: #a8a096; --on-ink: #1d1a17;
-  --accent: #8fb4e0; --accent-tint: #1b2735; --accent-fg: #bcd3ef;
-  --attn: #e8a062; --attn-tint: #3a2414; --attn-fg: #f4c69c;
-  --sandbox: #241d31; --sandbox-fg: #cfc2e8; --sandbox-line: #41355a;
-  --danger: #ef7a6a; --danger-tint: #3b1915; --danger-fg: #f5b1a6;
-  color-scheme: dark;
 }
 
 @theme inline {

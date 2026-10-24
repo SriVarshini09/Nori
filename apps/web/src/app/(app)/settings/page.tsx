@@ -5,7 +5,6 @@ import { Channels, DangerZone, Integrations, SettingsForm } from "@/components/S
 import { LogoutButton } from "@/components/LogoutButton";
 import { ModelUsage } from "@/components/ModelUsage";
 import { SecurityPanel } from "@/components/SecurityPanel";
-import { ThemeChoice } from "@/components/ThemeChoice";
 import { Frame, Notice, PageHeader } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -14,7 +13,6 @@ const SECTIONS = [
   { id: "model", label: "Model" },
   { id: "channels", label: "Channels and apps" },
   { id: "limits", label: "Limits and approvals" },
-  { id: "appearance", label: "Appearance" },
   { id: "account", label: "Account and security" },
 ] as const;
 
@@ -62,9 +60,6 @@ export default async function SettingsPage() {
           </Section>
           <Section id="limits" title="Limits and approvals" line="The same switches as on Lanes and autopilot, gathered here with the minimum match.">
             <SettingsForm profile={profile} />
-          </Section>
-          <Section id="appearance" title="Appearance" line="Saved in this browser only.">
-            <ThemeChoice />
           </Section>
           <Section id="account" title="Account and security">
             <div className="flex flex-col gap-5">
