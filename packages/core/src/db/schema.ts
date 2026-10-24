@@ -322,7 +322,7 @@ export const resumes = pgTable("resumes", {
   atsChecks: jsonb("ats_checks").$type<AtsCheck[]>().default([]).notNull(),
   keywordCoverage: real("keyword_coverage"),
   /** Template and theme the PDF was rendered with. */
-  templateId: text("template_id").default("classic").notNull(),
+  templateId: text("template_id").default("ats").notNull(),
   theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
   /** True when the user changed this version by hand after tailoring. */
   edited: boolean("edited").default(false).notNull(),
@@ -336,7 +336,7 @@ export const resumeDocs = pgTable("resume_docs", {
   name: text("name").notNull(),
   source: text("source").$type<"graph" | "upload" | "manual" | "copy" | "text">().default("manual").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
-  templateId: text("template_id").default("classic").notNull(),
+  templateId: text("template_id").default("ats").notNull(),
   theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   version: integer("version").default(1).notNull(),
@@ -351,7 +351,7 @@ export const resumeDocVersions = pgTable("resume_doc_versions", {
   version: integer("version").notNull(),
   name: text("name").notNull(),
   content: jsonb("content").$type<ResumeContent>().notNull(),
-  templateId: text("template_id").default("classic").notNull(),
+  templateId: text("template_id").default("ats").notNull(),
   theme: jsonb("theme").$type<Record<string, unknown>>().default({}).notNull(),
   label: text("label"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

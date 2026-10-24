@@ -152,14 +152,11 @@ describe("2. resume studio", () => {
     await page.getByRole("button", { name: "Move Skills down" }).click();
   });
 
-  it("switches template and restyles, and the choice survives a reload", async () => {
+  it("restyles the one template, and the choice survives a reload", async () => {
     await page.getByRole("tab", { name: "design" }).click();
-    await expect(page.getByRole("radiogroup", { name: "Template" }).getByRole("radio")).toHaveCount(8);
+    await expect(page.getByRole("radiogroup", { name: "Template" }).getByRole("radio")).toHaveCount(1);
     await expect(page.getByRole("radio", { name: /ATS Standard/ })).toHaveAttribute("aria-checked", "true");
     await shot("05-studio-design");
-    await page.getByRole("radio", { name: /Modern/ }).click();
-    await expect(page.getByRole("radio", { name: /Modern/ })).toHaveAttribute("aria-checked", "true");
-    await expect.poll(async () => (await previewHtml(page)).includes("'Inter'"), { timeout: 20_000 }).toBe(true);
     await page.getByRole("radio", { name: "Accent #7c3aed" }).click();
     await expect.poll(async () => (await previewHtml(page)).includes("#7c3aed"), { timeout: 20_000 }).toBe(true);
     await page.getByLabel("Page size").selectOption("a4");
@@ -167,7 +164,7 @@ describe("2. resume studio", () => {
     await expect(page.getByRole("status").filter({ hasText: /^Saved · version/ })).toBeVisible({ timeout: 20_000 });
     await page.reload();
     await page.getByRole("tab", { name: "design" }).click();
-    await expect(page.getByRole("radio", { name: /Modern/ })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radio", { name: /ATS Standard/ })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByLabel("Page size")).toHaveValue("a4");
     const html = await previewHtml(page);
     expect(html).toContain("#7c3aed");

@@ -304,4 +304,13 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     // People no longer bring their own model keys: Nori's hosted model serves every account.
     sql: `DROP TABLE IF EXISTS user_credentials`,
   },
+  {
+    id: "0011_one_template",
+    // ATS Standard is the only resume template; rows that still name a removed template render as it (renderResumeHtml falls back).
+    sql: `
+ALTER TABLE resumes ALTER COLUMN template_id SET DEFAULT 'ats';
+ALTER TABLE resume_docs ALTER COLUMN template_id SET DEFAULT 'ats';
+ALTER TABLE resume_doc_versions ALTER COLUMN template_id SET DEFAULT 'ats'
+`,
+  },
 ];
