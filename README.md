@@ -60,6 +60,7 @@ Everything runs with no keys at all (heuristic extraction, feed polling, PDF, dr
 | Env var | Get it at | Unlocks |
 |---|---|---|
 | `HOSTED_LLM_PROVIDER` + `HOSTED_LLM_BASE_URL` + `HOSTED_LLM_API_KEY` (+ `HOSTED_LLM_QUALITY_MODEL`, `HOSTED_LLM_BULK_MODEL`) | any OpenAI-compatible provider (platform.openai.com, OpenRouter, Groq), Anthropic, or Ollama (`http://localhost:11434/v1`) | The model every account runs on: resume extraction, bullet rewriting, answer drafting, inbox classification. `HOSTED_LLM_DAILY_TOKEN_CAP` (default 300000) bounds one person's daily use |
+| `EXA_API_KEY` | dashboard.exa.ai | Web search for postings beyond the ATS feeds: X posts, Hacker News hiring threads, Wellfound, Y Combinator, public LinkedIn job pages, and the boards themselves. Preferred over Parallel when both are set |
 | `PARALLEL_API_KEY` | platform.parallel.ai (prepaid credit) | Intent-based job discovery, pasted-URL extraction, company research with citations |
 | `COMPOSIO_API_KEY` | dashboard.composio.dev | Gmail inbox and verification codes, Slack chat, Google Sheets tracker, Google Calendar holds. Connect each app once from Settings. |
 | `TELEGRAM_BOT_TOKEN` | @BotFather on Telegram; set `TELEGRAM_AUTOLINK=true` for single-user mode | Text the agent on your phone |
