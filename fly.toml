@@ -13,9 +13,9 @@ primary_region = "sjc"
   # Live sending: an approved application is really submitted to the employer. Every send still needs the person's approval.
   # Set to "false" (or `flyctl secrets set ALLOW_REAL_SUBMIT=false`) to go back to dry run, where forms are filled and nothing is sent.
   ALLOW_REAL_SUBMIT = "true"
-  # Autopilot sends by itself only after the person has hand-approved this many applications (default 3). One: the first live
-  # send is approved by hand, after which Autopilot is trusted.
-  AUTOPILOT_MIN_APPROVALS = "1"
+  # Autopilot sends by itself only after the person has hand-approved this many applications (default 3). Zero for the
+  # hackathon demo: Autopilot may send as soon as it is switched on. Set 1 to 3 to require hand-approved sends first.
+  AUTOPILOT_MIN_APPROVALS = "0"
 
 [mounts]
   source = "jobgraph_data"

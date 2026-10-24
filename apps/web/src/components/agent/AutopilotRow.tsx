@@ -103,7 +103,7 @@ export function AutopilotRow({ status, onStatus, onError }: { status: AgentStatu
         </CheckRow>
         {trust && (
           <CheckRow ok={earned}>
-            {earned ? `You approved ${trust.approved} applications yourself` : `Trust: ${trust.approved} of ${trust.needed} hand approvals so far`}
+            {earned ? (trust.needed === 0 ? "No hand approvals needed" : `You approved ${trust.approved} applications yourself`) : `Trust: ${trust.approved} of ${trust.needed} hand approvals so far`}
           </CheckRow>
         )}
       </ul>
