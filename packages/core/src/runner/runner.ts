@@ -16,6 +16,7 @@ import { renderPdf } from "../tailor/pdf.js";
 import { getProfile } from "../users.js";
 import { baselineFromDoc, getDefaultResumeDoc } from "../resume/docs.js";
 import { emit } from "./events.js";
+import { greenhouseFormUrl } from "../feeds/greenhouse.js";
 import { checkDisqualifiers, unprovenConstraints } from "../agent/gate.js";
 import { AUTOPILOT_COMPANY_COOLDOWN_DAYS, autopilotVerdict, describeVerdict, type AutopilotMode } from "./autopilot.js";
 import { newUsage, runCollectingUsage, withUserLLM } from "../llm/index.js";
@@ -236,8 +237,11 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
   if (!app.resumeId) throw new Error("No resume on this application");
   const [resume] = await db.select().from(resumes).where(eq(resumes.id, app.resumeId)).limit(1);
   if (!resume?.pdfPath) throw new Error("Resume has no PDF");
-  const driver = deps.pickDriver(job.applyUrl);
-  if (!driver) throw new Error(`No apply driver supports ${job.applyUrl}`);
+  // A Greenhouse board that redirects to the company's own site: go straight to Greenhouse's embedded form instead.
+  const [board] = job.companyId ? await db.select({ token: companies.atsToken }).from(companies).where(eq(companies.id, job.companyId)).limit(1) : [];
+  const formUrl = greenhouseFormUrl(job, board?.token) ?? job.applyUrl;
+  const driver = deps.pickDriver(formUrl);
+  if (!driver) throw new Error(`No apply driver supports ${formUrl}`);
   const profileRow = await getProfile(db, app.userId);
   const [user] = await db.select().from(users).where(eq(users.id, app.userId)).limit(1);
   const profile = toApplicantProfile(profileRow, user?.email ?? "");
@@ -260,7 +264,7 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
     job, requirements, profileRow,
     reviewBeforeSubmit: profileRow.reviewBeforeSubmit,
     ctx: {
-      applyUrl: job.applyUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
+      applyUrl: formUrl, profile, resumePdfPath: resume.pdfPath, answers: { ...app.answers }, answerQuestion,
       onEvent: (step, message, data) => { void emit(db, app.id, `driver:${step}`, message, data ?? {}); },
       artifactsDir: path.join(artifactsRootOf(deps), app.id),
       headless: deps.headless,
