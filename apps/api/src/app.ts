@@ -21,13 +21,13 @@ import {
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
   agentTick, tickRunning, type TickSummary, chatHistory, chatOnce, createAgent, getActivity, startOfDay,
-  effectiveLanes, exportGraph, localOnly, modeOf, modelSettings,
+  effectiveLanes, exportGraph, issueChannelLinkCode, localOnly, modeOf, modelSettings,
   normalizeLanes, processLLM, queuedTodayByLane, storedLanes, withUserLLM, LaneInput,
   type ApplicationStatus, type Db, type OutboundMessage, type Preferences, type RunEventRow, type RunnerDeps,
 } from "@jobgraph/core";
 import { pickDriver } from "@jobgraph/drivers";
 import {
-  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
+  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, telegramBotUsername, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
@@ -837,6 +837,23 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       .onConflictDoUpdate({ target: [channels.kind, channels.address], set: { meta: b.meta ?? {} }, setWhere: eq(channels.userId, user.id) }).returning();
     if (!row) throw bad("That address is already linked to another account", 409);
     return c.json(row, 201);
+  });
+
+  // ---------- linking a Telegram chat ----------
+  /** Whether the bot is set up, its handle, and whether this account has a chat linked. */
+  app.get("/api/channels/telegram", async (c) => {
+    const user = c.get("user");
+    const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+    const [linked] = await db.select({ id: channels.id }).from(channels).where(and(eq(channels.userId, user.id), eq(channels.kind, "telegram"))).limit(1);
+    return c.json({ configured, botUsername: configured ? await telegramBotUsername() : null, linked: Boolean(linked) });
+  });
+
+  /** A one-time code (15 minutes) the person sends to the bot; the chat it arrives from is then linked to this account. */
+  app.post("/api/channels/telegram/link", async (c) => {
+    if (!process.env.TELEGRAM_BOT_TOKEN) throw bad("Telegram is not set up on this server (TELEGRAM_BOT_TOKEN)", 503);
+    const { code, expiresAt } = await issueChannelLinkCode(db, c.get("user").id);
+    const botUsername = await telegramBotUsername();
+    return c.json({ code, expiresAt: expiresAt.toISOString(), botUsername, link: botUsername ? `https://t.me/${botUsername}?start=${code}` : null });
   });
 
   app.delete("/api/channels/:id", async (c) => {

@@ -5,7 +5,7 @@
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, ApplicationStatus, AtsCheck, Channel, Company,
-  Graph, GraphEdge, GraphNode, InboxMessage, Integration, Job, JobDetail, JobWithMatch, Lane, Match, Me, ModelSettings,
+  Graph, GraphEdge, GraphNode, InboxMessage, Integration, Job, JobDetail, JobWithMatch, Lane, Match, Me, ModelSettings, TelegramInfo, TelegramLink,
   IngestResult, OnboardingState, Resume, ResumeChange, ResumeContent, RunEventRow, TrackerStats,
 } from "./types";
 
@@ -572,6 +572,9 @@ const modelState: ModelSettings = {
   usage: { promptTokens: 38_400, completionTokens: 9_100, totalTokens: 47_500, calls: 21, shared: true, capTokens: 300_000, remainingTokens: 252_500, exhausted: false, resetsAt: new Date(Date.now() + 6 * 60 * MIN).toISOString() },
 };
 export const modelSettings = (): ModelSettings => ({ ...modelState });
+
+export const telegramInfo = (): TelegramInfo => ({ configured: true, botUsername: "NoriNoteBot", linked: channels.some((c) => c.kind === "telegram") });
+export const telegramLink = (): TelegramLink => ({ code: "K7PX4M", expiresAt: new Date(Date.now() + 15 * MIN).toISOString(), botUsername: "NoriNoteBot", link: "https://t.me/NoriNoteBot?start=K7PX4M" });
 
 export function agentTick(): AgentTickSummary {
   return { discovered: 6, scored: 6, queued: 2, skipped: [{}, {}, {}], awaitingReview: 2, submitted: 1, needsUser: 1 };

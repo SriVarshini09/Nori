@@ -33,11 +33,11 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/** One-time links for password reset and email verification. Only the sha256 of the token is stored. */
+/** One-time tokens: password reset and email verification links, and short codes that link a chat (Telegram) to an account. Only the sha256 is stored. */
 export const authTokens = pgTable("auth_tokens", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  kind: text("kind").$type<"reset" | "verify">().notNull(),
+  kind: text("kind").$type<"reset" | "verify" | "telegram_link">().notNull(),
   tokenHash: text("token_hash").notNull().unique(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),

@@ -10,8 +10,8 @@ import { Frame, PageHeader, SectionHeader } from "@/components/ui";
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const [{ user, profile }, integrations, channels, model] = await Promise.all([
-    api.me(), api.listIntegrations().catch(() => []), api.listChannels().catch(() => []), api.modelSettings().catch(() => null),
+  const [{ user, profile }, integrations, channels, model, telegram] = await Promise.all([
+    api.me(), api.listIntegrations().catch(() => []), api.listChannels().catch(() => []), api.modelSettings().catch(() => null), api.telegramInfo().catch(() => null),
   ]);
   const body = "col-span-12 lg:col-span-9 lg:col-start-4";
   return (
@@ -54,7 +54,7 @@ export default async function SettingsPage() {
         </section>
         <section>
           <SectionHeader index="06" label="Channels" size="md" title={<>Where it<br />reaches you.</>} />
-          <div className="mt-8 grid grid-cols-12"><div className={body}><Channels channels={channels} /></div></div>
+          <div className="mt-8 grid grid-cols-12"><div className={body}><Channels channels={channels} telegram={telegram} /></div></div>
         </section>
         <section>
           <SectionHeader index="07" label="Security" size="md" title={<>Password and<br />devices.</>} />

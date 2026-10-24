@@ -8,7 +8,7 @@
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
   InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, OnboardingState, OnboardingStepId,
-  BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TrackerStats, User,
+  BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TelegramInfo, TelegramLink, TrackerStats, User,
 } from "./types";
 
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
@@ -301,6 +301,8 @@ export const api = {
 
   // ---- channels / integrations
   listChannels: async (): Promise<Channel[]> => (USE_MOCK ? (await mock()).channels : request("GET", "/api/channels")),
+  telegramInfo: async (): Promise<TelegramInfo> => (USE_MOCK ? (await mock()).telegramInfo() : request("GET", "/api/channels/telegram")),
+  telegramLink: async (): Promise<TelegramLink> => (USE_MOCK ? (await mock()).telegramLink() : request("POST", "/api/channels/telegram/link")),
   listIntegrations: async (): Promise<Integration[]> => (USE_MOCK ? (await mock()).integrations : request("GET", "/api/integrations")),
   connectIntegration: async (toolkit: string): Promise<{ redirectUrl: string }> =>
     USE_MOCK ? { redirectUrl: `https://connect.composio.dev/mock/${toolkit}` } : request("POST", `/api/integrations/${toolkit}/connect`),
