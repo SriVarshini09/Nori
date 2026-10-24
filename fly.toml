@@ -37,5 +37,6 @@ primary_region = "sjc"
     grace_period = "40s"
 
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "2gb"
+  # Dedicated CPUs: shared ones are throttled once their burst credit is spent, which made resume rendering and form filling crawl.
+  size = "performance-2x"
+  memory = "4gb"

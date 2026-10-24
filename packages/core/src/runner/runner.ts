@@ -471,6 +471,14 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
 }
 
 async function stepSubmitting(db: Db, app: Application, deps: RunnerDeps): Promise<ApplicationStatus> {
+  // Real sending is switched off on this server: the driver would refuse to click send anyway, so do not re-open the
+  // browser and fill the whole form a second time (about as long as the first fill) only to end up here. Record the
+  // approval, say plainly that nothing was sent, and hand the form back at once.
+  if (!(deps.allowRealSubmit ?? process.env.ALLOW_REAL_SUBMIT === "true")) {
+    const receipt = app.receipt ? { ...app.receipt, dryRun: true } : undefined;
+    return transition(db, app, "form_review", { ...(receipt ? { receipt } : {}), formApprovedAt: null },
+      "Form approved. Real sending is switched off on this server (dry run), so nothing was sent.");
+  }
   const root = artifactsRootOf(deps);
   const { ctx, driver, composed } = await setupDrive(db, app, deps);
   // Submit exactly what was reviewed: the fill run's generated answers, overridden by the user's.

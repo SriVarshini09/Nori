@@ -184,6 +184,25 @@ describe("runner", () => {
     expect(last.message).toMatch(/ALLOW_REAL_SUBMIT/);
   });
 
+  it("with real sending off, approving the form records the OK at once without opening the browser again", async () => {
+    const driver = new FakeDriver("fill");
+    const d = { ...deps(driver), allowRealSubmit: false };
+    const { id } = await createApplication(db, userId, jobId);
+    await runApplication(db, id, d);
+    await approveResume(db, id, d);
+    expect((await app(id)).status).toBe("form_review");
+    const fillRuns = driver.calls.length;
+    expect(fillRuns).toBeGreaterThan(0);
+    expect(await approveForm(db, id, d)).toBe("form_review");
+    expect(driver.calls.length).toBe(fillRuns); // no second fill
+    const a = await app(id);
+    expect(a.formApprovedAt).toBeNull();
+    expect(a.receipt?.dryRun).toBe(true);
+    const events = await db.select().from(runEvents).where(eq(runEvents.applicationId, id)).orderBy(asc(runEvents.ts));
+    expect(events.some((e) => e.step === "approve_form")).toBe(true);
+    expect(events.at(-1)!.message).toMatch(/approved.*dry run.*nothing was sent/i);
+  });
+
   it("goes to needs_user for unanswered questions and resumes after answers", async () => {
     const driver = new FakeDriver("needs_user");
     const d = deps(driver);

@@ -122,7 +122,8 @@ export async function startStack(opts: { build?: boolean; realModel?: boolean; r
   const app = createApp(db, {
     // realMail sends through SMTP_URL / RESEND_API_KEY from .env; otherwise nothing leaves the machine.
     ...(opts.realMail ? {} : { mailer: async (m: { to: string; subject: string; text: string }) => { outbox.push({ to: m.to, subject: m.subject, text: m.text }); } }),
-    runnerDeps: { pickDriver: () => new FakeDriver(), artifactsRoot, allowRealSubmit: false },
+    // The fake driver only simulates sending (it never leaves the machine), so the send lock is "open" for it; with the lock closed the runner records the approval without driving at all.
+    runnerDeps: { pickDriver: () => new FakeDriver(), artifactsRoot, allowRealSubmit: true },
     mcp: true, defaultUserEmail: null, rateLimit: false, webUrl: WEB,
   });
   const server = serve({ fetch: app.fetch, port: API_PORT });
