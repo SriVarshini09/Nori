@@ -72,10 +72,11 @@ describe("exa client", () => {
 
   it("sends the key, the domains, the category and the date, and never echoes the key on failure", async () => {
     process.env.EXA_API_KEY = "exa-test-key";
-    const r = await exaSearch({ query: "backend engineer hiring", includeDomains: ["x.com"], category: "tweet", startPublishedDate: "2026-09-01", numResults: 7 });
+    const r = await exaSearch({ query: "backend engineer hiring", includeDomains: ["x.com"], startPublishedDate: "2026-09-01", numResults: 7 });
     expect(r).toHaveLength(2);
     expect(r[0]).toMatchObject({ url: "https://x.com/acmeai/status/1", author: "@acmeai" });
-    expect(requests.at(-1)!.body).toMatchObject({ query: "backend engineer hiring", includeDomains: ["x.com"], category: "tweet", startPublishedDate: "2026-09-01", numResults: 7, type: "auto" });
+    expect(requests.at(-1)!.body).toMatchObject({ query: "backend engineer hiring", includeDomains: ["x.com"], startPublishedDate: "2026-09-01", numResults: 7, type: "auto" });
+    expect(requests.at(-1)!.body.category).toBeUndefined();
     expect(requests.at(-1)!.key).toBe("exa-test-key");
     process.env.EXA_API_KEY = "wrong-key-secret";
     await expect(exaSearch({ query: "x" })).rejects.toThrow(/Exa search failed: 401/);

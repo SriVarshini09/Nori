@@ -145,37 +145,46 @@ export async function discoverJobsExa(db: Db, query: DiscoverQuery): Promise<{ a
   const seen = new Set<string>();
   const found: NormalizedJob[] = [];
   const since = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const claim = (raw: string): string | null => {
+    let url: string;
+    try { url = cleanUrl(raw); } catch { return null; }
+    if (seen.has(url)) return null;
+    seen.add(url);
+    return url;
+  };
 
-  for (const q of queries) {
-    const hits = await exaSearch({ query: q, numResults: max, includeDomains: ATS_DOMAINS, startPublishedDate: since(60), maxCharacters: 2000 }).catch((e) => { console.warn(`[discover] exa ats: ${(e as Error).message}`); return []; });
-    for (const r of hits) {
-      let url: string;
-      try { url = cleanUrl(r.url); } catch { continue; }
-      if (seen.has(url)) continue;
-      seen.add(url);
-      const m = matchFeedUrl(url);
-      if (m && !m.externalId) continue;
-      try {
-        const job = await resolveUrl(url, "exa_search", cache, { title: r.title, excerpts: r.text ? [r.text] : [] });
-        if (job) found.push(job);
-      } catch (err) { console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`); }
-    }
-  }
-  for (const source of SOCIAL_SOURCES) {
+  // Every search runs at once; a person is waiting on the other end, and the sources are independent.
+  const atsSweeps = queries.map((q) => exaSearch({ query: q, numResults: max, includeDomains: ATS_DOMAINS, startPublishedDate: since(60), maxCharacters: 2000 })
+    .catch((e) => { console.warn(`[discover] exa ats: ${(e as Error).message}`); return []; }));
+  const socialSweeps = SOCIAL_SOURCES.map((source) => {
     const q = `${queries[0]} ${source.id === "x" || source.id === "hn" ? "hiring" : ""}`.trim();
-    const hits = await exaSearch({ query: q, numResults: Math.max(5, Math.ceil(max / 2)), includeDomains: source.domains, category: source.category, startPublishedDate: since(source.freshDays) })
-      .catch((e) => { console.warn(`[discover] exa ${source.id}: ${(e as Error).message}`); return []; });
-    for (const r of hits) {
-      let url: string;
-      try { url = cleanUrl(r.url); } catch { continue; }
-      if (seen.has(url)) continue;
-      seen.add(url);
-      try {
-        const job = await postingFromResult(r, sourceFor(url) ?? source);
-        if (job) found.push(job);
-      } catch (err) { console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`); }
-    }
+    return exaSearch({ query: q, numResults: Math.max(5, Math.ceil(max / 2)), includeDomains: source.domains, category: source.category, startPublishedDate: since(source.freshDays) })
+      .then((hits) => hits.map((r) => ({ r, source })))
+      .catch((e) => { console.warn(`[discover] exa ${source.id}: ${(e as Error).message}`); return [] as { r: Awaited<ReturnType<typeof exaSearch>>[number]; source: typeof source }[]; });
+  });
+  const [atsHits, socialHits] = await Promise.all([Promise.all(atsSweeps), Promise.all(socialSweeps)]);
+
+  // ATS hits resolve through their feeds (cached per board); social hits are read as postings, a few at a time.
+  const atsTasks: Promise<void>[] = [];
+  for (const r of atsHits.flat()) {
+    const url = claim(r.url);
+    if (!url) continue;
+    const m = matchFeedUrl(url);
+    if (m && !m.externalId) continue;
+    atsTasks.push(resolveUrl(url, "exa_search", cache, { title: r.title, excerpts: r.text ? [r.text] : [] })
+      .then((job) => { if (job) found.push(job); })
+      .catch((err) => console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`)));
   }
+  const socialTasks: (() => Promise<void>)[] = [];
+  for (const { r, source } of socialHits.flat()) {
+    const url = claim(r.url);
+    if (!url) continue;
+    socialTasks.push(() => postingFromResult(r, sourceFor(url) ?? source)
+      .then((job) => { if (job) found.push(job); })
+      .catch((err) => console.warn(`[discover] skipped ${new URL(url).hostname}: ${(err as Error).message}`)));
+  }
+  const limited = socialTasks.slice(0, 24);
+  await Promise.all([...atsTasks, ...Array.from({ length: 4 }, async () => { while (limited.length) await limited.shift()!(); })]);
   const { added } = await upsertJobs(db, found);
   return { added, jobs: found };
 }

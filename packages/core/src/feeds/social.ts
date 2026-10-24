@@ -20,7 +20,8 @@ export type SocialSource = {
 };
 
 export const SOCIAL_SOURCES: SocialSource[] = [
-  { id: "x", label: "X", domains: ["x.com", "twitter.com"], category: "tweet", freshDays: 30 },
+  // Exa dropped its "tweet" category (400 since Oct 2026); the domain filter alone selects X posts.
+  { id: "x", label: "X", domains: ["x.com", "twitter.com"], freshDays: 30 },
   { id: "hn", label: "Hacker News", domains: ["news.ycombinator.com"], freshDays: 45 },
   { id: "wellfound", label: "Wellfound", domains: ["wellfound.com"], freshDays: 60 },
   { id: "yc", label: "Y Combinator", domains: ["ycombinator.com"], freshDays: 60 },
