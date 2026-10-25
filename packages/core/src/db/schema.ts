@@ -124,6 +124,8 @@ export type Preferences = {
   agent?: { lastTickAt?: string; lastDiscoverAt?: string; lastBriefOn?: string; lastWeeklyOn?: string };
   /** Auto-apply lanes. When absent or empty, titles/locations/remote above act as one implicit lane. */
   lanes?: Lane[];
+  /** Answers the person gave to questions Nori could not answer, reused on later forms. Server-owned: see runner/saved-answers.ts. */
+  savedAnswers?: Record<string, { label: string; value: string }>;
 };
 
 /** One search lane: the agent queues jobs whose title and place fit, at or above minScore. */
