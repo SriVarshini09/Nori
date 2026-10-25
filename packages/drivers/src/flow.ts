@@ -164,6 +164,56 @@ async function acquireBrowser(headless: boolean): Promise<Browser> {
   return browser;
 }
 
+/**
+ * Stage 2: Browserbase CDP support.
+ * When BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID (or BROWSER_CDP_URL) are set, connects over CDP
+ * and retrieves the Browserbase Live View debugger URL so CAPTCHAs / bot walls can be handed off to the user's phone.
+ */
+export function browserbaseConfigured(): boolean {
+  return Boolean(
+    (process.env.BROWSERBASE_API_KEY?.trim() && process.env.BROWSERBASE_PROJECT_ID?.trim()) ||
+    process.env.BROWSER_CDP_URL?.trim(),
+  );
+}
+
+async function createBrowserbaseSession(): Promise<{ browser: Browser; context: BrowserContext; liveViewUrl?: string } | null> {
+  const cdpUrl = process.env.BROWSER_CDP_URL?.trim();
+  if (cdpUrl) {
+    const browser = await chromium.connectOverCDP(cdpUrl);
+    const context = browser.contexts()[0] ?? (await browser.newContext({ viewport: { width: 1280, height: 900 } }));
+    return { browser, context };
+  }
+  const apiKey = process.env.BROWSERBASE_API_KEY?.trim();
+  const projectId = process.env.BROWSERBASE_PROJECT_ID?.trim();
+  if (!apiKey || !projectId) return null;
+
+  const res = await fetch("https://api.browserbase.com/v1/sessions", {
+    method: "POST",
+    headers: { "x-bb-api-key": apiKey, "content-type": "application/json" },
+    body: JSON.stringify({ projectId, keepAlive: true }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`Browserbase session creation failed: ${res.status}`);
+  const session = (await res.json()) as { id: string; connectUrl?: string };
+  const connectUrl = session.connectUrl || `wss://connect.browserbase.com?apiKey=${encodeURIComponent(apiKey)}&sessionId=${encodeURIComponent(session.id)}`;
+  const browser = await chromium.connectOverCDP(connectUrl);
+  const context = browser.contexts()[0] ?? (await browser.newContext({ viewport: { width: 1280, height: 900 } }));
+
+  let liveViewUrl: string | undefined;
+  try {
+    const dbgRes = await fetch(`https://api.browserbase.com/v1/sessions/${encodeURIComponent(session.id)}/debug`, {
+      headers: { "x-bb-api-key": apiKey },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (dbgRes.ok) {
+      const dbg = (await dbgRes.json()) as { debuggerFullscreenUrl?: string };
+      liveViewUrl = dbg.debuggerFullscreenUrl;
+    }
+  } catch {
+    /* live view URL is optional */
+  }
+  return { browser, context, liveViewUrl };
+}
 function scheduleBrowserIdleCheck(): void {
   if (activeContexts > 0 || parked.size > 0) return;
   if (browserIdleTimer) clearTimeout(browserIdleTimer);
@@ -313,12 +363,22 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     let filled: Receipt["fields"];
     let pending: PendingQuestion[];
     let files: string[];
+    let liveViewUrl: string | undefined;
     if (carried) {
       ({ filled, pending, files } = carried);
     } else {
-      const browser = await acquireBrowser(ctx.headless ?? true);
-      context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-      page = await context.newPage();
+      if (browserbaseConfigured()) {
+        const bb = await createBrowserbaseSession().catch(() => null);
+        if (bb) {
+          context = bb.context;
+          liveViewUrl = bb.liveViewUrl;
+        }
+      }
+      if (!context) {
+        const browser = await acquireBrowser(ctx.headless ?? true);
+        context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      }
+      page = context.pages()[0] ?? (await context.newPage());
       page.setDefaultTimeout(NAV_TIMEOUT);
 
       ctx.onEvent("navigate", `Opening ${ctx.applyUrl}`);
@@ -368,16 +428,16 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
 
     const captcha = await detectCaptcha(page);
     if (captcha) {
-      ctx.onEvent("captcha", `CAPTCHA detected (${captcha}); leaving it for the user`);
-      pending.push(CAPTCHA_QUESTION);
+      ctx.onEvent("captcha", `CAPTCHA detected (${captcha}); leaving it for the user`, { liveViewUrl });
+      pending.push({ ...CAPTCHA_QUESTION, ...(liveViewUrl ? { liveViewUrl } : {}) });
     }
 
     const filledShot = await screenshot(page, ctx, opts.name, "filled");
 
     if (pending.length) {
-      ctx.onEvent("needs_user", `${pending.length} question(s) need the user`, { pending });
-      if (!captcha) keep();
-      return { outcome: "needs_user", pending, receipt: receipt({ fields: filled, files, screenshotPath: filledShot }) };
+      ctx.onEvent("needs_user", `${pending.length} question(s) need the user`, { pending, liveViewUrl });
+      if (!captcha || liveViewUrl) keep();
+      return { outcome: "needs_user", pending, receipt: receipt({ fields: filled, files, screenshotPath: filledShot, ...(liveViewUrl ? { liveViewUrl } : {}) }) };
     }
 
     if (!submitAllowed(ctx)) {

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type ComponentType } from "react";
+import { useState, type ComponentType, type FormEvent } from "react";
+import { Trash2, Plus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Profile } from "@/lib/types";
+import type { Profile, SavedAnswersMap } from "@/lib/types";
 import { AuthorizationStep, ContactStep, PreferencesStep, ScreeningStep, type StepProps } from "./onboarding/steps";
-import { Accordion, Notice } from "./ui";
+import { Accordion, Button, Field, Notice, inputClass } from "./ui";
 
 function PreferencesAnswers(p: StepProps) {
   return <PreferencesStep {...p} agent={false} />;
@@ -16,6 +17,189 @@ const SECTIONS: { id: string; title: string; Form: ComponentType<StepProps> }[] 
   { id: "screening", title: "Screening answers", Form: ScreeningStep },
   { id: "preferences", title: "Job preferences", Form: PreferencesAnswers },
 ];
+
+function RememberedAnswersSection({
+  initial,
+  onChange,
+}: {
+  initial: SavedAnswersMap;
+  onChange: (next: SavedAnswersMap) => void;
+}) {
+  const [saved, setSaved] = useState<SavedAnswersMap>(initial);
+  const [newLabel, setNewLabel] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ tone: "green" | "red"; text: string } | null>(null);
+
+  const entries = Object.entries(saved);
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault();
+    if (!newLabel.trim() || !newValue.trim()) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.upsertSavedAnswer(newLabel.trim(), newValue.trim());
+      setSaved(res.savedAnswers);
+      onChange(res.savedAnswers);
+      setNewLabel("");
+      setNewValue("");
+      setNote({ tone: "green", text: "Saved answer added." });
+    } catch (err) {
+      setNote({ tone: "red", text: err instanceof ApiError ? err.detail : (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveEdit(key: string, label: string) {
+    if (!editValue.trim()) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.upsertSavedAnswer(label, editValue.trim());
+      setSaved(res.savedAnswers);
+      onChange(res.savedAnswers);
+      setEditingKey(null);
+      setNote({ tone: "green", text: "Answer updated." });
+    } catch (err) {
+      setNote({ tone: "red", text: err instanceof ApiError ? err.detail : (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(key: string) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.deleteSavedAnswer(key);
+      setSaved(res.savedAnswers);
+      onChange(res.savedAnswers);
+    } catch (err) {
+      setNote({ tone: "red", text: err instanceof ApiError ? err.detail : (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleClearAll() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.clearSavedAnswers();
+      setSaved(res.savedAnswers);
+      onChange(res.savedAnswers);
+      setNote({ tone: "green", text: "Cleared all remembered answers." });
+    } catch (err) {
+      setNote({ tone: "red", text: err instanceof ApiError ? err.detail : (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 pt-1">
+      <p className="text-body-sm text-ink-2">
+        Questions Nori could not answer on earlier forms that you answered once. Nori reuses these automatically whenever the same question appears again.
+      </p>
+
+      {note && <Notice tone={note.tone}>{note.text}</Notice>}
+
+      {entries.length > 0 ? (
+        <ul className="divide-y divide-line rounded-card border border-line bg-bg">
+          {entries.map(([key, item]) => (
+            <li key={key} className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium text-ink">{item.label}</p>
+                {editingKey === key ? (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      aria-label={`Edit answer for ${item.label}`}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className={`${inputClass} max-w-xs`}
+                    />
+                    <Button type="button" size="sm" disabled={busy} onClick={() => handleSaveEdit(key, item.label)}>
+                      Save
+                    </Button>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => setEditingKey(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="mt-0.5 text-[13.5px] text-ink-2">{item.value}</p>
+                )}
+              </div>
+              {editingKey !== key && (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingKey(key);
+                      setEditValue(item.value);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleDelete(key)}
+                    aria-label={`Remove saved answer for ${item.label}`}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-sunken hover:text-danger"
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="rounded-card border border-dashed border-line px-4 py-3 text-meta text-muted">
+          No remembered answers yet. Answer a pending question on an application or add one below.
+        </p>
+      )}
+
+      <form onSubmit={handleAdd} className="grid grid-cols-1 gap-3 border-t border-line pt-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <Field label="Question label">
+          <input
+            className={inputClass}
+            placeholder="e.g. Highest level of education"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+          />
+        </Field>
+        <Field label="Your answer">
+          <input
+            className={inputClass}
+            placeholder="e.g. Master's Degree"
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+          />
+        </Field>
+        <Button type="submit" variant="secondary" disabled={busy || !newLabel.trim() || !newValue.trim()}>
+          <Plus size={15} aria-hidden="true" />
+          Add answer
+        </Button>
+      </form>
+
+      {entries.length > 1 && (
+        <div className="flex justify-end">
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={handleClearAll}>
+            Clear all ({entries.length})
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** The onboarding answers, editable after the fact. Each section saves through PUT /api/profile. */
 export function AnswersEditor({ profile: initial }: { profile: Profile }) {
@@ -37,6 +221,8 @@ export function AnswersEditor({ profile: initial }: { profile: Profile }) {
     }
   }
 
+  const savedCount = Object.keys(profile.preferences?.savedAnswers ?? {}).length;
+
   return (
     <div className="flex flex-col gap-3">
       {SECTIONS.map(({ id, title, Form }, i) => (
@@ -52,6 +238,14 @@ export function AnswersEditor({ profile: initial }: { profile: Profile }) {
           </div>
         </Accordion>
       ))}
+      <Accordion title={savedCount > 0 ? `Remembered form answers (${savedCount})` : "Remembered form answers"}>
+        <RememberedAnswersSection
+          initial={profile.preferences?.savedAnswers ?? {}}
+          onChange={(savedAnswers) =>
+            setProfile((p) => ({ ...p, preferences: { ...p.preferences, savedAnswers } }))
+          }
+        />
+      </Accordion>
     </div>
   );
 }

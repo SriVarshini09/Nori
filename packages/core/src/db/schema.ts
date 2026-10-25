@@ -22,14 +22,21 @@ export const EDGE_TYPES = [
 ] as const;
 export type EdgeType = (typeof EDGE_TYPES)[number];
 
+export const USER_PLANS = ["free", "pro"] as const;
+export type UserPlan = (typeof USER_PLANS)[number];
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   name: text("name"),
-  /** scrypt$N$r$p$salt$hash (base64); null for users created by DEFAULT_USER_EMAIL or channels. */
+  /** scrypt$N$r$p$salt$hash (base64); null for users created by DEFAULT_USER_EMAIL or channels/OAuth. */
   passwordHash: text("password_hash"),
-  /** Set when the user proves they own the address (verification link). Null = not verified yet. */
+  /** Set when the user proves they own the address (verification link or Google OAuth). Null = not verified yet. */
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  plan: text("plan").$type<UserPlan>().default("free").notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  referralCode: text("referral_code"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -91,6 +98,8 @@ export const profiles = pgTable("profiles", {
   /** Daily cap for auto-apply mode. 0 disables auto apply. */
   autoApplyDailyCap: integer("auto_apply_daily_cap").default(0).notNull(),
   autoApplyMinScore: real("auto_apply_min_score").default(0.7).notNull(),
+  /** Owned inbound email address (`firstname-xxxx@mail.norinote.xyz`) for receiving verification codes and confirmations. */
+  inboundEmail: text("inbound_email"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -262,8 +271,8 @@ export type MatchExplanation = {
 export const APPLICATION_STATUSES = [
   "queued", "tailoring", "resume_review", "filling", "form_review",
   "submitting", "awaiting_code", "submitted", "needs_user", "failed", "skipped",
-  // post-submission tracker stages, moved by inbox classification
-  "viewed", "replied", "interview", "offer", "rejected",
+  // post-submission tracker stages, moved by inbox classification or ghosted timer
+  "viewed", "replied", "interview", "offer", "rejected", "ghosted",
 ] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
@@ -296,7 +305,7 @@ export const applications = pgTable("applications", {
   index("applications_status_idx").on(t.status),
 ]);
 
-export type PendingQuestion = { label: string; type: string; options?: string[]; required: boolean };
+export type PendingQuestion = { label: string; type: string; options?: string[]; required: boolean; liveViewUrl?: string };
 export type Receipt = {
   fields: { label: string; value: string; kind: string }[];
   files: string[];
@@ -304,6 +313,11 @@ export type Receipt = {
   confirmationText?: string;
   /** Answers the agent generated for custom questions this run; recomputed on retry. */
   autoAnswers?: Record<string, string>;
+  /** Browserbase live-view URL when a session was handed off for CAPTCHA or manual intervention. */
+  liveViewUrl?: string;
+  /** Applicant email and generated ATS account info when an employer account was used/created. */
+  appliedUsingEmail?: string;
+  atsAccountEmployer?: string;
   submittedVia: string;
   dryRun: boolean;
   durationMs: number;
@@ -415,11 +429,11 @@ export const inboxMessages = pgTable("inbox_messages", {
 
 export type InboxKind = "verification_code" | "recruiter_reply" | "interview" | "rejection" | "offer" | "confirmation" | "other";
 
-/** Messaging channels a user has linked: slack, telegram, whatsapp, email. */
+/** Messaging channels a user has linked: slack, telegram, whatsapp, sms, email. */
 export const channels = pgTable("channels", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  kind: text("kind").$type<"slack" | "telegram" | "whatsapp" | "email" | "console" | "web">().notNull(),
+  kind: text("kind").$type<"slack" | "telegram" | "whatsapp" | "sms" | "email" | "console" | "web">().notNull(),
   /** Channel-specific address: slack channel id, telegram chat id, phone number, email. */
   address: text("address").notNull(),
   meta: jsonb("meta").$type<Record<string, unknown>>().default({}).notNull(),
@@ -454,9 +468,51 @@ export const agentEvents = pgTable("agent_events", {
   data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
 }, (t) => [index("agent_events_user_idx").on(t.userId, t.ts), index("agent_events_job_idx").on(t.userId, t.jobId)]);
 
+/** Stage 1: Web Push subscriptions (VAPID) for mobile/desktop push notifications. */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("push_subscriptions_user_idx").on(t.userId)]);
+
+/** Stage 5: Encrypted per-employer ATS account vault (Workday, iCIMS, Oracle). */
+export const atsAccounts = pgTable("ats_accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  atsType: text("ats_type").$type<AtsType>().notNull(),
+  employerKey: text("employer_key").notNull(),
+  email: text("email").notNull(),
+  encryptedPassword: text("encrypted_password").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [uniqueIndex("ats_accounts_user_employer_unique").on(t.userId, t.atsType, t.employerKey)]);
+
+/** Stage 7: People outreach drafts and follow-up tracking. */
+export const outreach = pgTable("outreach", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+  applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+  personName: text("person_name").notNull(),
+  personTitle: text("person_title").notNull(),
+  personUrl: text("person_url"),
+  companyName: text("company_name").notNull(),
+  draftText: text("draft_text").notNull(),
+  sources: jsonb("sources").$type<string[]>().default([]).notNull(),
+  status: text("status").$type<"draft" | "sent" | "replied">().default("draft").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  followUpAt: timestamp("follow_up_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("outreach_user_idx").on(t.userId, t.createdAt)]);
+
 export const schema = {
   users, sessions, profiles, graphNodes, graphEdges, companies, jobs, matches, applications,
   resumes, resumeDocs, resumeDocVersions, runEvents, inboxMessages, channels, conversations, agentEvents,
+  pushSubscriptions, atsAccounts, outreach,
 };
 
 /**

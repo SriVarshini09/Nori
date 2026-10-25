@@ -1,11 +1,11 @@
 "use client";
 
-import { CalendarDays, Check, Hash, Link2, Mail, Plug, RefreshCw, Sheet, Trash2, type LucideIcon } from "lucide-react";
+import { Bell, CalendarDays, Check, Copy, CreditCard, Hash, Link2, Mail, Plug, RefreshCw, Sheet, Trash2, type LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { USE_MOCK, api, ApiError } from "@/lib/api";
 import { pct } from "@/lib/format";
-import type { Channel, Integration, Profile, TelegramInfo, TelegramLink } from "@/lib/types";
+import type { Channel, Integration, PlanStatus, Profile, TelegramInfo, TelegramLink } from "@/lib/types";
 import { Button, Field, Frame, Icon, IndexLabel, Notice, Pill, TextLink, Toggle, inputClass } from "./ui";
 
 export function SettingsForm({ profile }: { profile: Profile }) {
@@ -197,6 +197,191 @@ export function Channels({ channels: initial, telegram }: { channels: Channel[];
         </Frame>
       </div>
     </div>
+  );
+}
+
+/** Stage 3: Owned Inbound Email (`firstname-xxxx@mail.norinote.xyz`) & Stage 1: Web Push Notifications. */
+export function InboundAndPushPanel({ initialInboundEmail }: { initialInboundEmail?: string | null }) {
+  const [inboundEmail, setInboundEmail] = useState(initialInboundEmail ?? "");
+  const [copied, setCopied] = useState(false);
+  const [pushState, setPushState] = useState<{ configured: boolean; publicKey: string | null; subscribed: boolean }>({
+    configured: false,
+    publicKey: null,
+    subscribed: false,
+  });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushNote, setPushNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!inboundEmail) {
+      api.inboundEmail().then((r) => setInboundEmail(r.inboundEmail)).catch(() => {});
+    }
+    api.vapidInfo().then((r) => setPushState({ configured: r.configured, publicKey: r.publicKey, subscribed: r.subscribed })).catch(() => {});
+  }, [inboundEmail]);
+
+  async function togglePush() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushNote("Push notifications are not supported in this browser.");
+      return;
+    }
+    setPushBusy(true);
+    setPushNote(null);
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        await api.unsubscribePush(existing.endpoint);
+        await existing.unsubscribe();
+        setPushState((s) => ({ ...s, subscribed: false }));
+        setPushNote("Push notifications turned off for this device.");
+      } else {
+        if (!pushState.publicKey) {
+          setPushNote("Web Push VAPID key is not set on this server yet.");
+          return;
+        }
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: pushState.publicKey,
+        });
+        const json = sub.toJSON();
+        if (json.endpoint && json.keys?.p256dh && json.keys?.auth) {
+          await api.subscribePush({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
+          setPushState((s) => ({ ...s, subscribed: true }));
+          setPushNote("Push notifications enabled on this device.");
+        }
+      }
+    } catch (e) {
+      setPushNote((e as Error).message || "Could not update push notifications.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
+      <Frame className="p-5">
+        <div className="flex items-center justify-between gap-3">
+          <IndexLabel tone="ink">Nori applicant inbox</IndexLabel>
+          <Pill mark="ink">Active</Pill>
+        </div>
+        <p className="mt-3 text-meta text-ink-2">
+          Your dedicated Nori address for application confirmations and verification codes—no Gmail OAuth needed.
+        </p>
+        {inboundEmail && (
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-control border border-line bg-sunken px-3 py-2">
+            <code className="truncate font-mono text-[12.5px] text-ink">{inboundEmail}</code>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={Copy}
+              onClick={() => {
+                void navigator.clipboard?.writeText(inboundEmail);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+        )}
+      </Frame>
+
+      <Frame className="p-5">
+        <div className="flex items-center justify-between gap-3">
+          <IndexLabel tone="ink">Web Push notifications</IndexLabel>
+          {pushState.subscribed ? <Pill mark="ink">Subscribed</Pill> : <Pill mark="hollow">Off</Pill>}
+        </div>
+        <p className="mt-3 text-meta text-ink-2">
+          Get instant notifications on your phone or desktop when a form is ready to review or needs an answer.
+        </p>
+        <div className="mt-4 flex items-center gap-3">
+          <Button
+            type="button"
+            variant={pushState.subscribed ? "secondary" : "primary"}
+            size="sm"
+            icon={Bell}
+            disabled={pushBusy}
+            onClick={togglePush}
+          >
+            {pushBusy ? "Working..." : pushState.subscribed ? "Turn off push" : "Enable push notifications"}
+          </Button>
+        </div>
+        {pushNote && <p className="mt-2.5 text-meta text-ink-2" role="status">{pushNote}</p>}
+      </Frame>
+    </div>
+  );
+}
+
+/** Stage 6: Plan, Daily Application Allowance, Stripe Billing & Referral Code. */
+export function BillingPlanCard({ initial }: { initial?: PlanStatus | null }) {
+  const [status, setStatus] = useState<PlanStatus | null>(initial ?? null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!status) {
+      api.planStatus().then(setStatus).catch(() => {});
+    }
+  }, [status]);
+
+  if (!status) return null;
+
+  async function openBilling() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = status?.hasCustomer ? await api.createBillingPortal() : await api.createCheckout();
+      window.location.href = res.url;
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : (e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Frame className="p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-title font-semibold capitalize text-ink">{status.plan} plan</span>
+            <Pill mark={status.plan === "pro" ? "ink" : "hollow"}>
+              {status.plan === "pro" ? "20 apps / day" : "3 apps / day"}
+            </Pill>
+          </div>
+          <p className="mt-1 text-meta text-ink-2">
+            {status.remainingToday} of {status.limits.dailyApplicationsCap} applications remaining today · up to {status.limits.maxLanes} lanes
+          </p>
+        </div>
+        {status.stripeConfigured && (
+          <Button type="button" variant={status.plan === "pro" ? "secondary" : "primary"} icon={CreditCard} disabled={busy} onClick={openBilling}>
+            {busy ? "Opening..." : status.plan === "pro" ? "Manage subscription" : "Upgrade to Pro"}
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-meta">
+        <span className="text-ink-2">
+          Referral code: <code className="rounded bg-sunken px-1.5 py-0.5 font-mono text-ink">{status.referralCode}</code>
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          icon={Copy}
+          onClick={() => {
+            const url = `${window.location.origin}/signup?ref=${encodeURIComponent(status.referralCode)}`;
+            void navigator.clipboard?.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+        >
+          {copied ? "Copied referral link" : "Share referral link"}
+        </Button>
+      </div>
+      {error && <div className="mt-3"><Notice tone="red">{error}</Notice></div>}
+    </Frame>
   );
 }
 

@@ -368,28 +368,46 @@ export async function waitForVerificationCode(db: Db, userId: string, hint: stri
   const sync = opts.sync ?? ((d, u) => syncInbox(d, u));
   const needle = hint.trim().toLowerCase();
   let warned = false;
+  let composioOff = false;
   for (;;) {
-    try {
-      await sync(db, userId);
-    } catch (err) {
-      if (err instanceof ComposioNotConfiguredError || (!opts.sync && !composioAvailable())) {
-        console.warn("[inbox] cannot read mail:", (err as Error).message);
-        return null;
+    // Check inbox_messages first so verification codes delivered via Stage 3 Resend inbound webhook
+    // (`firstname-xxxx@mail.norinote.xyz`) are picked up immediately without requiring Composio.
+    const checkStored = async (): Promise<string | null> => {
+      const rows = await db.select().from(inboxMessages)
+        .where(and(eq(inboxMessages.userId, userId), eq(inboxMessages.kind, "verification_code"), eq(inboxMessages.read, false), gte(inboxMessages.receivedAt, since)))
+        .orderBy(desc(inboxMessages.receivedAt));
+      const usable = rows.filter((r) => r.code);
+      const named = (r: (typeof usable)[number]) => !!needle && `${r.fromAddress} ${r.subject}`.toLowerCase().includes(needle);
+      const pick = usable.find(named) ?? usable.find((r) => fromAts(r.fromAddress)) ?? (needle ? undefined : usable[0]);
+      if (pick?.code) {
+        await db.update(inboxMessages).set({ read: true }).where(eq(inboxMessages.id, pick.id));
+        return pick.code;
       }
-      if (!warned) { console.warn("[inbox] sync failed, will retry:", (err as Error).message.slice(0, 200)); warned = true; }
+      return null;
+    };
+
+    const existingCode = await checkStored();
+    if (existingCode) return existingCode;
+
+    if (!composioOff) {
+      try {
+        await sync(db, userId);
+      } catch (err) {
+        if (err instanceof ComposioNotConfiguredError || (!opts.sync && !composioAvailable())) {
+          composioOff = true;
+          if (!process.env.INBOUND_EMAIL_DOMAIN && !process.env.RESEND_API_KEY) {
+            console.warn("[inbox] cannot read mail:", (err as Error).message);
+            return null;
+          }
+        } else if (!warned) {
+          console.warn("[inbox] sync failed, will retry:", (err as Error).message.slice(0, 200));
+          warned = true;
+        }
+      }
     }
-    const rows = await db.select().from(inboxMessages)
-      .where(and(eq(inboxMessages.userId, userId), eq(inboxMessages.kind, "verification_code"), eq(inboxMessages.read, false), gte(inboxMessages.receivedAt, since)))
-      .orderBy(desc(inboxMessages.receivedAt));
-    const usable = rows.filter((r) => r.code);
-    // The code is typed into a real application, so it must come from the site that asked for it: the sender or the
-    // subject names it, or an ATS sent it. A newest-code fallback would type a code planted by anyone who emails you.
-    const named = (r: (typeof usable)[number]) => !!needle && `${r.fromAddress} ${r.subject}`.toLowerCase().includes(needle);
-    const pick = usable.find(named) ?? usable.find((r) => fromAts(r.fromAddress)) ?? (needle ? undefined : usable[0]);
-    if (pick?.code) {
-      await db.update(inboxMessages).set({ read: true }).where(eq(inboxMessages.id, pick.id));
-      return pick.code;
-    }
+
+    const syncedCode = await checkStored();
+    if (syncedCode) return syncedCode;
     if (Date.now() + intervalMs - started > timeoutMs) return null;
     await new Promise((r) => setTimeout(r, intervalMs));
   }

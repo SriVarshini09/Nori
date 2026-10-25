@@ -313,4 +313,52 @@ ALTER TABLE resume_docs ALTER COLUMN template_id SET DEFAULT 'ats';
 ALTER TABLE resume_doc_versions ALTER COLUMN template_id SET DEFAULT 'ats'
 `,
   },
+  {
+    id: "0012_stages_1_to_7",
+    sql: `
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'free';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS inbound_email text;
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint text NOT NULL UNIQUE,
+  p256dh text NOT NULL,
+  auth text NOT NULL,
+  user_agent text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions(user_id);
+CREATE TABLE IF NOT EXISTS ats_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ats_type text NOT NULL,
+  employer_key text NOT NULL,
+  email text NOT NULL,
+  encrypted_password text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ats_accounts_user_employer_unique ON ats_accounts(user_id, ats_type, employer_key);
+CREATE TABLE IF NOT EXISTS outreach (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id uuid REFERENCES jobs(id) ON DELETE CASCADE,
+  application_id uuid REFERENCES applications(id) ON DELETE SET NULL,
+  person_name text NOT NULL,
+  person_title text NOT NULL,
+  person_url text,
+  company_name text NOT NULL,
+  draft_text text NOT NULL,
+  sources jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status text NOT NULL DEFAULT 'draft',
+  sent_at timestamptz,
+  follow_up_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS outreach_user_idx ON outreach(user_id, created_at)
+`,
+  },
 ];

@@ -7,7 +7,7 @@ import { api, artifactUrl, USE_MOCK } from "@/lib/api";
 import { pct, STATUS_LABEL } from "@/lib/format";
 import {
   APPLICATION_STATUSES,
-  type Application, type ApplicationDetail, type ApplicationStatus, type Company, type Job, type Resume, type ResumeContent, type RunEvent, type RunEventRow,
+  type Application, type ApplicationDetail, type ApplicationStatus, type Company, type Job, type OutreachContact, type Resume, type ResumeContent, type RunEvent, type RunEventRow,
 } from "@/lib/types";
 import { EventLog } from "./EventLog";
 import { ResearchView } from "./ResearchPanel";
@@ -282,23 +282,68 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
             <dd className="text-ink-2">Nothing is sent. The application waits here until you answer or skip it.</dd>
           </dl>
           <div className="mt-4 flex flex-col gap-4">
-            {app.pendingQuestions.map((q, i) => (
-              <label key={q.label} className="block" htmlFor={`q-${i}`}>
-                <span className="mb-1.5 block text-body-sm font-semibold text-ink">
-                  {q.label}{q.required && <span className="ml-1 text-attn-fg" aria-label="required">*</span>}
-                </span>
-                {q.options?.length ? (
-                  <select id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))}>
-                    <option value="">Choose an answer</option>
-                    {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : q.type === "textarea" ? (
-                  <textarea id={`q-${i}`} className={inputClass} rows={3} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
-                ) : (
-                  <input id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
-                )}
-              </label>
-            ))}
+            {app.pendingQuestions.map((q, i) => {
+              const handoffUrl = q.liveViewUrl ?? app.receipt?.liveViewUrl ?? job.applyUrl;
+              if (q.type === "captcha" || q.type === "blocked") {
+                return (
+                  <div key={q.label} className="rounded-card border border-line bg-surface p-3.5">
+                    <p className="text-body-sm font-semibold text-ink">{q.label}</p>
+                    <p className="mt-1 text-meta text-ink-2">
+                      {q.liveViewUrl
+                        ? "Open the live browser session on your phone or computer, solve the verification challenge, then tap Done below so Nori can continue from where it paused."
+                        : "This posting requires a human challenge. Open the page, complete the check, then tap Done below."}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                      <a
+                        href={handoffUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-control bg-ink px-3.5 text-[13px] font-semibold text-on-ink"
+                      >
+                        {q.liveViewUrl ? "Open live browser" : "Open posting"}
+                        <Icon icon={ExternalLink} size={14} />
+                      </a>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy !== null}
+                        onClick={async () => {
+                          setBusy("answer");
+                          try {
+                            await api.answerQuestions(app.id, { [q.label]: "Solved" });
+                            await refresh();
+                          } catch (e) {
+                            setError((e as Error).message);
+                          } finally {
+                            setBusy(null);
+                          }
+                        }}
+                      >
+                        Done, continue application
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <label key={q.label} className="block" htmlFor={`q-${i}`}>
+                  <span className="mb-1.5 block text-body-sm font-semibold text-ink">
+                    {q.label}{q.required && <span className="ml-1 text-attn-fg" aria-label="required">*</span>}
+                  </span>
+                  {q.options?.length ? (
+                    <select id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))}>
+                      <option value="">Choose an answer</option>
+                      {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : q.type === "textarea" ? (
+                    <textarea id={`q-${i}`} className={inputClass} rows={3} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
+                  ) : (
+                    <input id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
+                  )}
+                </label>
+              );
+            })}
           </div>
         </Frame>
       )}
@@ -498,6 +543,9 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
               </p>
             )}
           </Accordion>
+          <Accordion title={`Reach out at ${job.companyName}`}>
+            <OutreachPanel jobId={job.id} companyName={job.companyName} />
+          </Accordion>
           <p className="px-1 text-[12px] text-muted">{app.attempts} attempt{app.attempts === 1 ? "" : "s"} · {STATUS_LABEL[app.status]} <TimeAgo iso={app.updatedAt} /></p>
         </aside>
       </div>
@@ -521,6 +569,96 @@ function ActionBar({ next, primary, extra, onSkip, busy, warn }: { next: string;
         </div>
       </div>
     </div>
+  );
+}
+
+function OutreachPanel({ jobId, companyName }: { jobId: string; companyName: string }) {
+  const [contacts, setContacts] = useState<OutreachContact[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await api.listOutreach(jobId);
+      setContacts(res.contacts);
+    } catch {
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function markSent(id: string) {
+    try {
+      const res = await api.markOutreachSent(id);
+      setContacts((prev) => (prev ?? []).map((c) => (c.id === id ? res.contact : c)));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (contacts === null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-meta text-muted">
+          Find hiring managers or engineers at {companyName} and draft a short note grounded in your career graph.
+        </p>
+        <Button type="button" variant="secondary" size="sm" onClick={load} disabled={loading}>
+          {loading ? "Drafting..." : `Draft outreach for ${companyName}`}
+        </Button>
+      </div>
+    );
+  }
+
+  if (contacts.length === 0) {
+    return <p className="text-meta text-muted">No contacts found for this role yet.</p>;
+  }
+
+  return (
+    <ul className="flex flex-col gap-3">
+      {contacts.map((c) => (
+        <li key={c.id} className="rounded-card border border-line bg-bg p-3 text-meta">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold text-ink">{c.personName}</p>
+              <p className="text-muted">{c.personTitle}</p>
+            </div>
+            {c.personUrl && (
+              <a href={c.personUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                Profile
+              </a>
+            )}
+          </div>
+          <p className="mt-2 whitespace-pre-line rounded-control border border-line bg-surface p-2.5 text-[12.5px] leading-relaxed text-ink">
+            {c.draftText}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard?.writeText(c.draftText);
+                setCopiedId(c.id);
+                setTimeout(() => setCopiedId(null), 2000);
+              }}
+            >
+              {copiedId === c.id ? "Copied" : "Copy note"}
+            </Button>
+            {c.status === "sent" ? (
+              <span className="text-[11.5px] font-medium text-accent">
+                Sent · follow-up in 5d
+              </span>
+            ) : (
+              <Button type="button" variant="ghost" size="sm" onClick={() => markSent(c.id)}>
+                Mark sent
+              </Button>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

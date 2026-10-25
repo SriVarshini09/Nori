@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   title: { default: "Nori", template: "%s - Nori" },
   description: DESCRIPTION,
   applicationName: "Nori",
+  manifest: "/manifest.webmanifest",
   openGraph: { type: "website", siteName: "Nori", title: "Nori: a job agent that cannot lie about you", description: DESCRIPTION },
   twitter: { card: "summary_large_image", title: "Nori: a job agent that cannot lie about you", description: DESCRIPTION },
 };

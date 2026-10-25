@@ -50,3 +50,42 @@ export async function rememberAnswers(db: Db, userId: string, answers: Record<st
     .where(eq(profiles.userId, userId));
   return keep.length;
 }
+
+/** Add or update a single remembered answer in the profile's preferences. */
+export async function upsertSavedAnswer(db: Db, userId: string, label: string, value: string): Promise<SavedAnswers> {
+  const cleanLabel = label.trim().slice(0, 200);
+  const cleanValue = value.trim().slice(0, MAX_VALUE);
+  if (!cleanLabel || !cleanValue) throw new Error("Both question label and answer value are required");
+  const key = savedKey(cleanLabel);
+  if (!key) throw new Error("Invalid question label");
+  const profile = await getProfile(db, userId);
+  const saved: SavedAnswers = { ...savedAnswersOf(profile.preferences), [key]: { label: cleanLabel, value: cleanValue } };
+  const entries = Object.entries(saved);
+  const trimmed = Object.fromEntries(entries.length > MAX_SAVED ? entries.slice(entries.length - MAX_SAVED) : entries);
+  await db.update(profiles)
+    .set({ preferences: { ...(profile.preferences as Preferences), savedAnswers: trimmed } as Preferences, updatedAt: new Date() })
+    .where(eq(profiles.userId, userId));
+  return trimmed;
+}
+
+/** Delete one remembered answer by its normalized key (or label). */
+export async function deleteSavedAnswer(db: Db, userId: string, keyOrLabel: string): Promise<SavedAnswers> {
+  const key = savedKey(keyOrLabel);
+  const profile = await getProfile(db, userId);
+  const saved: SavedAnswers = { ...savedAnswersOf(profile.preferences) };
+  delete saved[key];
+  delete saved[keyOrLabel];
+  await db.update(profiles)
+    .set({ preferences: { ...(profile.preferences as Preferences), savedAnswers: saved } as Preferences, updatedAt: new Date() })
+    .where(eq(profiles.userId, userId));
+  return saved;
+}
+
+/** Clear all remembered answers for a user. */
+export async function clearSavedAnswers(db: Db, userId: string): Promise<SavedAnswers> {
+  const profile = await getProfile(db, userId);
+  await db.update(profiles)
+    .set({ preferences: { ...(profile.preferences as Preferences), savedAnswers: {} } as Preferences, updatedAt: new Date() })
+    .where(eq(profiles.userId, userId));
+  return {};
+}

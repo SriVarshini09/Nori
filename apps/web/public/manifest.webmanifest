@@ -1,0 +1,27 @@
+{
+  "name": "Nori — Personal Career-Graph Job Agent",
+  "short_name": "Nori",
+  "description": "Finds roles, tailors a one-page resume from verified facts about you, fills ATS forms, and waits for your approval.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#fbfaf8",
+  "theme_color": "#fbfaf8",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/mascot/3d/nori-3d-idle.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}

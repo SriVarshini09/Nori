@@ -44,6 +44,7 @@ export function ResumeStep({ hasResume, busy, onDone, onResult }: {
   const [result, setResult] = useState<IngestResult | null>(null);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [replace, setReplace] = useState(!hasResume);
+  const [replaceGraph, setReplaceGraph] = useState(true);
 
   async function ingest(run: () => Promise<IngestResult>, label: string) {
     setReading(label);
@@ -66,7 +67,7 @@ export function ResumeStep({ hasResume, busy, onDone, onResult }: {
       setError("Use a PDF, DOCX or TXT file.");
       return;
     }
-    void ingest(() => api.uploadResumeFile(file), file.name);
+    void ingest(() => api.uploadResumeFile(file, hasResume && replaceGraph), file.name);
   }
 
   // ---- after reading: counts and the first facts found
@@ -136,6 +137,21 @@ export function ResumeStep({ hasResume, busy, onDone, onResult }: {
   // ---- pick, drop or paste
   return (
     <div>
+      {hasResume && (
+        <fieldset className="mb-4 rounded-card border border-line bg-surface p-3.5">
+          <legend className="px-1 text-meta font-semibold text-ink">How should Nori handle your existing career graph?</legend>
+          <div className="mt-1.5 flex flex-wrap gap-4 text-body-sm">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-ink">
+              <input type="radio" name="graph-mode" checked={replaceGraph} onChange={() => setReplaceGraph(true)} />
+              <span>Replace previous resume facts</span>
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-ink">
+              <input type="radio" name="graph-mode" checked={!replaceGraph} onChange={() => setReplaceGraph(false)} />
+              <span>Merge into existing graph</span>
+            </label>
+          </div>
+        </fieldset>
+      )}
       {mode === "file" ? (
         <label
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
@@ -165,7 +181,7 @@ export function ResumeStep({ hasResume, busy, onDone, onResult }: {
             onChange={(e) => setText(e.target.value)}
           />
           <div className="mt-3 flex justify-end">
-            <ObButton onClick={() => ingest(() => api.uploadResume(text), "pasted text")} disabled={!!reading || text.trim().length < 40}>
+            <ObButton onClick={() => ingest(() => api.uploadResume(text, hasResume && replaceGraph), "pasted text")} disabled={!!reading || text.trim().length < 40}>
               {reading ? <span>Reading<span className="dots" /></span> : <>Read resume<Icon icon={ArrowRight} /></>}
             </ObButton>
           </div>

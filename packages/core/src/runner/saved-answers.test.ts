@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../db/client.js";
 import { ensureDefaultUser, getProfile } from "../users.js";
-import { isRememberable, rememberAnswers, savedKey, savedValues } from "./saved-answers.js";
+import { clearSavedAnswers, deleteSavedAnswer, isRememberable, rememberAnswers, savedKey, savedValues, upsertSavedAnswer } from "./saved-answers.js";
 import { makeAnswerQuestion } from "./answers.js";
 import type { FormField } from "../contracts.js";
 
@@ -45,5 +45,19 @@ describe("saved answers", () => {
     const saved = { [savedKey("Highest degree")]: "Master's" };
     const ask = makeAnswerQuestion({ profile, evidence: [], jobTitle: "ML Engineer", companyName: "Acme", saved });
     expect(await ask(text("Highest degree", { kind: "select", options: ["Bachelor's", "master's", "PhD"] }), "")).toBe("master's");
+  });
+
+  it("supports upserting, deleting, and clearing saved answers", async () => {
+    const afterUpsert = await upsertSavedAnswer(db, userId, "Preferred office location", "New York, NY");
+    expect(afterUpsert[savedKey("Preferred office location")]).toEqual({
+      label: "Preferred office location",
+      value: "New York, NY",
+    });
+
+    const afterDelete = await deleteSavedAnswer(db, userId, "Preferred office location");
+    expect(afterDelete[savedKey("Preferred office location")]).toBeUndefined();
+
+    const afterClear = await clearSavedAnswers(db, userId);
+    expect(afterClear).toEqual({});
   });
 });

@@ -44,6 +44,7 @@ export const STATUS_LABEL: Record<ApplicationStatus, string> = {
   interview: "Interview",
   offer: "Offer",
   rejected: "Rejected",
+  ghosted: "Ghosted",
 };
 
 export type Tone = "slate" | "blue" | "amber" | "green" | "red" | "teal" | "orange";
@@ -65,12 +66,13 @@ export const STATUS_TONE: Record<ApplicationStatus, Tone> = {
   interview: "green",
   offer: "green",
   rejected: "red",
+  ghosted: "slate",
 };
 
 /** Dashboard / list tabs. */
 export const IN_FLIGHT: ApplicationStatus[] = ["queued", "tailoring", "filling", "submitting"];
 export const NEEDS_YOU: ApplicationStatus[] = ["needs_user", "resume_review", "form_review", "awaiting_code"];
-export const SUBMITTED: ApplicationStatus[] = ["submitted", "viewed", "replied", "interview", "offer", "rejected"];
+export const SUBMITTED: ApplicationStatus[] = ["submitted", "viewed", "replied", "interview", "offer", "rejected", "ghosted"];
 export const FAILED: ApplicationStatus[] = ["failed"];
 
 export const INBOX_LABEL: Record<InboxKind, string> = {

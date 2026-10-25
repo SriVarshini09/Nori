@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, CircleAlert, Eye, EyeOff, LoaderCircle, Lock, Mail, UserRound, type LucideIcon } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { btnPrimary, chip, field, fieldLabel, textLink } from "@/components/home/styles";
+import { btnPrimary, btnSecondary, chip, field, fieldLabel, textLink } from "@/components/home/styles";
 import { cx } from "@/components/cx";
 
 /** Only same-site paths are honoured as a post-login destination. */
@@ -34,6 +34,16 @@ export function AuthPanel({ mode, next }: { mode: "login" | "signup"; next?: str
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleAvailable, setGoogleAvailable] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/google?check=1")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { configured?: boolean } | null) => {
+        if (d?.configured) setGoogleAvailable(true);
+      })
+      .catch(() => {});
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,6 +80,21 @@ export function AuthPanel({ mode, next }: { mode: "login" | "signup"; next?: str
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-5">
+        {googleAvailable && (
+          <div className="pb-2">
+            <a
+              href={`/api/auth/google?next=${encodeURIComponent(safeNext(next))}`}
+              className={cx(btnSecondary, "w-full justify-center")}
+            >
+              Continue with Google
+            </a>
+            <div className="mt-4 flex items-center gap-3 text-[12.5px] text-muted">
+              <span className="h-px flex-1 bg-line" />
+              <span>or use email</span>
+              <span className="h-px flex-1 bg-line" />
+            </div>
+          </div>
+        )}
         {signup && (
           <Field id="auth-name" label="Full name" icon={UserRound}>
             <input id="auth-name" className={field} placeholder="Maya Chen" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={200} required />

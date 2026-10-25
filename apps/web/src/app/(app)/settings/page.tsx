@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { api } from "@/lib/api";
-import { Channels, DangerZone, Integrations, SettingsForm } from "@/components/SettingsForm";
+import { BillingPlanCard, Channels, DangerZone, InboundAndPushPanel, Integrations, SettingsForm } from "@/components/SettingsForm";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ModelUsage } from "@/components/ModelUsage";
 import { SecurityPanel } from "@/components/SecurityPanel";
@@ -11,6 +11,7 @@ export const metadata: Metadata = { title: "Settings" };
 
 const SECTIONS = [
   { id: "model", label: "Model" },
+  { id: "plan", label: "Plan and billing" },
   { id: "channels", label: "Channels and apps" },
   { id: "limits", label: "Limits and approvals" },
   { id: "account", label: "Account and security" },
@@ -27,8 +28,13 @@ function Section({ id, title, line, children }: { id: string; title: string; lin
 }
 
 export default async function SettingsPage() {
-  const [me, integrations, channels, model, telegram] = await Promise.all([
-    api.me().catch(() => null), api.listIntegrations().catch(() => []), api.listChannels().catch(() => []), api.modelSettings().catch(() => null), api.telegramInfo().catch(() => null),
+  const [me, integrations, channels, model, telegram, plan] = await Promise.all([
+    api.me().catch(() => null),
+    api.listIntegrations().catch(() => []),
+    api.listChannels().catch(() => []),
+    api.modelSettings().catch(() => null),
+    api.telegramInfo().catch(() => null),
+    api.planStatus().catch(() => null),
   ]);
   if (!me) {
     return (
@@ -52,8 +58,12 @@ export default async function SettingsPage() {
           <Section id="model" title="Model" line="Nori's own model does the work. Nothing to set up; this shows today's use against your daily allowance.">
             <ModelUsage initial={model} />
           </Section>
+          <Section id="plan" title="Plan and billing" line="Your daily application allowance, plan tier, and referral link.">
+            <BillingPlanCard initial={plan} />
+          </Section>
           <Section id="channels" title="Channels and apps" line="Talk to Nori from your phone, and let it read mail, keep a sheet and hold interview times.">
             <div className="flex flex-col gap-5">
+              <InboundAndPushPanel initialInboundEmail={profile.inboundEmail} />
               <Frame className="p-4 sm:p-5"><Integrations initial={integrations} /></Frame>
               <Channels channels={channels} telegram={telegram} />
             </div>
