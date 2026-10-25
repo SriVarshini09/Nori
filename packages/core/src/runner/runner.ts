@@ -20,6 +20,7 @@ import { greenhouseFormUrl } from "../feeds/greenhouse.js";
 import { checkDisqualifiers, unprovenConstraints } from "../agent/gate.js";
 import { AUTOPILOT_COMPANY_COOLDOWN_DAYS, autopilotVerdict, describeVerdict, type AutopilotMode } from "./autopilot.js";
 import { newUsage, runCollectingUsage, withUserLLM } from "../llm/index.js";
+import { rememberAnswers, savedValues } from "./saved-answers.js";
 import { LIKELY_QUESTIONS, isProfileField, makeAnswerQuestion, toApplicantProfile, type ComposedAnswer } from "./answers.js";
 
 export type Application = typeof applications.$inferSelect;
@@ -256,7 +257,7 @@ async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { re
   const education = (await getGraph(db, app.userId)).nodes.filter((n) => n.type === "education").map((n) => ({ label: n.label, startDate: n.startDate, endDate: n.endDate }));
   const composed: Record<string, ComposedAnswer> = {};
   const answerQuestion = makeAnswerQuestion({
-    profile, evidence, jobTitle: job.title, companyName: job.companyName, composed, education,
+    profile, evidence, jobTitle: job.title, companyName: job.companyName, composed, education, saved: savedValues(profileRow.preferences),
     compose: {
       job: { id: job.id, title: job.title, companyName: job.companyName, descriptionText: job.descriptionText, requirements },
       research, baseline, preferences: profileRow.preferences as Record<string, unknown>,
@@ -635,6 +636,7 @@ export async function approveForm(db: Db, id: string, deps: RunnerDeps, answers?
   const edits = Object.fromEntries(Object.entries(answers ?? {}).filter(([k, v]) =>
     k in app.answers || (v !== filled.get(k) && v !== auto[k])));
   await patch(db, id, { formApprovedAt: new Date(), answers: { ...app.answers, ...edits } });
+  await rememberAnswers(db, app.userId, edits, Object.fromEntries((app.receipt?.fields ?? []).map((f) => [f.label, f.kind]))).catch(() => 0);
   await emit(db, id, "approve_form", `Form approved${Object.keys(edits).length ? ` with ${Object.keys(edits).length} edited answer(s)` : ""}`);
   return runApplication(db, id, deps);
 }
@@ -648,6 +650,7 @@ export async function acceptAnswers(db: Db, id: string, answers: Record<string, 
   const app = await load(db, id);
   const still: PendingQuestion[] = app.pendingQuestions.filter((q) => !(q.label in answers));
   const updated = await patch(db, id, { answers: { ...app.answers, ...answers }, pendingQuestions: still });
+  await rememberAnswers(db, app.userId, answers, Object.fromEntries(app.pendingQuestions.map((q) => [q.label, q.type]))).catch(() => 0);
   await emit(db, id, "answer", `Answered ${Object.keys(answers).length} question(s)`, { labels: Object.keys(answers) });
   if (app.status !== "needs_user") return { status: app.status, resume: false };
   await condTransition(db, updated, resumePoint(updated), { error: null }, "Resuming with your answers");
