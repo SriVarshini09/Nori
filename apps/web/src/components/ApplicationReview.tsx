@@ -184,6 +184,17 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
   const canRetry = ["failed", "needs_user", "skipped"].includes(app.status);
   const kept = resume ? resume.changes.length - reverted.size : 0;
   const gaps = useMemo(() => (recruiter?.musts ?? []).filter((m) => m.status === "missing" && m.required), [recruiter]);
+  const coveredMusts = useMemo(() => (recruiter?.musts ?? []).filter((m) => m.status !== "missing"), [recruiter]);
+  const missingMusts = useMemo(() => (recruiter?.musts ?? []).filter((m) => m.status === "missing"), [recruiter]);
+
+  const useOriginalResume = () =>
+    act("resume", async () => {
+      if (resume && resume.changes.length > 0 && !USE_MOCK) {
+        const allIds = new Set(resume.changes.map((c) => c.bulletId));
+        await api.editApplicationResume(app.id, { content: withReverts(resume.content, resume, allIds) });
+      }
+      await api.approveResume(app.id);
+    }, { status: "filling", resumeApprovedAt: now() });
 
   // ---- stage panels -------------------------------------------------------------------------------------------
 
@@ -200,6 +211,33 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
           {resume.keywordCoverage != null && <span>· keywords {Math.round(resume.keywordCoverage * 100)}%</span>}
         </p>
       </div>
+      {(coveredMusts.length > 0 || missingMusts.length > 0) && (
+        <div className="rounded-card border border-line bg-surface p-3.5">
+          <div className="flex items-center justify-between gap-2 text-meta">
+            <span className="font-semibold text-ink">
+              Keyword coverage: {coveredMusts.length} of {coveredMusts.length + missingMusts.length} job skills on your tailored resume
+            </span>
+            {missingMusts.length > 0 && (
+              <Link href="/graph" className="font-medium text-accent hover:underline">
+                + Add missing skill to graph
+              </Link>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[12px]">
+            {coveredMusts.map((m) => (
+              <span key={m.skill} className="inline-flex items-center gap-1 rounded-full bg-accent-tint px-2.5 py-0.5 font-medium text-accent-fg">
+                <Check size={12} aria-hidden="true" />
+                {m.skill}
+              </span>
+            ))}
+            {missingMusts.map((m) => (
+              <span key={m.skill} className="inline-flex items-center gap-1 rounded-full border border-dashed border-control px-2.5 py-0.5 text-muted">
+                {m.skill}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="flex flex-col gap-3">
           {resume.changes.length > 0 ? (
@@ -416,14 +454,28 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
       )}
       {receipt && (
         <Accordion title="What was in the form" meta={receipt.fields.length}>
-          <dl className="divide-y divide-line text-body-sm">
-            {receipt.fields.map((f) => (
-              <div key={f.label} className="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[12rem_1fr]">
-                <dt className="text-meta text-muted">{f.label}</dt>
-                <dd className="break-words text-ink">{f.value}</dd>
+          {receipt.appliedUsingEmail && (
+            <p className="mb-3 rounded-control bg-sunken px-3 py-2 text-meta text-ink-2">
+              Applied using <code className="font-mono text-ink">{receipt.appliedUsingEmail}</code>
+            </p>
+          )}
+          <div className="flex flex-col gap-4">
+            {groupReceiptFields(receipt.fields).map((group) => (
+              <div key={group.section}>
+                <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted">
+                  {group.section} ({group.items.length})
+                </p>
+                <dl className="divide-y divide-line rounded-control border border-line bg-bg px-3 text-body-sm">
+                  {group.items.map((f) => (
+                    <div key={f.label} className="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[12rem_1fr]">
+                      <dt className="text-meta text-muted">{f.label}</dt>
+                      <dd className="break-words text-ink">{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             ))}
-          </dl>
+          </div>
         </Accordion>
       )}
       {!receipt && <p className="text-body-sm text-muted">No receipt was recorded for this application.</p>}
@@ -458,7 +510,16 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
         primary={<Button variant="primary" icon={Check} onClick={approveResume} disabled={busy !== null || !resume}>
           {busy === "resume" ? "Approving..." : resume && resume.changes.length > 0 ? `Approve resume · ${kept} kept${reverted.size ? `, ${reverted.size} reverted` : ""}` : "Approve resume"}
         </Button>}
-        extra={!USE_MOCK && <LinkButton href={`/applications/${app.id}/resume`} variant="ghost" icon={Pencil}>Edit resume</LinkButton>}
+        extra={
+          <>
+            {resume && resume.changes.length > 0 && (
+              <Button variant="ghost" onClick={useOriginalResume} disabled={busy !== null}>
+                Use original resume
+              </Button>
+            )}
+            {!USE_MOCK && <LinkButton href={`/applications/${app.id}/resume`} variant="ghost" icon={Pencil}>Edit resume</LinkButton>}
+          </>
+        }
         onSkip={skip} busy={busy !== null}
       />
     ) : formEditable ? (
@@ -660,6 +721,33 @@ function OutreachPanel({ jobId, companyName }: { jobId: string; companyName: str
       ))}
     </ul>
   );
+}
+
+function groupReceiptFields(fields: { label: string; value: string; kind: string }[]): { section: string; items: { label: string; value: string; kind: string }[] }[] {
+  const buckets: Record<string, { label: string; value: string; kind: string }[]> = {
+    "Personal Information": [],
+    "Links & Documents": [],
+    "Work Authorization & Screening": [],
+    "Voluntary Disclosures": [],
+    "Application Questions": [],
+  };
+  for (const f of fields) {
+    const l = f.label.toLowerCase();
+    if (/\b(name|email|e-mail|phone|mobile|location|city|state|country|address|pronoun)\b/.test(l)) {
+      buckets["Personal Information"]!.push(f);
+    } else if (f.kind === "file" || /\b(resume|cv|cover letter|linkedin|github|website|portfolio|url)\b/.test(l)) {
+      buckets["Links & Documents"]!.push(f);
+    } else if (/\b(gender|race|ethnic|hispanic|veteran|disab|orientation|transgender)\b/.test(l)) {
+      buckets["Voluntary Disclosures"]!.push(f);
+    } else if (/\b(authori[sz]|sponsor|visa|citizen|clearance|salary|compensation|start date|notice|relocat|18)\b/.test(l)) {
+      buckets["Work Authorization & Screening"]!.push(f);
+    } else {
+      buckets["Application Questions"]!.push(f);
+    }
+  }
+  return Object.entries(buckets)
+    .filter(([, items]) => items.length > 0)
+    .map(([section, items]) => ({ section, items }));
 }
 
 function mockScreenshot(company: string): string {

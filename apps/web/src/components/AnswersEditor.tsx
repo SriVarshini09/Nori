@@ -201,6 +201,91 @@ function RememberedAnswersSection({
   );
 }
 
+function ProjectsSection() {
+  const [name, setName] = useState("");
+  const [tech, setTech] = useState("");
+  const [link, setLink] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ tone: "green" | "red"; text: string } | null>(null);
+
+  async function handleAddProject(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !outcome.trim()) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const sentence = [
+        `Built project "${name.trim()}"`,
+        tech.trim() ? `using ${tech.trim()}` : "",
+        link.trim() ? `(${link.trim()})` : "",
+        `: ${outcome.trim()}`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const res = await api.addFact(sentence);
+      setName("");
+      setTech("");
+      setLink("");
+      setOutcome("");
+      setNote({ tone: "green", text: `Added project to your career graph (${res.nodesCreated} fact node(s) created).` });
+    } catch (err) {
+      setNote({ tone: "red", text: err instanceof ApiError ? err.detail : (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleAddProject} className="flex flex-col gap-4 pt-1">
+      <p className="text-body-sm text-ink-2">
+        Add projects with their tech stack, link, and measurable outcome. Each project is added to your Career Graph so Nori can cite it in tailored resumes and form answers.
+      </p>
+      {note && <Notice tone={note.tone}>{note.text}</Notice>}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Project name">
+          <input
+            className={inputClass}
+            placeholder="e.g. Distributed Cache Engine"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <Field label="Tech tags">
+          <input
+            className={inputClass}
+            placeholder="e.g. Rust, Redis, gRPC"
+            value={tech}
+            onChange={(e) => setTech(e.target.value)}
+          />
+        </Field>
+        <Field label="GitHub or live link (optional)">
+          <input
+            className={inputClass}
+            placeholder="https://github.com/..."
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+          />
+        </Field>
+      </div>
+      <Field label="What you built & measurable result">
+        <input
+          className={inputClass}
+          placeholder="e.g. Cut p99 read latency by 38% across 10k requests/sec"
+          value={outcome}
+          onChange={(e) => setOutcome(e.target.value)}
+        />
+      </Field>
+      <div className="flex justify-end">
+        <Button type="submit" variant="secondary" disabled={busy || !name.trim() || !outcome.trim()}>
+          <Plus size={15} aria-hidden="true" />
+          {busy ? "Adding to graph..." : "Add project to graph"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /** The onboarding answers, editable after the fact. Each section saves through PUT /api/profile. */
 export function AnswersEditor({ profile: initial }: { profile: Profile }) {
   const [profile, setProfile] = useState(initial);
@@ -238,6 +323,9 @@ export function AnswersEditor({ profile: initial }: { profile: Profile }) {
           </div>
         </Accordion>
       ))}
+      <Accordion title="Projects and portfolio">
+        <ProjectsSection />
+      </Accordion>
       <Accordion title={savedCount > 0 ? `Remembered form answers (${savedCount})` : "Remembered form answers"}>
         <RememberedAnswersSection
           initial={profile.preferences?.savedAnswers ?? {}}
