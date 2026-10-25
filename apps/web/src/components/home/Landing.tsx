@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowRight, Check, Cpu, Download, MessageCircle, Search, Send, FileText, Inbox, type LucideIcon } from "lucide-react";
 import { cx } from "@/components/cx";
+import { NoriMascot3D } from "@/components/mascot/NoriMascot3D";
 import { btnPrimary, btnSecondary, chip, container } from "./styles";
 
 function SectionTitle({ id, title, line }: { id: string; title: string; line?: string }) {
@@ -50,6 +51,15 @@ function HeroSample() {
       <div className="-mx-4 -mt-4 mb-4 rounded-t-card border-b border-sandbox-line bg-sandbox px-4 py-2 text-[12.5px] text-sandbox-fg sm:-mx-5 sm:-mt-5 sm:px-5">
         <span className="font-semibold">Dry run</span> Forms are filled, nothing is sent.
       </div>
+      <NoriMascot3D
+        variant="hero"
+        className="mb-4"
+        messages={[
+          "Hi! I found 1 role waiting on your OK.",
+          "Hover any button or click me to hop!",
+          "Every line below traces to your career graph.",
+        ]}
+      />
       <p className="text-[15px] font-semibold text-ink">Waiting on you</p>
       <div className="mt-3 rounded-card border-2 border-attn bg-surface p-3.5">
         <div className="flex items-center gap-2 text-[12px]">

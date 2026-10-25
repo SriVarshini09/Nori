@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { NoriMascot3D } from "@/components/mascot/NoriMascot3D";
 
 const POINTS = [
   "Every resume line traces back to something you did",
@@ -20,7 +21,16 @@ export function BrandPanel() {
             </li>
           ))}
         </ul>
-        <div className="mt-8 rounded-card border border-line bg-surface p-4">
+        <NoriMascot3D
+          variant="auth"
+          className="mt-8"
+          messages={[
+            "Welcome back! Type your details on the left.",
+            "Click the password box—I'll cover my eyes!",
+            "3 items are waiting on your OK inside.",
+          ]}
+        />
+        <div className="mt-4 rounded-card border border-line bg-surface p-4">
           <p className="text-[12.5px] text-muted">While you were away</p>
           <p className="mt-1 text-[15px] font-semibold text-ink">3 waiting on you, nothing sent</p>
           <p className="mt-0.5 text-[13px] text-ink-2">A resume to approve, a form to check, one question.</p>

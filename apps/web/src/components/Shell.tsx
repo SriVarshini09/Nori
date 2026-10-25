@@ -12,6 +12,7 @@ import { Icon } from "./Icon";
 import { NoriLogo } from "./Logo";
 import { LogoutButton } from "./LogoutButton";
 import { DryRunBand } from "./DryRunBand";
+import { NoriMascot3D } from "./mascot/NoriMascot3D";
 
 export type ShellData = {
   applicationsCount: number;
@@ -116,6 +117,7 @@ function Rail({ data, pathname }: { data: ShellData; pathname: string }) {
         ))}
       </nav>
       <div className="mt-auto flex flex-col gap-3">
+        <NoriMascot3D variant="rail" needsYouCount={data.needsYouCount} />
         <ul className="flex flex-col gap-0.5">{FOOT.map((i) => <RailLink key={i.href} item={i} data={data} pathname={pathname} />)}</ul>
         <div className="flex items-center justify-between gap-2 border-t border-line px-3 pt-3">
           <span className="min-w-0 truncate text-meta text-ink-2">{data.userName}</span>
