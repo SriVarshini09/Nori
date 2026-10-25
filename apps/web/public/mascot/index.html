@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nori Mascot Asset Pack (3D & SVG)</title>
+  <style>
+    :root {
+      --bg: #f7f5f0;
+      --surface: #ffffff;
+      --sunken: #efece6;
+      --ink: #141413;
+      --ink-2: #4a4843;
+      --muted: #78756e;
+      --line: #e2ded6;
+      --accent: #17896a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      padding: 48px 24px 80px;
+    }
+    .wrap { max-width: 1160px; margin: 0 auto; }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { font-size: 2rem; margin: 0; letter-spacing: -0.02em; }
+    header p { margin: 8px 0 0; color: var(--ink-2); font-size: 1rem; max-width: 60ch; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+      margin-top: 32px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .stage {
+      background: radial-gradient(circle at 50% 45%, #ffffff 0%, var(--sunken) 100%);
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .stage img { width: 100%; height: 100%; object-fit: contain; }
+    .meta { padding: 16px; display: flex; flex-direction: column; flex: 1; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    h2 { font-size: 1rem; margin: 0; }
+    .tag {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      background: var(--sunken);
+      color: var(--ink-2);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .meta p { font-size: 0.85rem; color: var(--ink-2); margin: 8px 0 16px; line-height: 1.45; flex: 1; }
+    .actions { display: flex; gap: 8px; }
+    .btn {
+      flex: 1;
+      text-align: center;
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: var(--surface);
+    }
+    .btn.primary {
+      background: var(--ink);
+      color: #ffffff;
+      border-color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Nori Mascot Asset Pack</h1>
+        <p>Official 3D clay-vinyl PBR renders (1024×1024 transparent PNG) and vector SVG expressions for Nori.</p>
+      </div>
+      <a href="./manifest.json" class="btn">View manifest.json</a>
+    </header>
+    <div class="grid">
+      
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-idle.png" alt="Nori 3D Idle / Default" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Idle / Default</h2>
+            <span class="tag">idle</span>
+          </div>
+          <p>Friendly standing pose with soft smile and perked sprout.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-idle.png" download="nori-3d-idle.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-idle.svg" download="nori-idle.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-wave.png" alt="Nori 3D Excited Wave" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Excited Wave</h2>
+            <span class="tag">wave</span>
+          </div>
+          <p>Right arm raised waving hello with bright eyes and wider smile.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-wave.png" download="nori-3d-wave.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-wave.svg" download="nori-wave.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-celebrate.png" alt="Nori 3D Celebrate / Hop" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Celebrate / Hop</h2>
+            <span class="tag">celebrate</span>
+          </div>
+          <p>Mid-air joyful hop with both arms up and 3D sparkles.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-celebrate.png" download="nori-3d-celebrate.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-celebrate.svg" download="nori-celebrate.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-shy.png" alt="Nori 3D Shy / Password Privacy" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Shy / Password Privacy</h2>
+            <span class="tag">shy</span>
+          </div>
+          <p>Both hands covering eyes with deeper cheek blush (used on password inputs).</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-shy.png" download="nori-3d-shy.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-shy.svg" download="nori-shy.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-typing.png" alt="Nori 3D Typing / Taking Notes" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Typing / Taking Notes</h2>
+            <span class="tag">typing</span>
+          </div>
+          <p>Leaning forward attentively with hands in note-taking motion.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-typing.png" download="nori-3d-typing.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-typing.svg" download="nori-typing.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-curious.png" alt="Nori 3D Curious Head-Tilt" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Curious Head-Tilt</h2>
+            <span class="tag">curious</span>
+          </div>
+          <p>Tilted head with inquisitive expression and swayed sprout.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-curious.png" download="nori-3d-curious.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-curious.svg" download="nori-curious.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-wink.png" alt="Nori 3D Playful Wink" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Playful Wink</h2>
+            <span class="tag">wink</span>
+          </div>
+          <p>One glossy eye open, one happy wink arc, waving arm.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-wink.png" download="nori-3d-wink.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-wink.svg" download="nori-wink.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="stage">
+          <img src="./3d/nori-3d-sleeping.png" alt="Nori 3D Sleeping / Off-Duty" loading="lazy" />
+        </div>
+        <div class="meta">
+          <div class="row">
+            <h2>Sleeping / Off-Duty</h2>
+            <span class="tag">sleeping</span>
+          </div>
+          <p>Closed restful eyes, drooping sprout, peaceful expression.</p>
+          <div class="actions">
+            <a href="./3d/nori-3d-sleeping.png" download="nori-3d-sleeping.png" class="btn primary">3D PNG (1024px)</a>
+            <a href="./svg/nori-sleeping.svg" download="nori-sleeping.svg" class="btn">Vector SVG</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512" role="img" aria-label="Nori mascot (wink)">
+  <defs>
+    <linearGradient id="rice" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffefa"/>
+      <stop offset="1" stop-color="#f0e7d0"/>
+    </linearGradient>
+    <linearGradient id="nori" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17896a"/>
+      <stop offset="1" stop-color="#07372b"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#22c58b"/>
+      <stop offset="1" stop-color="#c4f26a"/>
+    </linearGradient>
+    <clipPath id="bodyClip">
+      <path d="M128 46 C108 46 90 60 68 106 C48 146 32 168 32 194 C32 220 56 232 84 232 H172 C200 232 224 220 224 194 C224 168 208 146 188 106 C166 60 148 46 128 46 Z"/>
+    </clipPath>
+  </defs>
+  <ellipse cx="128" cy="240" rx="72" ry="10" fill="#0a1b15" opacity="0.2"/>
+  
+  <g transform="">
+    <!-- Feet -->
+    <ellipse cx="92" cy="232" rx="18" ry="10" fill="url(#nori)"/>
+    <ellipse cx="164" cy="232" rx="18" ry="10" fill="url(#nori)"/>
+    <!-- Arms (behind when not shy) -->
+    
+        <ellipse cx="46" cy="112" rx="11" ry="18" transform="rotate(-38 46 112)" fill="url(#rice)" stroke="#0a1b15" stroke-opacity="0.12" stroke-width="2"/>
+        <ellipse cx="208" cy="146" rx="11" ry="18" transform="rotate(-18 208 146)" fill="url(#rice)" stroke="#0a1b15" stroke-opacity="0.12" stroke-width="2"/>
+      
+    <!-- Rice body -->
+    <path d="M128 46 C108 46 90 60 68 106 C48 146 32 168 32 194 C32 220 56 232 84 232 H172 C200 232 224 220 224 194 C224 168 208 146 188 106 C166 60 148 46 128 46 Z" fill="url(#rice)"/>
+    <g clip-path="url(#bodyClip)">
+      <path d="M0 174 C80 154 176 154 256 174 V256 H0 Z" fill="url(#nori)"/>
+      <path d="M0 174 C80 154 176 154 256 174" fill="none" stroke="#5be8b0" stroke-opacity="0.6" stroke-width="4.5"/>
+      <ellipse cx="88" cy="86" rx="18" ry="32" transform="rotate(24 88 86)" fill="#ffffff" opacity="0.55"/>
+    </g>
+    <path d="M128 46 C108 46 90 60 68 106 C48 146 32 168 32 194 C32 220 56 232 84 232 H172 C200 232 224 220 224 194 C224 168 208 146 188 106 C166 60 148 46 128 46 Z" fill="none" stroke="#0a1b15" stroke-opacity="0.16" stroke-width="3"/>
+    <!-- Sprout -->
+    <g transform="">
+      <path d="M128 46 V26" stroke="#18a874" stroke-width="7" stroke-linecap="round"/>
+      <path d="M128 26 C108 4 80 8 74 22 C92 38 118 38 128 26 Z" fill="url(#leaf)"/>
+      <path d="M128 26 C148 2 176 4 182 18 C164 34 138 36 128 26 Z" fill="url(#leaf)"/>
+    </g>
+    <!-- Face -->
+    <ellipse cx="78" cy="136" rx="13" ry="8.5" fill="#ff7898" opacity="0.62"/>
+    <ellipse cx="178" cy="136" rx="13" ry="8.5" fill="#ff7898" opacity="0.62"/>
+    
+        <ellipse cx="102" cy="118" rx="9.5" ry="12" fill="#121210"/>
+        <circle cx="105" cy="113" r="3.2" fill="#ffffff"/>
+        <circle cx="99" cy="122" r="1.6" fill="#ffffff"/>
+        <path d="M144 119 Q154 110 164 119" fill="none" stroke="#121210" stroke-width="5" stroke-linecap="round"/>
+      
+    <path d="M118 136 Q128 146 138 136" fill="none" stroke="#3b1f1c" stroke-width="4.5" stroke-linecap="round"/>
+    <!-- Hands in front when shy -->
+    
+  </g>
+</svg>
