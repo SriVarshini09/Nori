@@ -709,12 +709,11 @@ export function numbersSupported(text: string, facts: string): boolean {
   return (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).every((n) => known.has(norm(n)));
 }
 
-/** Questions most applications ask; answered up front so the user sees them at form review. */
+/** Questions most applications ask; answered up front from the profile (0ms, no LLM call) so the user sees them at form review. */
 export const LIKELY_QUESTIONS: FormField[] = [
   { label: "Are you legally authorized to work in the United States?", kind: "radio", required: true, options: ["Yes", "No"], selector: "" },
   { label: "Will you now or in the future require sponsorship for employment visa status?", kind: "radio", required: true, options: ["Yes", "No"], selector: "" },
   { label: "LinkedIn Profile", kind: "text", required: false, selector: "" },
   { label: "Website", kind: "text", required: false, selector: "" },
   { label: "Location", kind: "text", required: false, selector: "" },
-  { label: "Why are you interested in this role?", kind: "textarea", required: false, selector: "" },
 ];

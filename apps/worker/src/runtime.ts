@@ -53,7 +53,7 @@ export function defaultRunner(): RunnerDeps {
 /** Start the scheduler and channel listeners. Call stop() to clear timers and listeners. */
 export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<Runtime> {
   const name = opts.name ?? "worker";
-  const RUN_EVERY = 20_000;
+  const RUN_EVERY = 4_000;
   const POLL_EVERY = 15 * 60_000;
   const INBOX_EVERY = 5 * 60_000;
   const TICK_EVERY = (Number(process.env.AGENT_TICK_MINUTES ?? 20) || 20) * 60_000;
@@ -102,11 +102,15 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   const agentUsers = async () => [...new Set([...(user ? [user.id] : []), ...(await usersWithGraph(db))])];
 
   every("runner", RUN_EVERY, async () => {
-    for (const app of await pickRunnable(db, { limit: 10 })) {
-      if (stopping) return;
-      const status = await runApplication(db, app.id, runner);
-      if (status !== app.status) log(`application ${app.id}: ${app.status} -> ${status}`);
-    }
+    const runnable = await pickRunnable(db, { limit: 10 });
+    const queue = [...runnable];
+    await Promise.all(Array.from({ length: Math.min(2, queue.length) }, async () => {
+      for (let app = queue.shift(); app; app = queue.shift()) {
+        if (stopping) return;
+        const status = await runApplication(db, app.id, runner);
+        if (status !== app.status) log(`application ${app.id}: ${app.status} -> ${status}`);
+      }
+    }));
     // Auto-retry failed runs a few times (MAX_ATTEMPTS counts driver runs and step errors); after that they stay failed.
     // Never auto-retry a failed submit (formApprovedAt set): a half-finished submit must not be re-sent without the user.
     const failed = await db.select().from(applications).where(and(

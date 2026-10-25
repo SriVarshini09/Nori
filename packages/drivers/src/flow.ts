@@ -8,7 +8,7 @@
  */
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import type { DriverContext, DriverResult, FormField, PendingQuestion, Receipt } from "@jobgraph/core";
 import { discoverFields, fillField, fillForm, findSubmitButton, detectCaptcha, norm, CAPTCHA_QUESTION, PREFERRED_FORM_SELECTORS } from "./generic.js";
 import {
@@ -130,13 +130,74 @@ async function attachResumeFallback(page: Page, ctx: DriverContext): Promise<boo
 }
 
 /**
+ * Warm shared Chromium browser pool (one per headless setting) so form filling does not pay
+ * a 1.5–4s cold browser spawn on every application. Each application runs in its own isolated BrowserContext.
+ */
+const sharedBrowsers = new Map<boolean, Promise<Browser>>();
+let activeContexts = 0;
+let browserIdleTimer: ReturnType<typeof setTimeout> | null = null;
+const BROWSER_IDLE_MS = 90_000;
+
+async function acquireBrowser(headless: boolean): Promise<Browser> {
+  if (browserIdleTimer) {
+    clearTimeout(browserIdleTimer);
+    browserIdleTimer = null;
+  }
+  let p = sharedBrowsers.get(headless);
+  if (!p) {
+    p = chromium.launch({ headless }).then((b) => {
+      b.on("disconnected", () => {
+        if (sharedBrowsers.get(headless) === p) sharedBrowsers.delete(headless);
+      });
+      return b;
+    });
+    p.catch(() => {
+      if (sharedBrowsers.get(headless) === p) sharedBrowsers.delete(headless);
+    });
+    sharedBrowsers.set(headless, p);
+  }
+  const browser = await p;
+  if (!browser.isConnected()) {
+    sharedBrowsers.delete(headless);
+    return acquireBrowser(headless);
+  }
+  return browser;
+}
+
+function scheduleBrowserIdleCheck(): void {
+  if (activeContexts > 0 || parked.size > 0) return;
+  if (browserIdleTimer) clearTimeout(browserIdleTimer);
+  browserIdleTimer = setTimeout(() => {
+    for (const [k, p] of sharedBrowsers.entries()) {
+      sharedBrowsers.delete(k);
+      void p.then((b) => b.close()).catch(() => {});
+    }
+  }, BROWSER_IDLE_MS);
+  browserIdleTimer.unref?.();
+}
+
+/** Fast DOM-ready navigation: returns as soon as the form (or an embedded ATS iframe) is present, instead of waiting 30s for third-party tracking scripts to go network-idle. */
+async function navigateToForm(page: Page, url: string, preferred: string[]): Promise<void> {
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline) {
+    const ready = await runScript<boolean>(page, FORM_VISIBLE_SCRIPT, preferred).catch(() => false);
+    if (ready) return;
+    const hasEmbed = await page.locator("iframe#grnhse_iframe, iframe[src*='greenhouse.io/embed/job_app']").count().catch(() => 0);
+    if (hasEmbed > 0) return;
+    await page.waitForTimeout(80);
+  }
+  await page.waitForLoadState("networkidle", { timeout: 2000 }).catch(() => {});
+}
+
+/**
  * A filled form kept open between steps. The fill and the send used to be two full runs (open the site, fill every field),
  * so approving took as long as the first fill and an answer to one missing field redid the whole form. Now the page a run
  * leaves behind waits here, keyed by application, and the next run applies only what changed. Kept in memory for a short
  * while and for a few applications at once; anything else, including a server restart, starts from scratch as before.
  */
 type Parked = {
-  browser: Browser; page: Page; fields: FormField[]; filled: Receipt["fields"]; files: string[]; pending: PendingQuestion[];
+  context: BrowserContext; page: Page; fields: FormField[]; filled: Receipt["fields"]; files: string[]; pending: PendingQuestion[];
   /** ctx.answers (normalised by label) the page was filled with, to tell a person's later edit from what is already there. */
   used: Map<string, string>;
   timer: ReturnType<typeof setTimeout>;
@@ -150,7 +211,8 @@ function dropParked(key: string): void {
   if (!p) return;
   parked.delete(key);
   clearTimeout(p.timer);
-  void p.browser.close().catch(() => {});
+  void p.context.close().catch(() => {});
+  scheduleBrowserIdleCheck();
 }
 
 function parkPage(key: string, entry: Omit<Parked, "timer">): void {
@@ -169,9 +231,19 @@ function takeParked(key: string): Parked | undefined {
   return p;
 }
 
-/** Close every kept page (tests, shutdown). */
+/** Close every kept page and shared browser (tests, shutdown). */
 export async function closeParkedPages(): Promise<void> {
   for (const key of [...parked.keys()]) dropParked(key);
+  if (browserIdleTimer) {
+    clearTimeout(browserIdleTimer);
+    browserIdleTimer = null;
+  }
+  const closing: Promise<unknown>[] = [];
+  for (const [k, p] of sharedBrowsers.entries()) {
+    sharedBrowsers.delete(k);
+    closing.push(p.then((b) => b.close()).catch(() => {}));
+  }
+  await Promise.all(closing);
 }
 
 /**
@@ -210,7 +282,7 @@ async function continueParked(p: Parked, ctx: DriverContext, preferred: string[]
 export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promise<DriverResult> {
   const started = Date.now();
   const preferred = opts.preferredForms ?? PREFERRED_FORM_SELECTORS;
-  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
   let page: Page | undefined;
   /** Set once submit has been clicked: from then on the employer may have the application, and every result says so. */
   let clicked = false;
@@ -221,20 +293,21 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     submittedVia: opts.name, dryRun: ctx.dryRun, durationMs: Date.now() - started, ...extra,
   });
 
+  activeContexts++;
   try {
     // A page kept from the previous step: carry on from it when it is still the same form.
     const kept = ctx.sessionKey ? takeParked(ctx.sessionKey) : undefined;
     let carried: Awaited<ReturnType<typeof continueParked>> = null;
     if (kept) {
       carried = await continueParked(kept, ctx, preferred);
-      if (carried) { browser = kept.browser; page = kept.page; fields = kept.fields; }
-      else { await kept.browser.close().catch(() => {}); ctx.onEvent("reuse_skipped", "The kept form could not be reused; filling again from the start"); }
+      if (carried) { context = kept.context; page = kept.page; fields = kept.fields; }
+      else { await kept.context.close().catch(() => {}); ctx.onEvent("reuse_skipped", "The kept form could not be reused; filling again from the start"); }
     }
     const used = new Map(Object.entries(ctx.answers ?? {}).map(([k, v]) => [norm(k), v] as [string, string]));
     /** Hand the page to the registry so the next step continues from it (see Parked). */
     const keep = (): void => {
-      if (!ctx.sessionKey || !browser || !page) return;
-      parkPage(ctx.sessionKey, { browser, page, fields, filled, files, pending, used });
+      if (!ctx.sessionKey || !context || !page) return;
+      parkPage(ctx.sessionKey, { context, page, fields, filled, files, pending, used });
       keepOpen = true;
     };
     let filled: Receipt["fields"];
@@ -243,18 +316,17 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     if (carried) {
       ({ filled, pending, files } = carried);
     } else {
-      browser = await chromium.launch({ headless: ctx.headless ?? true });
-      const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const browser = await acquireBrowser(ctx.headless ?? true);
+      context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       page = await context.newPage();
       page.setDefaultTimeout(NAV_TIMEOUT);
 
       ctx.onEvent("navigate", `Opening ${ctx.applyUrl}`);
       try {
-        await page.goto(ctx.applyUrl, { waitUntil: "networkidle", timeout: NAV_TIMEOUT });
+        await navigateToForm(page, ctx.applyUrl, preferred);
       } catch (err) {
-        // Pages with long-polling never go idle; continue if the document itself loaded.
         if (!page.url() || page.url() === "about:blank") throw err;
-        ctx.onEvent("navigate_warn", "Page did not reach network idle; continuing");
+        ctx.onEvent("navigate_warn", "Page did not finish loading cleanly; continuing");
       }
 
       if (opts.beforeDiscover) await opts.beforeDiscover(page, ctx);
@@ -292,7 +364,7 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
         if (i >= 0) pending.splice(i, 1);
       }
     }
-    if (!page || !browser) throw new Error("The form page is not open");
+    if (!page || !context) throw new Error("The form page is not open");
 
     const captcha = await detectCaptcha(page);
     if (captcha) {
@@ -368,6 +440,8 @@ export async function runApplyFlow(ctx: DriverContext, opts: FlowOptions): Promi
     const shot = page ? await screenshot(page, ctx, opts.name, "error") : undefined;
     return { outcome: "failed", error, screenshotPath: shot, ...(clicked ? { submitClicked: true } : {}) };
   } finally {
-    if (!keepOpen) await browser?.close().catch(() => {});
+    activeContexts = Math.max(0, activeContexts - 1);
+    if (!keepOpen) await context?.close().catch(() => {});
+    scheduleBrowserIdleCheck();
   }
 }

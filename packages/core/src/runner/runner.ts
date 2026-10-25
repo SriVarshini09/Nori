@@ -157,27 +157,42 @@ export function resumePoint(app: Pick<Application, "resumeId" | "resumeApprovedA
 // ---------- steps ----------
 
 async function stepTailoring(db: Db, app: Application, deps: RunnerDeps): Promise<ApplicationStatus> {
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1);
+  const [[job], profile, styleDoc, [{ n }]] = await Promise.all([
+    db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1),
+    getProfile(db, app.userId),
+    getDefaultResumeDoc(db, app.userId),
+    db.select({ n: count() }).from(resumes).where(eq(resumes.applicationId, app.id)),
+  ]);
   if (!job) throw new Error(`Job ${app.jobId} not found`);
-  const requirements = await ensureRequirements(db, job.id, { upgrade: true });
+
+  const [requirements, rawBaseline] = await Promise.all([
+    ensureRequirements(db, job.id, { upgrade: true }),
+    buildBaselineResume(db, app.userId, profile),
+  ]);
   if (!requirements) throw new Error(`Could not extract requirements for job ${job.id}`);
   await emit(db, app.id, "requirements", `${requirements.skills.length} skills, ${requirements.mustHaves.length} must-haves`,
     { seniority: requirements.seniority, roleFamily: requirements.roleFamily });
 
-  const match = await computeMatch(db, app.userId, job.id, retrieveEvidence);
+  const [match, evidence] = await Promise.all([
+    computeMatch(db, app.userId, job.id, retrieveEvidence),
+    retrieveEvidence(db, app.userId, requirements),
+  ]);
   await emit(db, app.id, "match", `Match ${Math.round(match.score * 100)}%`, { score: match.score, reasons: match.reasons, missing: match.missing });
 
-  const profile = await getProfile(db, app.userId);
-  const styleDoc = await getDefaultResumeDoc(db, app.userId);
-  const baseline = baselineFromDoc(await buildBaselineResume(db, app.userId, profile), styleDoc);
+  const baseline = baselineFromDoc(rawBaseline, styleDoc);
   const style = { templateId: styleDoc?.templateId ?? "classic", theme: styleDoc?.theme ?? {} };
-  const evidence = await retrieveEvidence(db, app.userId, requirements);
+
+  // Hands-free runs advance straight to stepFilling: warm up company research in the background while tailoring + PDF run.
+  const handsFree = profile.autopilot !== "off" || !profile.reviewBeforeSubmit || profile.resumeAutoApprove;
+  if (handsFree && !deps.research && parallelAvailable()) {
+    void companyResearchFor(db, app, job, deps, true).catch(() => null);
+  }
+
   const tailor = await (deps.tailor ?? tailorResume)({ baseline, requirements, evidence, jobTitle: job.title, companyName: job.companyName });
   await emit(db, app.id, "tailor",
     `${tailor.changes.length} bullet(s) rewritten${tailor.usedLLM ? "" : " (heuristic)"}, keyword coverage ${Math.round(tailor.keywordCoverage * 100)}%`,
     { changes: tailor.changes.length, rejected: tailor.rejected.length, usedLLM: tailor.usedLLM });
 
-  const [{ n }] = await db.select({ n: count() }).from(resumes).where(eq(resumes.applicationId, app.id));
   const version = Number(n) + 1;
   const outPath = path.join(artifactsRootOf(deps), app.id, `resume-v${version}.pdf`);
   const render = await (deps.render ?? renderPdf)(tailor.content, outPath, { requirements, ...style });
@@ -190,10 +205,7 @@ async function stepTailoring(db: Db, app: Application, deps: RunnerDeps): Promis
   await emit(db, app.id, "render", `Rendered ${render.pages} page(s), ATS score ${render.atsScore}`,
     { resumeId: resume.id, version, pages: render.pages, atsScore: render.atsScore });
 
-  // Hands-free runs must not wait on the resume either: with Autopilot on, or "review before submit" off, the tailored
-  // resume is approved here and the form is still held or sent by Autopilot's checks (see judgeByAutopilot).
-  const handsFree = profile.autopilot !== "off" || !profile.reviewBeforeSubmit;
-  if (profile.resumeAutoApprove || handsFree) {
+  if (handsFree) {
     return transition(db, app, "filling", { resumeId: resume.id, resumeApprovedAt: new Date(), error: null },
       profile.resumeAutoApprove ? "Resume auto-approved (profile setting); filling the form" : "Resume auto-approved (Autopilot is on); filling the form");
   }
@@ -227,7 +239,7 @@ async function companyResearchFor(db: Db, app: Application, job: typeof jobs.$in
   if (!fetch || !(deps.research || parallelAvailable())) return null;
   const started = Date.now();
   try {
-    const research = await withTimeout((deps.research ?? researchCompany)(db, job.companyName, company?.domain ?? undefined), deps.researchTimeoutMs ?? 60_000, "Company research");
+    const research = await withTimeout((deps.research ?? researchCompany)(db, job.companyName, company?.domain ?? undefined), deps.researchTimeoutMs ?? 12_000, "Company research");
     await emit(db, app.id, "research", `Researched ${job.companyName} in ${Math.round((Date.now() - started) / 1000)}s`, { citations: research.citations.length });
     return research;
   } catch (err) {
@@ -237,24 +249,29 @@ async function companyResearchFor(db: Db, app: Application, job: typeof jobs.$in
 }
 
 async function setupDrive(db: Db, app: Application, deps: RunnerDeps, opts: { research?: boolean } = {}): Promise<DriveSetup> {
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1);
-  if (!job) throw new Error(`Job ${app.jobId} not found`);
   if (!app.resumeId) throw new Error("No resume on this application");
-  const [resume] = await db.select().from(resumes).where(eq(resumes.id, app.resumeId)).limit(1);
+  const [[job], [resume], profileRow, [user], graph] = await Promise.all([
+    db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1),
+    db.select().from(resumes).where(eq(resumes.id, app.resumeId)).limit(1),
+    getProfile(db, app.userId),
+    db.select().from(users).where(eq(users.id, app.userId)).limit(1),
+    getGraph(db, app.userId),
+  ]);
+  if (!job) throw new Error(`Job ${app.jobId} not found`);
   if (!resume?.pdfPath) throw new Error("Resume has no PDF");
   // A Greenhouse board that redirects to the company's own site: go straight to Greenhouse's embedded form instead.
   const [board] = job.companyId ? await db.select({ token: companies.atsToken }).from(companies).where(eq(companies.id, job.companyId)).limit(1) : [];
   const formUrl = greenhouseFormUrl(job, board?.token) ?? job.applyUrl;
   const driver = deps.pickDriver(formUrl);
   if (!driver) throw new Error(`No apply driver supports ${formUrl}`);
-  const profileRow = await getProfile(db, app.userId);
-  const [user] = await db.select().from(users).where(eq(users.id, app.userId)).limit(1);
   const profile = toApplicantProfile(profileRow, user?.email ?? "");
-  const requirements = await ensureRequirements(db, job.id);
+  const [requirements, research, baseline] = await Promise.all([
+    ensureRequirements(db, job.id),
+    companyResearchFor(db, app, job, deps, opts.research ?? false),
+    buildBaselineResume(db, app.userId, profileRow),
+  ]);
   const evidence = requirements ? await retrieveEvidence(db, app.userId, requirements) : [];
-  const research = await companyResearchFor(db, app, job, deps, opts.research ?? false);
-  const baseline = await buildBaselineResume(db, app.userId, profileRow);
-  const education = (await getGraph(db, app.userId)).nodes.filter((n) => n.type === "education").map((n) => ({ label: n.label, startDate: n.startDate, endDate: n.endDate }));
+  const education = graph.nodes.filter((n) => n.type === "education").map((n) => ({ label: n.label, startDate: n.startDate, endDate: n.endDate }));
   const composed: Record<string, ComposedAnswer> = {};
   const answerQuestion = makeAnswerQuestion({
     profile, evidence, jobTitle: job.title, companyName: job.companyName, composed, education, saved: savedValues(profileRow.preferences),
@@ -426,8 +443,10 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
   const { ctx, driver, reviewBeforeSubmit, composed } = setup;
   const user = { ...app.answers };
 
-  // Pre-answer the questions most forms ask, fresh from the current profile and evidence on every run.
-  const pre: Record<string, string> = {};
+  // Pre-answer the questions most forms ask, fresh from the current profile, and reuse any previously composed free-text answers.
+  const prevAuto = autoAnswersOf(app);
+  const prevSources = autoAnswerSourcesOf(app);
+  const pre: Record<string, string> = { ...prevAuto };
   for (const q of LIKELY_QUESTIONS) {
     if (Object.keys(user).some((k) => k.toLowerCase() === q.label.toLowerCase())) continue;
     const a = await ctx.answerQuestion(q, "");
@@ -438,7 +457,7 @@ async function stepFilling(db: Db, app: Application, deps: RunnerDeps): Promise<
   // The fill is always a dry run. Sending happens only in stepSubmitting, after a person or every Autopilot check approved the
   // filled form. Turning "review before submit" off used to fill with dryRun false and send with no check at all.
   const res = await runDriver(db, app, driver, { ...ctx, dryRun: true, waitForCode: codeWaiter(db, app, deps) });
-  const stored = (r: Receipt) => storeReceipt(r, root, collectAuto(pre, r, user, composed), sourcesOf(composed));
+  const stored = (r: Receipt) => storeReceipt(r, root, collectAuto(pre, r, user, composed), { ...prevSources, ...sourcesOf(composed) });
   const composedLabels = Object.keys(composed);
   if (composedLabels.length) {
     await emit(db, app.id, "compose", `Wrote ${composedLabels.length} free-text answer(s): ${composedLabels.join("; ").slice(0, 300)}`,
