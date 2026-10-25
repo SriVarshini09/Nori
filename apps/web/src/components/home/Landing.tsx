@@ -138,7 +138,7 @@ export function PromiseSection() {
 /* ------------------------------------------------------------------ yours to run */
 
 const YOURS: { icon: LucideIcon; title: string; line: ReactNode }[] = [
-  { icon: Cpu, title: "Your model", line: "Your own API key, hosted credits, or a local model on your computer. With no model at all it still runs on rules." },
+  { icon: Cpu, title: "Model included", line: "Nori's own model does the work, so there is nothing to set up and no key to paste. If the model is ever unavailable it still runs on rules." },
   { icon: MessageCircle, title: "Your channels", line: "Telegram, WhatsApp, Slack, a small companion beside your clock, or the web. Same commands everywhere." },
   { icon: Download, title: "Your data", line: "Export your graph as a file any time. Delete your account and everything goes with it." },
 ];

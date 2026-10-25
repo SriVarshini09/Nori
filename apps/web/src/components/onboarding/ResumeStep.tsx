@@ -83,7 +83,7 @@ export function ResumeStep({ hasResume, busy, onDone, onResult }: {
             <dd className="mt-1 text-display-lg font-semibold text-ink tnum">{result.edgesCreated}</dd>
           </div>
           <div className="flex items-end rounded-card bg-sunken p-4 text-meta text-ink-2">
-            {result.usedLLM ? "Read with your model." : "Read with the built-in rules. Connect a model later for a closer read."}
+            {result.usedLLM ? "Read with Nori's model." : "Read with the built-in rules."}
           </div>
         </dl>
 
