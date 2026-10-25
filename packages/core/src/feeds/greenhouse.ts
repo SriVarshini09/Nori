@@ -33,11 +33,15 @@ export const greenhouse: FeedSourceExt = {
     const data = await getJson<{ jobs?: GhJob[] }>(`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs?content=true`);
     return (data?.jobs ?? []).map((j) => toJob(token, j));
   },
+  async fetchJob(token, externalId) {
+    const j = await getJson<GhJob>(`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs/${encodeURIComponent(externalId)}?questions=false`).catch(() => null);
+    return j?.title ? toJob(token, j) : null;
+  },
   parseUrl(url) {
     const u = safeUrl(url);
-    if (!u || !/^(boards|job-boards)\.greenhouse\.io$/i.test(u.hostname)) return null;
+    if (!u || !/^(boards|job-boards)(\.eu)?\.greenhouse\.io$/i.test(u.hostname)) return null;
     const parts = u.pathname.split("/").filter(Boolean);
-    // embed form: /embed/job_app?for=token&token=id
+    // embed form: /embed/job_app?for=token&token=id or /embed/job_board?for=token
     if (parts[0] === "embed") {
       const token = u.searchParams.get("for");
       return token ? { token, externalId: u.searchParams.get("token") ?? undefined } : null;
@@ -47,6 +51,33 @@ export const greenhouse: FeedSourceExt = {
     return { token: parts[0], externalId };
   },
 };
+
+/**
+ * Resolve a corporate careers URL carrying `?gh_jid=<id>` (e.g. https://stripe.com/jobs/listing/foo?gh_jid=123456)
+ * to its Greenhouse `{ token, externalId }` by inspecting the 301/302 Location header from
+ * `https://boards.greenhouse.io/embed/job_app?token=<id>`. Modeled on career-ops/liveness-api.mjs.
+ */
+export async function resolveGreenhouseEmbedId(rawUrl: string): Promise<{ token: string; externalId: string } | null> {
+  const u = safeUrl(rawUrl);
+  if (!u || /(^|\.)greenhouse\.io$/i.test(u.hostname)) return null;
+  const ghJid = u.searchParams.get("gh_jid") ?? u.searchParams.get("gh_src_jid");
+  if (!ghJid || !/^\d+$/.test(ghJid)) return null;
+  try {
+    const res = await fetch(`https://boards.greenhouse.io/embed/job_app?token=${ghJid}`, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (res.status !== 301 && res.status !== 302) return null;
+    const loc = res.headers.get("location");
+    if (!loc) return null;
+    const target = new URL(loc, "https://boards.greenhouse.io");
+    const board = target.searchParams.get("for");
+    if (!board || !/^[A-Za-z0-9._-]+$/.test(board)) return null;
+    return { token: board, externalId: ghJid };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Where the application form really is. Many companies set their Greenhouse board to redirect to their own careers

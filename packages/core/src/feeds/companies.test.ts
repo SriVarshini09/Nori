@@ -55,16 +55,35 @@ describe("following companies", () => {
 });
 
 describe("findBoardsInHtml", () => {
-  it("finds embedded and linked boards, most mentioned first, and ignores look-alike words", () => {
+  it("finds embedded and linked boards across all 13 ATS platforms, most mentioned first, and ignores look-alike words", () => {
     const html = `
       <iframe src="https://boards.greenhouse.io/embed/job_board?for=acme"></iframe>
       <a href="https://boards.greenhouse.io/acme/jobs/1">x</a><a href="https://boards.greenhouse.io/acme/jobs/2">y</a>
       <script src="https://boards.greenhouse.io/embed/job_board/js?for=acme"></script>
       <a href="https://jobs.lever.co/other-co">Lever</a>
+      <a href="https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite">Workday</a>
+      <a href="https://apply.workable.com/workable-co">Workable</a>
+      <a href="https://ats.rippling.com/rippling-co/jobs">Rippling</a>
+      <a href="https://recruitee-co.recruitee.com">Recruitee</a>
+      <a href="https://bamboohr-co.bamboohr.com/careers">BambooHR</a>
+      <a href="https://pinpoint-co.pinpointhq.com">Pinpoint</a>
+      <a href="https://breezy-co.breezy.hr">Breezy</a>
+      <a href="https://app.dover.com/DoverCo/careers/11111111-2222-3333-4444-555555555555">Dover</a>
+      <a href="https://personio-co.jobs.personio.de">Personio</a>
       <a href="https://jobs.ashbyhq.com/embed">not a company</a>`;
     const found = findBoardsInHtml(html);
     expect(found[0]).toMatchObject({ atsType: "greenhouse", token: "acme" });
-    expect(found.map((f) => `${f.atsType}:${f.token}`)).toContain("lever:other-co");
+    const keys = found.map((f) => `${f.atsType}:${f.token}`);
+    expect(keys).toContain("lever:other-co");
+    expect(keys).toContain("workday:nvidia:wd5:NVIDIAExternalCareerSite");
+    expect(keys).toContain("workable:workable-co");
+    expect(keys).toContain("rippling:rippling-co");
+    expect(keys).toContain("recruitee:recruitee-co");
+    expect(keys).toContain("bamboohr:bamboohr-co");
+    expect(keys).toContain("pinpoint:pinpoint-co");
+    expect(keys).toContain("breezy:breezy-co");
+    expect(keys).toContain("dover:DoverCo:11111111-2222-3333-4444-555555555555");
+    expect(keys).toContain("personio:personio-co");
     expect(found.some((f) => f.token.toLowerCase() === "embed")).toBe(false);
     expect(findBoardsInHtml("<p>No board here, just words about careers.</p>")).toEqual([]);
   });

@@ -3,18 +3,37 @@ import { eq } from "drizzle-orm";
 import type { DiscoverQuery, NormalizedJob } from "../contracts.js";
 import type { Db } from "../db/client.js";
 import { jobs } from "../db/schema.js";
-import { htmlToText } from "./html.js";
-import { prettifyToken, safeUrl, FETCH_TIMEOUT_MS } from "./http.js";
-import { upsertJobs } from "./normalize.js";
 import { exaAvailable, exaSearch } from "./exa.js";
+import { resolveGreenhouseEmbedId } from "./greenhouse.js";
+import { htmlToText } from "./html.js";
+import { FETCH_TIMEOUT_MS, prettifyToken, safeUrl } from "./http.js";
+import { extractJsonLdPostings, selectRichestPosting } from "./jsonld.js";
+import { upsertJobs } from "./normalize.js";
 import { parallelAvailable, parallelExtract, parallelSearch } from "./parallel.js";
+import { decodePageBytes, guardPostingHtml, sanitizePostingText } from "./posting-guard.js";
+import { discoverPublicBoardJobs } from "./public-boards.js";
+import { FEEDS, matchFeedUrl } from "./registry.js";
 import { SOCIAL_SOURCES, postingFromResult, sourceFor } from "./social.js";
-import { matchFeedUrl } from "./registry.js";
 import { safeFetch, UnsafeUrlError } from "./ssrf.js";
 
 export const ATS_DOMAINS = [
-  "boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com", "jobs.smartrecruiters.com",
+  "boards.greenhouse.io",
+  "job-boards.greenhouse.io",
+  "jobs.lever.co",
+  "jobs.ashbyhq.com",
+  "jobs.smartrecruiters.com",
+  "myworkdayjobs.com",
+  "apply.workable.com",
+  "ats.rippling.com",
+  "recruitee.com",
+  "bamboohr.com",
+  "pinpointhq.com",
+  "breezy.hr",
+  "app.dover.com",
 ];
+
+/** ATS vendors where single-job lookup is cheaper/richer than fetching the entire tenant board. */
+const SINGLE_JOB_FIRST = new Set(["smartrecruiters", "workday", "workable", "bamboohr"]);
 
 export type JobRow = typeof jobs.$inferSelect;
 
@@ -60,9 +79,15 @@ async function fetchPageDirect(url: string): Promise<{ title?: string; text: str
   try {
     const res = await safeFetch(url, { signal: ctrl.signal, headers: { "user-agent": "Mozilla/5.0 (compatible; jobgraph)", accept: "text/html" } });
     if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
-    const html = (await res.text()).slice(0, 500_000);
+    const rawBytes = new Uint8Array(await res.arrayBuffer());
+    const html = decodePageBytes(rawBytes).slice(0, 500_000);
     const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
-    return { title: title ? htmlToText(title).replace(/\s+/g, " ") : undefined, text: htmlToText(html).slice(0, 50_000), html };
+    const guarded = guardPostingHtml(html);
+    return {
+      title: title ? htmlToText(title).replace(/\s+/g, " ") : undefined,
+      text: sanitizePostingText(htmlToText(guarded.cleanedHtml)).slice(0, 50_000),
+      html,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -74,41 +99,63 @@ function firstHeading(md: string): string | undefined {
   return md.split("\n").map((l) => l.trim()).find((l) => l.length > 3 && l.length < 120);
 }
 
-/** Resolve one URL to a NormalizedJob: ATS feed first, then Parallel extract (or a direct fetch). */
+/**
+ * Resolve one URL to a NormalizedJob:
+ * 1. Direct ATS feed or single-job API (13 supported ATS platforms).
+ * 2. Embedded `?gh_jid=` redirect on a corporate domain -> Greenhouse feed.
+ * 3. Parallel extract (when configured) or direct fetch with schema.org/JobPosting JSON-LD + Posting Guard.
+ */
 async function resolveUrl(url: string, via: NormalizedJob["discoveredVia"], cache: TenantCache, hint: Hint = {}): Promise<NormalizedJob | null> {
   const m = matchFeedUrl(url);
   let companyHint: string | undefined;
   if (m) {
-    companyHint = prettifyToken(m.token);
+    const slugPart = m.token.includes(":") ? m.token.split(":")[0]! : m.token;
+    companyHint = prettifyToken(slugPart);
     if (m.externalId) {
       const { feed, token, externalId } = m;
       let job: NormalizedJob | null = null;
-      if (feed.atsType === "smartrecruiters" && feed.fetchJob) {
+      if (SINGLE_JOB_FIRST.has(feed.atsType) && feed.fetchJob) {
         job = await feed.fetchJob(token, externalId).catch(() => null);
       } else {
         const list = await tenantJobs(cache, feed.atsType, token, () => feed.fetchJobs(token));
-        job = list?.find((j) => j.externalId === externalId) ?? null;
+        job = list?.find((j) => j.externalId.toLowerCase() === externalId.toLowerCase()) ?? null;
+        if (!job && feed.fetchJob) {
+          job = await feed.fetchJob(token, externalId).catch(() => null);
+        }
       }
+      if (job) return { ...job, discoveredVia: via };
+    }
+  } else {
+    // Check if the URL is a corporate career page carrying ?gh_jid=<id>
+    const ghEmbed = await resolveGreenhouseEmbedId(url);
+    if (ghEmbed) {
+      companyHint = prettifyToken(ghEmbed.token);
+      const ghFeed = FEEDS.greenhouse!;
+      const list = await tenantJobs(cache, "greenhouse", ghEmbed.token, () => ghFeed.fetchJobs(ghEmbed.token));
+      const job = list?.find((j) => j.externalId === ghEmbed.externalId)
+        ?? (ghFeed.fetchJob ? await ghFeed.fetchJob(ghEmbed.token, ghEmbed.externalId).catch(() => null) : null);
       if (job) return { ...job, discoveredVia: via };
     }
   }
 
-  // Fallback: read the page text.
+  // Fallback: read the page text (Parallel extract, or direct fetch with JSON-LD + Posting Guard).
   let title = hint.title ?? undefined;
   let text = "";
+  let rawHtml = "";
   if (parallelAvailable()) {
     try {
       const [ex] = await parallelExtract([url], "Extract the full job posting: title, company, location, responsibilities and requirements.");
       if (ex?.content) {
-        text = ex.content;
+        text = sanitizePostingText(ex.content);
         title = firstHeading(ex.content) ?? ex.title ?? title;
       }
     } catch { /* fall through to excerpts / direct fetch */ }
   }
-  if (!text && hint.excerpts?.length) text = hint.excerpts.join("\n\n");
+  if (!text && hint.excerpts?.length) text = sanitizePostingText(hint.excerpts.join("\n\n"));
   if (!text) {
     try {
       const page = await fetchPageDirect(url);
+      rawHtml = page.html;
       text = page.text;
       title = title ?? page.title;
     } catch (err) {
@@ -116,6 +163,13 @@ async function resolveUrl(url: string, via: NormalizedJob["discoveredVia"], cach
       /* otherwise give up below */
     }
   }
+
+  // If we fetched HTML directly, check if schema.org/JobPosting JSON-LD gives a richer structured posting
+  if (rawHtml) {
+    const ldJob = selectRichestPosting(rawHtml, text, url, via, title, companyHint);
+    if (ldJob && ldJob.descriptionText.trim()) return ldJob;
+  }
+
   if (!text.trim()) return null;
   const u = safeUrl(url)!;
   return {
@@ -130,8 +184,30 @@ async function resolveUrl(url: string, via: NormalizedJob["discoveredVia"], cach
   };
 }
 
-/** Is any web search configured? Without one, discovery is limited to the ATS feeds. */
+/** Is any web search configured? Without one, discovery is limited to the ATS feeds and public boards. */
 export const searchAvailable = () => exaAvailable() || parallelAvailable();
+
+/**
+ * Zero-key discovery from public JSON boards (Hacker News Who is Hiring, Remotive, Arbeitnow).
+ * Resolves any ATS links inside postings and upserts into the database.
+ */
+export async function discoverPublicJobs(db: Db, query: DiscoverQuery): Promise<{ added: number; jobs: NormalizedJob[] }> {
+  const rawJobs = await discoverPublicBoardJobs(query);
+  if (!rawJobs.length) return { added: 0, jobs: [] };
+  const cache: TenantCache = new Map();
+  const upgraded = await Promise.all(
+    rawJobs.map(async (j) => {
+      const m = matchFeedUrl(j.applyUrl);
+      if (m && m.externalId) {
+        const resolved = await resolveUrl(j.applyUrl, j.discoveredVia, cache, { title: j.title }).catch(() => null);
+        if (resolved) return resolved;
+      }
+      return j;
+    }),
+  );
+  const { added } = await upsertJobs(db, upgraded);
+  return { added, jobs: upgraded };
+}
 
 /**
  * Exa search in two sweeps: the ATS boards (each hit resolved through its feed, so the posting is complete), then the
@@ -248,5 +324,17 @@ export async function addJobFromUrl(db: Db, url: string): Promise<{ job: JobRow;
   if (!job) throw new Error(`Could not read a job posting from ${new URL(clean).hostname}`);
   const { added, ids } = await upsertJobs(db, [job]);
   const [row] = await db.select().from(jobs).where(eq(jobs.id, ids[0])).limit(1);
-  return { job: row, added: added > 0 };
+  return { job: row!, added: added > 0 };
+}
+
+/**
+ * Read a company's careers page directly for schema.org/JobPosting JSON-LD listings when no known ATS board is found.
+ */
+export async function ingestCareerPageJsonLd(db: Db, url: string): Promise<{ added: number; total: number; ids: string[]; companyName?: string }> {
+  const clean = cleanUrl(url);
+  const page = await fetchPageDirect(clean);
+  const postings = extractJsonLdPostings(page.html, clean, "feed");
+  if (!postings.length) return { added: 0, total: 0, ids: [] };
+  const { added, ids } = await upsertJobs(db, postings);
+  return { added, total: postings.length, ids, companyName: postings[0]?.companyName };
 }

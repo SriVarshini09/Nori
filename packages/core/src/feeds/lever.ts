@@ -39,6 +39,10 @@ export const lever: FeedSourceExt = {
     const data = await getJson<LeverPosting[]>(`https://api.lever.co/v0/postings/${encodeURIComponent(token)}?mode=json`);
     return Array.isArray(data) ? data.map((p) => toJob(token, p)) : [];
   },
+  async fetchJob(token, externalId) {
+    const p = await getJson<LeverPosting>(`https://api.lever.co/v0/postings/${encodeURIComponent(token)}/${encodeURIComponent(externalId)}`).catch(() => null);
+    return p?.id && p?.text ? toJob(token, p) : null;
+  },
   parseUrl(url) {
     const u = safeUrl(url);
     if (!u || !/^jobs\.(eu\.)?lever\.co$/i.test(u.hostname)) return null;

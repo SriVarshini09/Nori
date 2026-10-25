@@ -15,8 +15,8 @@ const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 async function followedKeys(db: Db, prefs: Preferences): Promise<Set<string>> {
   const out = new Set<string>();
   for (const entry of prefs.followCompanies ?? []) {
-    const m = /^(greenhouse|lever|ashby|smartrecruiters):(.+)$/i.exec(entry.trim());
-    if (m) { out.add(keyOf(m[1], m[2])); continue; }
+    const m = /^([a-z0-9_]+):(.+)$/i.exec(entry.trim());
+    if (m && FEEDS[m[1]!.toLowerCase() as AtsType]) { out.add(keyOf(m[1]!, m[2]!)); continue; }
     const rows = await db.select({ atsType: companies.atsType, token: companies.atsToken }).from(companies)
       .where(sql`lower(${companies.name}) = ${entry.trim().toLowerCase()}`).limit(3);
     for (const r of rows) out.add(keyOf(r.atsType, r.token));

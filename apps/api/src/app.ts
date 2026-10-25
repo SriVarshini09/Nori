@@ -16,7 +16,7 @@ import {
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
-  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, ingestCareerPageJsonLd, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -583,7 +583,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     }));
   });
 
-  const BoardRef = z.object({ atsType: z.enum(["greenhouse", "lever", "ashby", "smartrecruiters"]), token: z.string().min(1).max(200) });
+  const BoardRef = z.object({ atsType: z.enum(ATS_TYPES), token: z.string().min(1).max(200) });
 
   app.post("/api/companies/follow", async (c) => {
     const { atsType, token } = await body(c, BoardRef);
@@ -602,7 +602,16 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const { url } = await body(c, z.object({ url: z.string().trim().url().max(2000) }));
     const user = c.get("user");
     const found = await detectBoard(url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
-    if (!found) throw bad("No supported job board (Greenhouse, Lever, Ashby or SmartRecruiters) was found on that page. Try pasting a link to one of its job postings.", 422);
+    if (!found) {
+      // Fallback: check if the careers page directly publishes schema.org/JobPosting JSON-LD listings.
+      const ld = await ingestCareerPageJsonLd(db, url).catch(() => ({ added: 0, total: 0, ids: [] as string[], companyName: undefined }));
+      if (ld.total > 0) {
+        const host = new URL(url).hostname.replace(/^(www|jobs|careers)\./i, "");
+        await computeMatchesForUser(db, user.id, { jobIds: ld.ids, limit: Math.max(1, ld.ids.length) }).catch(() => undefined);
+        return c.json({ atsType: "web", token: host, name: ld.companyName || prettifyToken(host.split(".")[0] ?? host), openJobs: ld.total, added: ld.added });
+      }
+      throw bad("No supported job board (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable, Rippling, Recruitee, BambooHR, Pinpoint, Breezy, Dover, Personio or JobPosting markup) was found on that page. Try pasting a link to one of its job postings.", 422);
+    }
     const res = await pollTenant(db, found.atsType, found.token).catch(() => { throw bad(`Found the ${found.atsType} board "${found.token}", but its job feed did not answer. Check the link and try again.`, 422); });
     if (res.total === 0) throw bad(`The ${found.atsType} board "${found.token}" has no open jobs right now.`, 422);
     await db.update(companies).set({ name: found.name }).where(and(eq(companies.atsType, found.atsType), eq(companies.atsToken, found.token), sql`${companies.name} = ${prettifyToken(found.token)}`));

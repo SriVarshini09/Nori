@@ -170,7 +170,11 @@ export const graphEdges = pgTable("graph_edges", {
   index("graph_edges_dst_idx").on(t.dst),
 ]);
 
-export const ATS_TYPES = ["greenhouse", "lever", "ashby", "smartrecruiters", "workday", "web", "manual"] as const;
+export const ATS_TYPES = [
+  "greenhouse", "lever", "ashby", "smartrecruiters", "workday",
+  "workable", "rippling", "recruitee", "bamboohr", "pinpoint", "breezy", "dover", "personio",
+  "web", "manual",
+] as const;
 export type AtsType = (typeof ATS_TYPES)[number];
 
 export const companies = pgTable("companies", {
