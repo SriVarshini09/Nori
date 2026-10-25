@@ -29,3 +29,19 @@ Known problems seen on the way: the `PARALLEL_API_KEY` on Fly is invalid (every 
 Still open in Stage 1: an Autopilot run with nobody watching (needs a job at or above the lane's minimum match; none scored 70% on 24 Oct), the no-refill approve (PR 35) and saved answers (PR 37) against a live form, Lever and Ashby CAPTCHA hand-off, a way to view or clear saved answers.
 
 Measured problem: approving used to refill the whole form, and an answer to one missing field redid the form. PR 35 keeps the filled page open for 20 minutes and types only what changed (offline form tested, live form not yet).
+
+## Feature check (docs/FEATURE-CHECK.md), live site, 24 Oct 2026
+
+| Row | Feature | Measured | Result |
+|---|---|---|---|
+| 4 | Pull a board (Greenhouse, vercel) | 8.5 s, 0 new (already known) | Pass |
+| 5 | Paste a link | A board URL is refused with a clear message in 0.2 s; a single posting is still to try | Partial |
+| 6 | Job detail | 1.1 s; requirements and match present; research off (Parallel key invalid) | Pass, research off |
+| 7 | Agent status | 0.6 s; cap 10, 1 lane, dry run | Pass |
+| 8 | Resume tailoring (Coinbase, Greenhouse) | 23 s to a rendered one-page resume; 14 changes, 13 traced to the graph; ATS 80; about 6,100 tokens | Pass (target 45 s) |
+| 10 | Form filling (Coinbase) | First two runs failed: the board redirects to coinbase.com, 0 fields after 30 s. After PR 19 (Greenhouse's embedded form): 38 fields found, 27 filled, review reached in 47.5 s. 8 questions left for the person: Last Name (profile has no surname), Location (City) and School (typeaheads), Discipline, 4 Coinbase-specific yes/no questions | Pass on time (target 60 s); typeahead fixes in the next PR |
+| 10 | Form filling (Databricks, Greenhouse) | Before PR 20: 8 questions left. After: 3 (School, a preferred-office pick, a conditional sanctions question). Degree and graduation date now come from the graph | Pass, improved |
+| 17 | Tracker stats | 0.4 s, counts match | Pass |
+| 19 | Companies search | 0.3 s | Pass |
+
+Defects found and fixed on the way: the model wrote "Nori" as a Last Name the profile lacked (identity and contact fields are now never composed); School and Discipline typeaheads got no answer when the listed options did not match exactly (the name is now typed for the suggestions to match); a Places-style city field was given up on after 2.5 s (now waits longer and retries with the city alone). Each driver retry recomposes the free-text answers (about 1,500 tokens); caching them is still open.

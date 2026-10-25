@@ -229,8 +229,18 @@ async function fillCombobox(page: Page, field: FormField, value: string): Promis
     await input.click({ timeout: 5000 }).catch(() => input.focus());
     await input.fill(attempt === 2 ? "" : value).catch(() => {});
     let opts = await comboOptionLocator(page, input);
-    let texts = (await waitForCount(opts, 2500)) ? await opts.allInnerTexts() : [];
+    // Suggestions that come from a lookup (school names, Google Places for a city) take a moment to arrive.
+    let texts = (await waitForCount(opts, 2500)) || (await waitForCount(opts, 4000)) ? await opts.allInnerTexts() : [];
     let idx = pickIndex(texts, value);
+    if (idx < 0 && value.includes(",")) {
+      // "Dallas, TX" against a places lookup that answers "Dallas, TX, USA": type the first part alone and look again.
+      const head = value.split(",")[0]!.trim();
+      await input.fill(head).catch(() => {});
+      opts = await comboOptionLocator(page, input);
+      texts = (await waitForCount(opts, 4000)) ? await opts.allInnerTexts() : [];
+      idx = pickIndex(texts, value);
+      if (idx < 0) idx = pickIndex(texts, head);
+    }
     if (idx < 0) {
       // The typed filter may not match the option wording; clear it and search the full list.
       await input.fill("").catch(() => {});

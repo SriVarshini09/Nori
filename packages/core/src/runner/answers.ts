@@ -475,7 +475,9 @@ function optionFor(field: FormField, names: string[]): string | null {
     const hit = opts.find((o) => norm(o) === n) ?? opts.find((o) => norm(o).startsWith(n)) ?? opts.find((o) => norm(o).includes(n));
     if (hit) return choiceValue(field, hit);
   }
-  return null;
+  // No listed option matches. A long list is a typeahead whose suggestions appear as you type (school names), so give
+  // the driver the name to type; a short fixed list that does not fit stays unanswered.
+  return opts.length > 25 ? names[0] ?? null : null;
 }
 
 /** The education that matters for an application: in progress or most recently finished. */
@@ -660,6 +662,8 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
     // same option is offered here.
     const remembered = rememberedFor(field);
     if (remembered !== null) return remembered;
+    // A name, contact detail or address the profile lacks goes to the person. The model must never supply one.
+    if (isProfileField(field.label) && !/cover letter|resume|\bcv\b/i.test(field.label)) return null;
     const kind = classifyQuestion(field.label, field);
     if (NEVER_COMPOSE.has(kind)) return null;
     if (shouldCompose(field, kind)) {
