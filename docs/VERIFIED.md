@@ -17,3 +17,15 @@ The roadmap (`docs/ROADMAP.md`) calls a stage done only when its "proven when" l
 Still open in Stage 0: the browser-side Sentry proof after PR 21, an uptime monitor (owner creates it on Better Stack), a staging app on Fly, the phone walk-through of sign-up to an approved dry-run form. Dependabot findings: closed (PR 14).
 
 Known problems seen on the way: the `PARALLEL_API_KEY` on Fly is invalid (every agent tick logs `Parallel search failed: 401`), so web discovery is off and only the ATS feeds run. Vercel suggests updating the `jobs` CNAME to its new value; the old one still works.
+
+## Stage 1: a real application goes out
+
+| Date | Check | How | Result |
+|---|---|---|---|
+| 24 Oct 2026 | Real submission to an employer | `ALLOW_REAL_SUBMIT=true` in `fly.toml` (PR 32), deployed. The owner approved applications on the live site: Greenhouse sent confirmation emails ("Thank you for applying") for Waymo and, twice, Scale AI. They arrived in the owner's inbox and show in Nori's Inbox. | Proven |
+| 24 Oct 2026 | Emailed security code read from Gmail and typed in | Composio `ak_` key with `session_management` on Fly, Gmail connected from Settings. A cached Composio session from before the connection kept answering "No active connection" until the machine restarted (fixed for good by PR 34). After the restart the 5-minute inbox check imported mail and the next application finished on its own. | Proven (owner's report) |
+| 24 Oct 2026 | Telegram answers for a linked chat | `/start` in @NoriNoteBot returned the command list on the owner's phone. | Proven |
+
+Still open in Stage 1: an Autopilot run with nobody watching (needs a job at or above the lane's minimum match; none scored 70% on 24 Oct), the no-refill approve (PR 35) and saved answers (PR 37) against a live form, Lever and Ashby CAPTCHA hand-off, a way to view or clear saved answers.
+
+Measured problem: approving used to refill the whole form, and an answer to one missing field redid the form. PR 35 keeps the filled page open for 20 minutes and types only what changed (offline form tested, live form not yet).
