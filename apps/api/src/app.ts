@@ -686,7 +686,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     }));
   });
 
-  const BoardRef = z.object({ atsType: z.enum(ATS_TYPES), token: z.string().min(1).max(200) });
+  const BoardRef = z.object({ atsType: z.enum(ATS_TYPES), token: z.string().min(1).max(200) })
+    .refine((b) => b.atsType !== "workday" || b.token.includes(":"), "Workday board token must be tenant:shard:site");
 
   app.post("/api/companies/follow", async (c) => {
     const { atsType, token } = await body(c, BoardRef);
