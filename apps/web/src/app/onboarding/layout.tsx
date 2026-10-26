@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NoriLogo } from "@/components/Logo";
 import { LogoutButton } from "@/components/LogoutButton";
+import { SaveLaterButton } from "@/components/onboarding/SaveLaterButton";
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,7 +13,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
             <NoriLogo size={30} />
           </Link>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-meta font-medium text-ink-2 underline-offset-4 hover:text-ink hover:underline">Save and finish later</Link>
+            <SaveLaterButton />
             <LogoutButton />
           </div>
         </div>

@@ -1,0 +1,73 @@
+{
+  "name": "Nori Mascot Asset Pack",
+  "version": "1.0.0",
+  "character": "Nori (clay-vinyl rice ball in emerald nori wrap with two-leaf sprout)",
+  "colors": {
+    "riceLight": "#fffefa",
+    "riceWarm": "#f0e7d0",
+    "noriEmerald": "#0d6b4f",
+    "noriDark": "#07372b",
+    "noriRim": "#1cc98e",
+    "sproutGreen": "#7ee85a",
+    "blushPink": "#ff7898",
+    "eyeInk": "#121210"
+  },
+  "poses": [
+    {
+      "id": "idle",
+      "title": "Idle / Default",
+      "description": "Friendly standing pose with soft smile and perked sprout.",
+      "png3d": "/mascot/3d/nori-3d-idle.png",
+      "svg2d": "/mascot/svg/nori-idle.svg"
+    },
+    {
+      "id": "wave",
+      "title": "Excited Wave",
+      "description": "Right arm raised waving hello with bright eyes and wider smile.",
+      "png3d": "/mascot/3d/nori-3d-wave.png",
+      "svg2d": "/mascot/svg/nori-wave.svg"
+    },
+    {
+      "id": "celebrate",
+      "title": "Celebrate / Hop",
+      "description": "Mid-air joyful hop with both arms up and 3D sparkles.",
+      "png3d": "/mascot/3d/nori-3d-celebrate.png",
+      "svg2d": "/mascot/svg/nori-celebrate.svg"
+    },
+    {
+      "id": "shy",
+      "title": "Shy / Password Privacy",
+      "description": "Both hands covering eyes with deeper cheek blush (used on password inputs).",
+      "png3d": "/mascot/3d/nori-3d-shy.png",
+      "svg2d": "/mascot/svg/nori-shy.svg"
+    },
+    {
+      "id": "typing",
+      "title": "Typing / Taking Notes",
+      "description": "Leaning forward attentively with hands in note-taking motion.",
+      "png3d": "/mascot/3d/nori-3d-typing.png",
+      "svg2d": "/mascot/svg/nori-typing.svg"
+    },
+    {
+      "id": "curious",
+      "title": "Curious Head-Tilt",
+      "description": "Tilted head with inquisitive expression and swayed sprout.",
+      "png3d": "/mascot/3d/nori-3d-curious.png",
+      "svg2d": "/mascot/svg/nori-curious.svg"
+    },
+    {
+      "id": "wink",
+      "title": "Playful Wink",
+      "description": "One glossy eye open, one happy wink arc, waving arm.",
+      "png3d": "/mascot/3d/nori-3d-wink.png",
+      "svg2d": "/mascot/svg/nori-wink.svg"
+    },
+    {
+      "id": "sleeping",
+      "title": "Sleeping / Off-Duty",
+      "description": "Closed restful eyes, drooping sprout, peaceful expression.",
+      "png3d": "/mascot/3d/nori-3d-sleeping.png",
+      "svg2d": "/mascot/svg/nori-sleeping.svg"
+    }
+  ]
+}

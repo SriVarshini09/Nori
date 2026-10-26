@@ -7,7 +7,7 @@ import { api, artifactUrl, USE_MOCK } from "@/lib/api";
 import { pct, STATUS_LABEL } from "@/lib/format";
 import {
   APPLICATION_STATUSES,
-  type Application, type ApplicationDetail, type ApplicationStatus, type Company, type Job, type Resume, type ResumeContent, type RunEvent, type RunEventRow,
+  type Application, type ApplicationDetail, type ApplicationStatus, type Company, type Job, type OutreachContact, type Resume, type ResumeContent, type RunEvent, type RunEventRow,
 } from "@/lib/types";
 import { EventLog } from "./EventLog";
 import { ResearchView } from "./ResearchPanel";
@@ -184,6 +184,17 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
   const canRetry = ["failed", "needs_user", "skipped"].includes(app.status);
   const kept = resume ? resume.changes.length - reverted.size : 0;
   const gaps = useMemo(() => (recruiter?.musts ?? []).filter((m) => m.status === "missing" && m.required), [recruiter]);
+  const coveredMusts = useMemo(() => (recruiter?.musts ?? []).filter((m) => m.status !== "missing"), [recruiter]);
+  const missingMusts = useMemo(() => (recruiter?.musts ?? []).filter((m) => m.status === "missing"), [recruiter]);
+
+  const useOriginalResume = () =>
+    act("resume", async () => {
+      if (resume && resume.changes.length > 0 && !USE_MOCK) {
+        const allIds = new Set(resume.changes.map((c) => c.bulletId));
+        await api.editApplicationResume(app.id, { content: withReverts(resume.content, resume, allIds) });
+      }
+      await api.approveResume(app.id);
+    }, { status: "filling", resumeApprovedAt: now() });
 
   // ---- stage panels -------------------------------------------------------------------------------------------
 
@@ -200,6 +211,33 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
           {resume.keywordCoverage != null && <span>· keywords {Math.round(resume.keywordCoverage * 100)}%</span>}
         </p>
       </div>
+      {(coveredMusts.length > 0 || missingMusts.length > 0) && (
+        <div className="rounded-card border border-line bg-surface p-3.5">
+          <div className="flex items-center justify-between gap-2 text-meta">
+            <span className="font-semibold text-ink">
+              Keyword coverage: {coveredMusts.length} of {coveredMusts.length + missingMusts.length} job skills on your tailored resume
+            </span>
+            {missingMusts.length > 0 && (
+              <Link href="/graph" className="font-medium text-accent hover:underline">
+                + Add missing skill to graph
+              </Link>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[12px]">
+            {coveredMusts.map((m) => (
+              <span key={m.skill} className="inline-flex items-center gap-1 rounded-full bg-accent-tint px-2.5 py-0.5 font-medium text-accent-fg">
+                <Check size={12} aria-hidden="true" />
+                {m.skill}
+              </span>
+            ))}
+            {missingMusts.map((m) => (
+              <span key={m.skill} className="inline-flex items-center gap-1 rounded-full border border-dashed border-control px-2.5 py-0.5 text-muted">
+                {m.skill}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="flex flex-col gap-3">
           {resume.changes.length > 0 ? (
@@ -282,23 +320,68 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
             <dd className="text-ink-2">Nothing is sent. The application waits here until you answer or skip it.</dd>
           </dl>
           <div className="mt-4 flex flex-col gap-4">
-            {app.pendingQuestions.map((q, i) => (
-              <label key={q.label} className="block" htmlFor={`q-${i}`}>
-                <span className="mb-1.5 block text-body-sm font-semibold text-ink">
-                  {q.label}{q.required && <span className="ml-1 text-attn-fg" aria-label="required">*</span>}
-                </span>
-                {q.options?.length ? (
-                  <select id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))}>
-                    <option value="">Choose an answer</option>
-                    {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : q.type === "textarea" ? (
-                  <textarea id={`q-${i}`} className={inputClass} rows={3} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
-                ) : (
-                  <input id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
-                )}
-              </label>
-            ))}
+            {app.pendingQuestions.map((q, i) => {
+              const handoffUrl = q.liveViewUrl ?? app.receipt?.liveViewUrl ?? job.applyUrl;
+              if (q.type === "captcha" || q.type === "blocked") {
+                return (
+                  <div key={q.label} className="rounded-card border border-line bg-surface p-3.5">
+                    <p className="text-body-sm font-semibold text-ink">{q.label}</p>
+                    <p className="mt-1 text-meta text-ink-2">
+                      {q.liveViewUrl
+                        ? "Open the live browser session on your phone or computer, solve the verification challenge, then tap Done below so Nori can continue from where it paused."
+                        : "This posting requires a human challenge. Open the page, complete the check, then tap Done below."}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                      <a
+                        href={handoffUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-control bg-ink px-3.5 text-[13px] font-semibold text-on-ink"
+                      >
+                        {q.liveViewUrl ? "Open live browser" : "Open posting"}
+                        <Icon icon={ExternalLink} size={14} />
+                      </a>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy !== null}
+                        onClick={async () => {
+                          setBusy("answer");
+                          try {
+                            await api.answerQuestions(app.id, { [q.label]: "Solved" });
+                            await refresh();
+                          } catch (e) {
+                            setError((e as Error).message);
+                          } finally {
+                            setBusy(null);
+                          }
+                        }}
+                      >
+                        Done, continue application
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <label key={q.label} className="block" htmlFor={`q-${i}`}>
+                  <span className="mb-1.5 block text-body-sm font-semibold text-ink">
+                    {q.label}{q.required && <span className="ml-1 text-attn-fg" aria-label="required">*</span>}
+                  </span>
+                  {q.options?.length ? (
+                    <select id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))}>
+                      <option value="">Choose an answer</option>
+                      {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : q.type === "textarea" ? (
+                    <textarea id={`q-${i}`} className={inputClass} rows={3} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
+                  ) : (
+                    <input id={`q-${i}`} className={inputClass} value={pending[q.label] ?? ""} onChange={(e) => setPending((p) => ({ ...p, [q.label]: e.target.value }))} />
+                  )}
+                </label>
+              );
+            })}
           </div>
         </Frame>
       )}
@@ -371,14 +454,28 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
       )}
       {receipt && (
         <Accordion title="What was in the form" meta={receipt.fields.length}>
-          <dl className="divide-y divide-line text-body-sm">
-            {receipt.fields.map((f) => (
-              <div key={f.label} className="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[12rem_1fr]">
-                <dt className="text-meta text-muted">{f.label}</dt>
-                <dd className="break-words text-ink">{f.value}</dd>
+          {receipt.appliedUsingEmail && (
+            <p className="mb-3 rounded-control bg-sunken px-3 py-2 text-meta text-ink-2">
+              Applied using <code className="font-mono text-ink">{receipt.appliedUsingEmail}</code>
+            </p>
+          )}
+          <div className="flex flex-col gap-4">
+            {groupReceiptFields(receipt.fields).map((group) => (
+              <div key={group.section}>
+                <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted">
+                  {group.section} ({group.items.length})
+                </p>
+                <dl className="divide-y divide-line rounded-control border border-line bg-bg px-3 text-body-sm">
+                  {group.items.map((f) => (
+                    <div key={f.label} className="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[12rem_1fr]">
+                      <dt className="text-meta text-muted">{f.label}</dt>
+                      <dd className="break-words text-ink">{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             ))}
-          </dl>
+          </div>
         </Accordion>
       )}
       {!receipt && <p className="text-body-sm text-muted">No receipt was recorded for this application.</p>}
@@ -413,7 +510,16 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
         primary={<Button variant="primary" icon={Check} onClick={approveResume} disabled={busy !== null || !resume}>
           {busy === "resume" ? "Approving..." : resume && resume.changes.length > 0 ? `Approve resume · ${kept} kept${reverted.size ? `, ${reverted.size} reverted` : ""}` : "Approve resume"}
         </Button>}
-        extra={!USE_MOCK && <LinkButton href={`/applications/${app.id}/resume`} variant="ghost" icon={Pencil}>Edit resume</LinkButton>}
+        extra={
+          <>
+            {resume && resume.changes.length > 0 && (
+              <Button variant="ghost" onClick={useOriginalResume} disabled={busy !== null}>
+                Use original resume
+              </Button>
+            )}
+            {!USE_MOCK && <LinkButton href={`/applications/${app.id}/resume`} variant="ghost" icon={Pencil}>Edit resume</LinkButton>}
+          </>
+        }
         onSkip={skip} busy={busy !== null}
       />
     ) : formEditable ? (
@@ -498,6 +604,9 @@ export function ApplicationReview({ initial, nodes, liveSubmit }: { initial: App
               </p>
             )}
           </Accordion>
+          <Accordion title={`Reach out at ${job.companyName}`}>
+            <OutreachPanel jobId={job.id} companyName={job.companyName} />
+          </Accordion>
           <p className="px-1 text-[12px] text-muted">{app.attempts} attempt{app.attempts === 1 ? "" : "s"} · {STATUS_LABEL[app.status]} <TimeAgo iso={app.updatedAt} /></p>
         </aside>
       </div>
@@ -522,6 +631,123 @@ function ActionBar({ next, primary, extra, onSkip, busy, warn }: { next: string;
       </div>
     </div>
   );
+}
+
+function OutreachPanel({ jobId, companyName }: { jobId: string; companyName: string }) {
+  const [contacts, setContacts] = useState<OutreachContact[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await api.listOutreach(jobId);
+      setContacts(res.contacts);
+    } catch {
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function markSent(id: string) {
+    try {
+      const res = await api.markOutreachSent(id);
+      setContacts((prev) => (prev ?? []).map((c) => (c.id === id ? res.contact : c)));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (contacts === null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-meta text-muted">
+          Find hiring managers or engineers at {companyName} and draft a short note grounded in your career graph.
+        </p>
+        <Button type="button" variant="secondary" size="sm" onClick={load} disabled={loading}>
+          {loading ? "Drafting..." : `Draft outreach for ${companyName}`}
+        </Button>
+      </div>
+    );
+  }
+
+  if (contacts.length === 0) {
+    return <p className="text-meta text-muted">No contacts found for this role yet.</p>;
+  }
+
+  return (
+    <ul className="flex flex-col gap-3">
+      {contacts.map((c) => (
+        <li key={c.id} className="rounded-card border border-line bg-bg p-3 text-meta">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-semibold text-ink">{c.personName}</p>
+              <p className="text-muted">{c.personTitle}</p>
+            </div>
+            {c.personUrl && (
+              <a href={c.personUrl} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                Profile
+              </a>
+            )}
+          </div>
+          <p className="mt-2 whitespace-pre-line rounded-control border border-line bg-surface p-2.5 text-[12.5px] leading-relaxed text-ink">
+            {c.draftText}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard?.writeText(c.draftText);
+                setCopiedId(c.id);
+                setTimeout(() => setCopiedId(null), 2000);
+              }}
+            >
+              {copiedId === c.id ? "Copied" : "Copy note"}
+            </Button>
+            {c.status === "sent" ? (
+              <span className="text-[11.5px] font-medium text-accent">
+                Sent · follow-up in 5d
+              </span>
+            ) : (
+              <Button type="button" variant="ghost" size="sm" onClick={() => markSent(c.id)}>
+                Mark sent
+              </Button>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function groupReceiptFields(fields: { label: string; value: string; kind: string }[]): { section: string; items: { label: string; value: string; kind: string }[] }[] {
+  const buckets: Record<string, { label: string; value: string; kind: string }[]> = {
+    "Personal Information": [],
+    "Links & Documents": [],
+    "Work Authorization & Screening": [],
+    "Voluntary Disclosures": [],
+    "Application Questions": [],
+  };
+  for (const f of fields) {
+    const l = f.label.toLowerCase();
+    if (/\b(name|email|e-mail|phone|mobile|location|city|state|country|address|pronoun)\b/.test(l)) {
+      buckets["Personal Information"]!.push(f);
+    } else if (f.kind === "file" || /\b(resume|cv|cover letter|linkedin|github|website|portfolio|url)\b/.test(l)) {
+      buckets["Links & Documents"]!.push(f);
+    } else if (/\b(gender|race|ethnic|hispanic|veteran|disab|orientation|transgender)\b/.test(l)) {
+      buckets["Voluntary Disclosures"]!.push(f);
+    } else if (/\b(authori[sz]|sponsor|visa|citizen|clearance|salary|compensation|start date|notice|relocat|18)\b/.test(l)) {
+      buckets["Work Authorization & Screening"]!.push(f);
+    } else {
+      buckets["Application Questions"]!.push(f);
+    }
+  }
+  return Object.entries(buckets)
+    .filter(([, items]) => items.length > 0)
+    .map(([section, items]) => ({ section, items }));
 }
 
 function mockScreenshot(company: string): string {

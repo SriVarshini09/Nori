@@ -7,7 +7,21 @@ import { ApiError, api } from "@/lib/api";
 import type { BoardAts, CompanyList, WatchedCompany } from "@/lib/types";
 import { Button, EmptyState, Field, Frame, Icon, Notice, Pill, inputClass } from "./ui";
 
-const ATS_LABEL: Record<BoardAts, string> = { greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", smartrecruiters: "SmartRecruiters" };
+const ATS_LABEL: Record<BoardAts, string> = {
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  ashby: "Ashby",
+  smartrecruiters: "SmartRecruiters",
+  workday: "Workday",
+  workable: "Workable",
+  rippling: "Rippling",
+  recruitee: "Recruitee",
+  bamboohr: "BambooHR",
+  pinpoint: "Pinpoint",
+  breezy: "Breezy HR",
+  dover: "Dover",
+  personio: "Personio",
+};
 const PAGE = 60;
 const errorText = (e: unknown) => (e instanceof ApiError ? e.detail : (e as Error).message);
 

@@ -9,11 +9,13 @@ export const GREENHOUSE_FORM_SELECTORS = ["#application_form", "form#application
 /** Company career pages embed the Greenhouse form in an iframe; open the iframe document directly. */
 async function enterEmbed(page: Page, ctx: DriverContext): Promise<void> {
   const src = await page.locator("iframe#grnhse_iframe, iframe[src*='greenhouse.io/embed/job_app']").first()
-    .getAttribute("src", { timeout: 1000 }).catch(() => null);
+    .getAttribute("src", { timeout: 600 }).catch(() => null);
   if (!src) return;
   const url = new URL(src, page.url()).toString();
   ctx.onEvent("navigate", `Opening embedded Greenhouse form ${url}`);
-  await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 }).catch(() => {});
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => {});
+  await page.locator("#application_form, form#application-form, #application-form, form").first()
+    .waitFor({ state: "attached", timeout: 2500 }).catch(() => {});
 }
 
 export class GreenhouseDriver implements ApplyDriver {

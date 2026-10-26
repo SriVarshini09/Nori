@@ -98,22 +98,36 @@ async function toPdf(html: string, theme: ResumeTheme): Promise<Buffer> {
 }
 
 /**
- * Render a resume with a template and theme to a PDF buffer, refitting until it reaches the page target or the plan
- * runs out. Returns the best attempt (the last one tried) with its real page count and ATS report.
+ * Render a resume with a template and theme to a PDF buffer, refitting inside a single warm Playwright page
+ * until it reaches the page target or the plan runs out. Returns the best attempt with its real page count and ATS report.
  */
 export async function renderResume(content: ResumeContent, opts: ResumeRenderOptions = {}): Promise<ResumeRenderOutcome> {
   const templateId = opts.templateId ?? DEFAULT_TEMPLATE;
   const theme = themeFor(templateId, opts.theme);
   const maxPages = opts.maxPages ?? theme.pages;
   const steps: string[] = [];
-  let last: { v: Variant; pdf: Buffer; pages: number } | null = null;
-  for (const v of fittingPlan(content, opts.trim ?? false)) {
-    if (v.label) steps.push(v.label);
-    const html = renderResumeHtml(v.content, templateId, opts.theme, { fontBase: FONT_HOST, density: v.density });
-    const pdf = await toPdf(html, theme);
-    last = { v, pdf, pages: countPdfPages(pdf) };
-    if (last.pages <= maxPages) break;
-  }
+
+  const last = await withPage(async (page) => {
+    await page.route(`${FONT_HOST}/**`, (route) => {
+      const file = decodeURIComponent(new URL(route.request().url()).pathname.slice(1));
+      const body = readFontFile(file);
+      if (!body) return route.fulfill({ status: 404, body: "" });
+      return route.fulfill({ status: 200, contentType: "font/woff2", headers: { "access-control-allow-origin": "*", "cache-control": "max-age=3600" }, body });
+    });
+
+    let cur: { v: Variant; pdf: Buffer; pages: number } | null = null;
+    for (const v of fittingPlan(content, opts.trim ?? false)) {
+      if (v.label) steps.push(v.label);
+      const html = renderResumeHtml(v.content, templateId, opts.theme, { fontBase: FONT_HOST, density: v.density });
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+      await page.evaluate(() => document.fonts.ready);
+      const pdf = Buffer.from(await page.pdf({ format: PAGE_SIZES[theme.pageSize].css, printBackground: true, preferCSSPageSize: true }));
+      cur = { v, pdf, pages: countPdfPages(pdf) };
+      if (cur.pages <= maxPages) break;
+    }
+    return cur;
+  });
+
   if (!last) throw new Error("renderResume: nothing rendered");
   const html = renderResumeHtml(last.v.content, templateId, opts.theme, { density: last.v.density });
   const ats = atsChecks(last.v.content, html, opts.requirements ?? undefined, last.pages, maxPages);

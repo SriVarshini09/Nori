@@ -21,6 +21,15 @@ const BOARDS: { id: BoardAts; label: string; hint: string }[] = [
   { id: "lever", label: "Lever", hint: "jobs.lever.co/netflix → netflix" },
   { id: "ashby", label: "Ashby", hint: "jobs.ashbyhq.com/linear → linear" },
   { id: "smartrecruiters", label: "SmartRecruiters", hint: "jobs.smartrecruiters.com/Visa → Visa" },
+  { id: "workday", label: "Workday", hint: "tenant:shard:site e.g. nvidia:wd5:NVIDIAExternalCareerSite" },
+  { id: "workable", label: "Workable", hint: "apply.workable.com/acme → acme" },
+  { id: "rippling", label: "Rippling", hint: "ats.rippling.com/acme-jobs/jobs → acme-jobs" },
+  { id: "recruitee", label: "Recruitee", hint: "acme.recruitee.com → acme" },
+  { id: "bamboohr", label: "BambooHR", hint: "acme.bamboohr.com/careers → acme" },
+  { id: "pinpoint", label: "Pinpoint", hint: "acme.pinpointhq.com → acme" },
+  { id: "breezy", label: "Breezy HR", hint: "acme.breezy.hr → acme" },
+  { id: "dover", label: "Dover", hint: "Company:board-uuid" },
+  { id: "personio", label: "Personio", hint: "acme.jobs.personio.de → acme" },
 ];
 
 /**

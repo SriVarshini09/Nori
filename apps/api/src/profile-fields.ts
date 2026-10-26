@@ -94,7 +94,7 @@ export function buildProfilePatch(current: ProfileRow, data: Record<string, unkn
   if (d.eeo) set.eeo = { ...current.eeo, ...compact(d.eeo as Record<string, unknown>) };
   const flatPrefs = Object.fromEntries(Object.keys(preferenceKeys).filter((k) => d[k] !== undefined).map((k) => [k, d[k]]));
   if (d.preferences || Object.keys(flatPrefs).length) {
-    const { agent: _agent, lanes: _lanes, ...incoming } = (d.preferences as Record<string, unknown> | undefined) ?? {}; // server-owned: never taken from the client
+    const { agent: _agent, lanes: _lanes, savedAnswers: _saved, ...incoming } = (d.preferences as Record<string, unknown> | undefined) ?? {}; // server-owned: never taken from the client
     set.preferences = { ...current.preferences, ...incoming, ...flatPrefs };
   }
   // City/state/country from the wizard keep the free-text location (used by older heuristics) in sync.

@@ -3,7 +3,7 @@ import path from "node:path";
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import {
-  agentEvents, applications, authTokens, channels, conversations, graphEdges, graphNodes, inboxMessages, matches, profiles, resumes,
+  agentEvents, applications, atsAccounts, authTokens, channels, conversations, graphEdges, graphNodes, inboxMessages, matches, outreach, profiles, pushSubscriptions, resumes,
   resumeDocs, resumeDocVersions, runEvents, sessions, users,
 } from "../db/schema.js";
 
@@ -26,6 +26,9 @@ export async function deleteUserAccount(db: Db, userId: string, opts: { artifact
   const docIds = (await db.select({ id: resumeDocs.id }).from(resumeDocs).where(eq(resumeDocs.userId, userId))).map((r) => r.id);
   const docVers = docIds.length ? await db.delete(resumeDocVersions).where(inArray(resumeDocVersions.docId, docIds)).returning() : [];
   const docs = await db.delete(resumeDocs).where(eq(resumeDocs.userId, userId)).returning();
+  await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  await db.delete(atsAccounts).where(eq(atsAccounts.userId, userId));
+  await db.delete(outreach).where(eq(outreach.userId, userId));
   const tokens = await db.delete(authTokens).where(eq(authTokens.userId, userId)).returning();
   const sess = await db.delete(sessions).where(eq(sessions.userId, userId)).returning();
   const convs = channelIds.length

@@ -8,6 +8,7 @@
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
   InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, OnboardingState, OnboardingStepId,
+  OutreachContact, PlanStatus,
   BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TelegramInfo, TelegramLink, TrackerStats, User,
 } from "./types";
 
@@ -160,11 +161,12 @@ export const api = {
   /** Merges `data` into the profile and advances past `step`. */
   saveOnboarding: async (step: OnboardingStepId, data: Record<string, unknown>): Promise<{ profile: Profile }> =>
     USE_MOCK ? { profile: { ...(await mock()).me.profile, ...data } as Profile } : request("PUT", "/api/onboarding", { step, data }),
-  uploadResumeFile: async (file: File): Promise<IngestResult> => {
+  uploadResumeFile: async (file: File, replace = false): Promise<IngestResult> => {
     if (USE_MOCK) return (await mock()).ingest;
     const form = new FormData();
     form.append("file", file);
-    return request("POST", "/api/profile/resume-file", form);
+    if (replace) form.append("replace", "1");
+    return request("POST", `/api/profile/resume-file${replace ? "?replace=1" : ""}`, form);
   },
 
   // ---- health / me / profile
@@ -179,6 +181,38 @@ export const api = {
   deleteGraphNode: async (id: string): Promise<void> => {
     if (!USE_MOCK) await request("DELETE", `/api/graph/nodes/${id}`);
   },
+  upsertSavedAnswer: async (label: string, value: string): Promise<{ savedAnswers: Record<string, { label: string; value: string }> }> =>
+    USE_MOCK ? { savedAnswers: { [label.toLowerCase()]: { label, value } } } : request("PUT", "/api/profile/saved-answers", { label, value }),
+  deleteSavedAnswer: async (key: string): Promise<{ savedAnswers: Record<string, { label: string; value: string }> }> =>
+    USE_MOCK ? { savedAnswers: {} } : request("DELETE", `/api/profile/saved-answers/${encodeURIComponent(key)}`),
+  clearSavedAnswers: async (): Promise<{ savedAnswers: Record<string, { label: string; value: string }> }> =>
+    USE_MOCK ? { savedAnswers: {} } : request("DELETE", "/api/profile/saved-answers"),
+  inboundEmail: async (): Promise<{ inboundEmail: string }> =>
+    USE_MOCK ? { inboundEmail: "applicant-demo@mail.norinote.xyz" } : request("GET", "/api/profile/inbound-email"),
+  planStatus: async (): Promise<PlanStatus> =>
+    USE_MOCK
+      ? {
+          plan: "free",
+          limits: { plan: "free", dailyApplicationsCap: 3, maxLanes: 2, dailyTokenCap: 300_000, autopilotIncluded: false },
+          usedToday: 1,
+          remainingToday: 2,
+          referralCode: "nori-demo1234",
+          stripeConfigured: false,
+          hasCustomer: false,
+        }
+      : request("GET", "/api/billing/status"),
+  createCheckout: (): Promise<{ url: string; id: string }> => request("POST", "/api/billing/checkout", {}),
+  createBillingPortal: (): Promise<{ url: string }> => request("POST", "/api/billing/portal", {}),
+  vapidInfo: async (): Promise<{ configured: boolean; publicKey: string | null; subscribed: boolean; count: number }> =>
+    USE_MOCK ? { configured: false, publicKey: null, subscribed: false, count: 0 } : request("GET", "/api/push/vapid"),
+  subscribePush: (sub: { endpoint: string; keys: { p256dh: string; auth: string } }): Promise<{ id: string }> =>
+    request("POST", "/api/push/subscribe", sub),
+  unsubscribePush: (endpoint: string): Promise<{ removed: boolean }> =>
+    request("DELETE", "/api/push/subscribe", { endpoint }),
+  listOutreach: async (jobId: string): Promise<{ contacts: OutreachContact[] }> =>
+    USE_MOCK ? { contacts: [] } : request("GET", `/api/jobs/${jobId}/outreach`),
+  markOutreachSent: async (id: string): Promise<{ contact: OutreachContact }> =>
+    request("POST", `/api/outreach/${id}/sent`, {}),
 
   // ---- graph
   graph: async (): Promise<Graph> => (USE_MOCK ? (await mock()).graph : request("GET", "/api/graph")),

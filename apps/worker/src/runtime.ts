@@ -53,7 +53,7 @@ export function defaultRunner(): RunnerDeps {
 /** Start the scheduler and channel listeners. Call stop() to clear timers and listeners. */
 export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<Runtime> {
   const name = opts.name ?? "worker";
-  const RUN_EVERY = 20_000;
+  const RUN_EVERY = 4_000;
   const POLL_EVERY = 15 * 60_000;
   const INBOX_EVERY = 5 * 60_000;
   const TICK_EVERY = (Number(process.env.AGENT_TICK_MINUTES ?? 20) || 20) * 60_000;
@@ -102,11 +102,15 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   const agentUsers = async () => [...new Set([...(user ? [user.id] : []), ...(await usersWithGraph(db))])];
 
   every("runner", RUN_EVERY, async () => {
-    for (const app of await pickRunnable(db, { limit: 10 })) {
-      if (stopping) return;
-      const status = await runApplication(db, app.id, runner);
-      if (status !== app.status) log(`application ${app.id}: ${app.status} -> ${status}`);
-    }
+    const runnable = await pickRunnable(db, { limit: 10 });
+    const queue = [...runnable];
+    await Promise.all(Array.from({ length: Math.min(2, queue.length) }, async () => {
+      for (let app = queue.shift(); app; app = queue.shift()) {
+        if (stopping) return;
+        const status = await runApplication(db, app.id, runner);
+        if (status !== app.status) log(`application ${app.id}: ${app.status} -> ${status}`);
+      }
+    }));
     // Auto-retry failed runs a few times (MAX_ATTEMPTS counts driver runs and step errors); after that they stay failed.
     // Never auto-retry a failed submit (formApprovedAt set): a half-finished submit must not be re-sent without the user.
     const failed = await db.select().from(applications).where(and(
@@ -123,14 +127,15 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   const seeded = await seedBoardRegistry(db);
   if (seeded) log(`board registry: added ${seeded} companies to watch`);
 
-  // The curated registry carries tens of thousands of postings, so each board is re-read every few hours here.
-  // Boards a user follows or applied to are refreshed hourly by that user's agent tick.
+  // The curated registry carries tens of thousands of postings, so each cycle refreshes a bounded batch of boards
+  // and yields between them so interactive HTTP requests never wait behind a 186-board bulk sweep.
   const BOARD_REFRESH_MS = 3 * 3600_000;
+  const MAX_BOARDS_PER_SWEEP = 8;
   every("feeds", POLL_EVERY, async () => {
     const rows = await db.select().from(companies).where(and(
       isNotNull(companies.atsToken),
       or(isNull(companies.lastPolledAt), lt(companies.lastPolledAt, new Date(Date.now() - BOARD_REFRESH_MS))),
-    ));
+    )).limit(MAX_BOARDS_PER_SWEEP);
     for (const c of rows) {
       if (stopping) return;
       if (!FEEDS[c.atsType as AtsType]) continue;
@@ -140,11 +145,12 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
         if (r.ids.length) {
           for (const userId of await usersWithGraph(db)) {
             if (stopping) return;
-            const m = await computeMatchesForUser(db, userId, { jobIds: r.ids, limit: r.ids.length });
+            const m = await computeMatchesForUser(db, userId, { jobIds: r.ids, limit: Math.min(60, r.ids.length) });
             if (m.computed) log(`feed ${c.atsType}/${c.atsToken}: scored ${m.computed} job(s) for user ${userId}`);
           }
         }
       } catch (e) { log(`feed ${c.atsType}/${c.atsToken} failed: ${errMsg(e)}`); }
+      await new Promise((r) => setTimeout(r, 200));
     }
   });
 

@@ -114,7 +114,10 @@ describe("feed parsing", () => {
     expect(smartrecruiters.parseUrl("https://jobs.smartrecruiters.com/Hooli/743999-site-reliability-engineer")).toEqual({ token: "Hooli", externalId: "743999" });
     expect(greenhouse.parseUrl("https://jobs.lever.co/globex/1")).toBeNull();
     expect(lever.parseUrl("https://example.com/globex/1")).toBeNull();
-    expect(Object.keys(FEEDS).sort()).toEqual(["ashby", "greenhouse", "lever", "smartrecruiters"]);
+    expect(Object.keys(FEEDS).sort()).toEqual([
+      "ashby", "bamboohr", "breezy", "dover", "greenhouse", "lever",
+      "personio", "pinpoint", "recruitee", "rippling", "smartrecruiters", "workable", "workday",
+    ]);
   });
 });
 

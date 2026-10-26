@@ -30,6 +30,7 @@ export const STATUS_MARK: Record<ApplicationStatus, MarkTone> = {
   failed: "outline",
   rejected: "muted",
   skipped: "muted",
+  ghosted: "muted",
 };
 
 export const STATUS_ICON: Record<ApplicationStatus, LucideIcon> = {
@@ -49,6 +50,7 @@ export const STATUS_ICON: Record<ApplicationStatus, LucideIcon> = {
   interview: CalendarClock,
   offer: Award,
   rejected: Ban,
+  ghosted: Clock,
 };
 
 const STYLE: Record<MarkTone, string> = {

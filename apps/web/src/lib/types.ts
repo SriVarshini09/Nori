@@ -6,7 +6,7 @@
 export const APPLICATION_STATUSES = [
   "queued", "tailoring", "resume_review", "filling", "form_review",
   "submitting", "awaiting_code", "submitted", "needs_user", "failed", "skipped",
-  "viewed", "replied", "interview", "offer", "rejected",
+  "viewed", "replied", "interview", "offer", "rejected", "ghosted",
 ] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
@@ -17,6 +17,8 @@ export type User = { id: string; email: string; name: string | null; emailVerifi
 
 export type SessionInfo = { id: string; current: boolean; device: string; createdAt: string; expiresAt: string };
 
+export type SavedAnswersMap = Record<string, { label: string; value: string }>;
+
 export type Preferences = {
   titles?: string[];
   locations?: string[];
@@ -24,6 +26,7 @@ export type Preferences = {
   salaryMin?: number;
   stages?: string[];
   excludeCompanies?: string[];
+  savedAnswers?: SavedAnswersMap;
 };
 
 export type WorkStatus = "citizen" | "permanent_resident" | "visa" | "other";
@@ -76,6 +79,7 @@ export type Profile = {
   eeo?: Eeo | null;
   securityClearance?: string | null;
   over18?: boolean | null;
+  inboundEmail?: string | null;
   onboarding?: { step: OnboardingStep; completedAt?: string | null } | null;
 };
 
@@ -188,16 +192,48 @@ export type DiscoverQuery = {
 export type JobDetail = { job: Job; match: Match | null; company: Company | null };
 
 // ---------- applications ----------
-export type PendingQuestion = { label: string; type: string; options?: string[]; required: boolean };
+export type PendingQuestion = { label: string; type: string; options?: string[]; required: boolean; liveViewUrl?: string };
 
 export type Receipt = {
   fields: { label: string; value: string; kind: string }[];
   files: string[];
   screenshotPath?: string;
   confirmationText?: string;
+  liveViewUrl?: string;
+  appliedUsingEmail?: string;
+  atsAccountEmployer?: string;
   submittedVia: string;
   dryRun: boolean;
   durationMs: number;
+};
+
+export type PlanStatus = {
+  plan: "free" | "pro";
+  limits: {
+    plan: "free" | "pro";
+    dailyApplicationsCap: number;
+    maxLanes: number;
+    dailyTokenCap: number;
+    autopilotIncluded: boolean;
+  };
+  usedToday: number;
+  remainingToday: number;
+  referralCode: string;
+  stripeConfigured: boolean;
+  hasCustomer: boolean;
+};
+
+export type OutreachContact = {
+  id: string;
+  personName: string;
+  personTitle: string;
+  personUrl: string | null;
+  companyName: string;
+  draftText: string;
+  sources: string[];
+  status: "draft" | "sent" | "replied";
+  sentAt: string | null;
+  followUpAt: string | null;
 };
 
 export type Application = {
@@ -448,7 +484,9 @@ export type AgentTickSummary = {
   note?: string;
 };
 
-export type BoardAts = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export type BoardAts =
+  | "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workday"
+  | "workable" | "rippling" | "recruitee" | "bamboohr" | "pinpoint" | "breezy" | "dover" | "personio";
 export type WatchedCompany = { id: string; name: string; atsType: BoardAts; token: string; openJobs: number; followed: boolean };
 export type CompanyList = { companies: WatchedCompany[]; total: number };
 export type DetectedCompany = { atsType: BoardAts; token: string; name: string; openJobs: number; added: number };

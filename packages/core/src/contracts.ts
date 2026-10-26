@@ -144,7 +144,7 @@ export interface ApplyDriver {
 
 // ---------- messaging channels ----------
 /** "console" is the worker stdin/stdout channel (CHANNEL_CONSOLE=1); "web" is the dashboard chat (address = userId). Neither can push. */
-export type ChannelKind = "slack" | "telegram" | "whatsapp" | "email" | "console" | "web";
+export type ChannelKind = "slack" | "telegram" | "whatsapp" | "sms" | "email" | "console" | "web";
 export type InboundMessage = { channel: ChannelKind; address: string; text: string; externalId?: string; meta?: Record<string, unknown> };
 export type OutboundMessage = { text: string; attachments?: { path: string; filename: string }[] };
 export interface ChannelAdapter {

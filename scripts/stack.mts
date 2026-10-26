@@ -7,6 +7,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +81,21 @@ export type Stack = {
   stop: () => Promise<void>;
 };
 
+/**
+ * Refuse to start on a port something already answers on. Windows lets a second process bind a port the first one
+ * still holds (no error, the old process keeps getting the connections), so a stack left over from an aborted run
+ * would silently take the browser's traffic while this process holds the outbox and the database the test reads.
+ */
+async function assertPortFree(port: number, what: string): Promise<void> {
+  const taken = await new Promise<boolean>((resolve) => {
+    const sock = net.connect({ host: "127.0.0.1", port });
+    sock.once("connect", () => { sock.destroy(); resolve(true); });
+    sock.once("error", () => resolve(false));
+    sock.setTimeout(1000, () => { sock.destroy(); resolve(false); });
+  });
+  if (taken) throw new Error(`Port ${port} (${what}) is already in use, probably by a test stack left over from an aborted run. Stop that process (on Windows: Get-NetTCPConnection -LocalPort ${port} shows its pid) and retry.`);
+}
+
 async function waitFor(url: string, ms = 90_000) {
   const t = Date.now();
   while (Date.now() - t < ms) {
@@ -126,6 +142,8 @@ export async function startStack(opts: { build?: boolean; realModel?: boolean; r
     runnerDeps: { pickDriver: () => new FakeDriver(), artifactsRoot, allowRealSubmit: true },
     mcp: true, defaultUserEmail: null, rateLimit: false, webUrl: WEB,
   });
+  await assertPortFree(API_PORT, "API");
+  await assertPortFree(WEB_PORT, "web");
   const server = serve({ fetch: app.fetch, port: API_PORT });
   await waitFor(`http://localhost:${API_PORT}/api/health`);
 

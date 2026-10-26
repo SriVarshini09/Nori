@@ -185,7 +185,7 @@ async function waitForCount(loc: Locator, ms: number): Promise<number> {
   for (;;) {
     const n = await loc.count().catch(() => 0);
     if (n > 0 || Date.now() >= deadline) return n;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 35));
   }
 }
 
@@ -202,10 +202,10 @@ async function comboOptionLocator(page: Page, input: Locator): Promise<Locator> 
 async function openCombobox(page: Page, input: Locator): Promise<Locator> {
   await input.click({ timeout: 5000 }).catch(() => input.focus());
   let opts = await comboOptionLocator(page, input);
-  if (!(await waitForCount(opts, 1500))) {
+  if (!(await waitForCount(opts, 600))) {
     await input.press("ArrowDown").catch(() => {});
     opts = await comboOptionLocator(page, input);
-    await waitForCount(opts, 1000);
+    await waitForCount(opts, 400);
   }
   return opts;
 }
@@ -229,8 +229,18 @@ async function fillCombobox(page: Page, field: FormField, value: string): Promis
     await input.click({ timeout: 5000 }).catch(() => input.focus());
     await input.fill(attempt === 2 ? "" : value).catch(() => {});
     let opts = await comboOptionLocator(page, input);
-    let texts = (await waitForCount(opts, 2500)) ? await opts.allInnerTexts() : [];
+    // Suggestions that come from a lookup (school names, Google Places for a city) take a moment to arrive.
+    let texts = (await waitForCount(opts, 2500)) || (await waitForCount(opts, 4000)) ? await opts.allInnerTexts() : [];
     let idx = pickIndex(texts, value);
+    if (idx < 0 && value.includes(",")) {
+      // "Dallas, TX" against a places lookup that answers "Dallas, TX, USA": type the first part alone and look again.
+      const head = value.split(",")[0]!.trim();
+      await input.fill(head).catch(() => {});
+      opts = await comboOptionLocator(page, input);
+      texts = (await waitForCount(opts, 4000)) ? await opts.allInnerTexts() : [];
+      idx = pickIndex(texts, value);
+      if (idx < 0) idx = pickIndex(texts, head);
+    }
     if (idx < 0) {
       // The typed filter may not match the option wording; clear it and search the full list.
       await input.fill("").catch(() => {});
@@ -371,6 +381,26 @@ export async function fillForm(page: Page, ctx: DriverContext, fields: FormField
     if (i >= 0) classes[i] = "resume";
   }
 
+  // Pre-resolve all custom questions in parallel (Promise.all) so multiple LLM/composer calls never run sequentially
+  // while the browser sits idle.
+  const preAsked = new Map<number, string | null>();
+  await Promise.all(
+    fields.map(async (field, i) => {
+      if (isPhoneCountry(field)) return;
+      const cls = classes[i]!;
+      let val: string | null | undefined = answers.get(norm(field.label));
+      if (val === undefined || val === "") {
+        const foreign = (cls === "work_auth" || cls === "sponsorship") && foreignWorkCountry(field.label);
+        val = foreign ? undefined : profileValue(cls, ctx.profile, ctx.resumePdfPath);
+      }
+      const mayAsk = cls !== "resume" && !(field.kind === "file" && !field.required) && !(BLANK_WHEN_ABSENT.has(cls) && !field.required);
+      if ((val === undefined || val === "") && mayAsk) {
+        const resolved = await ctx.answerQuestion(field, jobContext);
+        preAsked.set(i, resolved);
+      }
+    }),
+  );
+
   for (const [i, field] of fields.entries()) {
     const cls = classes[i]!;
 
@@ -401,7 +431,7 @@ export async function fillForm(page: Page, ctx: DriverContext, fields: FormField
     }
     const mayAsk = cls !== "resume" && !(field.kind === "file" && !field.required) && !(BLANK_WHEN_ABSENT.has(cls) && !field.required);
     if ((value === undefined || value === "") && mayAsk) {
-      value = await ctx.answerQuestion(field, jobContext);
+      value = preAsked.has(i) ? preAsked.get(i) : await ctx.answerQuestion(field, jobContext);
       source = "answerQuestion";
     }
     if (value === undefined || value === null || value === "") {

@@ -464,7 +464,7 @@ async function llmDraft(ctx: Ctx): Promise<Draft> {
   for (const level of [0, 1, 2] as const) {
     try {
       out = await getLLM().json({
-        name: "tailored_resume", system: TAILOR_SYSTEM, prompt: buildPrompt(ctx, level), schema: LlmSchema, maxTokens: level === 0 ? 8000 : 4000, effort: "medium",
+        name: "tailored_resume", system: TAILOR_SYSTEM, prompt: buildPrompt(ctx, level), schema: LlmSchema, maxTokens: level === 0 ? 3500 : 2500, effort: "low",
       });
       break;
     } catch (e) {

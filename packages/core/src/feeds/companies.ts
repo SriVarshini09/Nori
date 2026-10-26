@@ -1,6 +1,6 @@
-import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { companies, profiles, type AtsType, type Preferences } from "../db/schema.js";
+import { companies, jobs, profiles, type AtsType, type Preferences } from "../db/schema.js";
 import { getProfile } from "../users.js";
 import { FEEDS } from "./registry.js";
 
@@ -15,8 +15,8 @@ const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 async function followedKeys(db: Db, prefs: Preferences): Promise<Set<string>> {
   const out = new Set<string>();
   for (const entry of prefs.followCompanies ?? []) {
-    const m = /^(greenhouse|lever|ashby|smartrecruiters):(.+)$/i.exec(entry.trim());
-    if (m) { out.add(keyOf(m[1], m[2])); continue; }
+    const m = /^([a-z0-9_]+):(.+)$/i.exec(entry.trim());
+    if (m && FEEDS[m[1]!.toLowerCase() as AtsType]) { out.add(keyOf(m[1]!, m[2]!)); continue; }
     const rows = await db.select({ atsType: companies.atsType, token: companies.atsToken }).from(companies)
       .where(sql`lower(${companies.name}) = ${entry.trim().toLowerCase()}`).limit(3);
     for (const r of rows) out.add(keyOf(r.atsType, r.token));
@@ -26,17 +26,38 @@ async function followedKeys(db: Db, prefs: Preferences): Promise<Set<string>> {
 
 /** Watched companies with their open-job counts, searchable by name, and whether this user follows each. */
 export async function listCompanies(db: Db, userId: string, opts: { q?: string; followedOnly?: boolean; limit?: number; offset?: number } = {}): Promise<{ companies: CompanyRow[]; total: number }> {
-  const prefs = ((await getProfile(db, userId)).preferences ?? {}) as Preferences;
+  const [profile, countsRows] = await Promise.all([
+    getProfile(db, userId),
+    db
+      .select({ companyId: jobs.companyId, n: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(isNotNull(jobs.companyId), isNull(jobs.closedAt)))
+      .groupBy(jobs.companyId),
+  ]);
+  const prefs = (profile.preferences ?? {}) as Preferences;
   const followed = await followedKeys(db, prefs);
+  const countByCompany = new Map<string, number>();
+  for (const r of countsRows) if (r.companyId) countByCompany.set(r.companyId, Number(r.n));
+
   const q = opts.q?.trim();
-  const rows = await db.select({
-    id: companies.id, name: companies.name, atsType: companies.atsType, token: companies.atsToken,
-    // Written out with an aliased table: drizzle drops the table prefix in a single-table select, which would compare jobs to itself.
-    openJobs: sql<number>`(select count(*)::int from jobs oj where oj.company_id = "companies"."id" and oj.closed_at is null)`,
-  }).from(companies)
+  const rows = await db
+    .select({
+      id: companies.id,
+      name: companies.name,
+      atsType: companies.atsType,
+      token: companies.atsToken,
+    })
+    .from(companies)
     .where(q ? or(ilike(companies.name, likePattern(q)), ilike(companies.atsToken, likePattern(q))) : undefined)
     .orderBy(asc(companies.name));
-  const all = rows.filter((r) => FEEDS[r.atsType]).map((r) => ({ ...r, followed: followed.has(keyOf(r.atsType, r.token)) }));
+
+  const all = rows
+    .filter((r) => FEEDS[r.atsType])
+    .map((r) => ({
+      ...r,
+      openJobs: countByCompany.get(r.id) ?? 0,
+      followed: followed.has(keyOf(r.atsType, r.token)),
+    }));
   const filtered = opts.followedOnly ? all.filter((r) => r.followed) : all;
   const offset = opts.offset ?? 0;
   return { companies: filtered.slice(offset, offset + (opts.limit ?? 60)), total: filtered.length };

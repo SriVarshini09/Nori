@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FormField } from "../contracts.js";
-import { degreeNames, educationAnswer, splitEducation, type EducationFact } from "./answers.js";
+import { degreeNames, educationAnswer, makeAnswerQuestion, splitEducation, type EducationFact } from "./answers.js";
 
 const edu: EducationFact[] = [
   { label: "Bachelor of Technology in Computer Science, National Institute of Technology Silchar", startDate: "2017", endDate: "2021" },
@@ -39,5 +39,22 @@ describe("School, Degree and Discipline questions", () => {
     expect(educationAnswer(f("Degree"), [], "x")).toBeNull();
     expect(educationAnswer(f("What is your graduation date?"), edu, "x")).toBe("May 2026");
     expect(educationAnswer(f("Website"), edu, "x")).toBeUndefined();
+  });
+});
+
+describe("typeahead lists and identity fields", () => {
+  it("hands the driver the school name when a long list has no exact match", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `University ${i}`);
+    expect(educationAnswer(f("School", many), edu, "x")).toBe("Rochester Institute of Technology");
+    expect(educationAnswer(f("Degree", ["High School", "Associate's"]), edu, "x")).toBeNull(); // short list, no fit
+  });
+
+  it("never lets the model write a last name the profile lacks", async () => {
+    const answer = makeAnswerQuestion({
+      profile: { fullName: "Sri", firstName: "Sri", lastName: "", email: "s@example.com", location: "Dallas, TX", workAuth: {} } as any,
+      evidence: [], jobTitle: "Engineer", companyName: "Acme", composed: {},
+    });
+    expect(await answer(f("Last Name"), "")).toBeNull();
+    expect(await answer(f("Phone"), "")).toBeNull();
   });
 });

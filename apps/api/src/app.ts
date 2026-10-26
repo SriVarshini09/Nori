@@ -16,7 +16,14 @@ import {
   APPLICATION_STATUSES, ATS_TYPES,
   addFact, addJobFromUrl, answerPending, approveForm, approveResume, artifactsRootOf, createApplication, ensureDefaultUser,
   advanceOnboarding, authenticate, ensureResumeDoc, createPasswordUser, createSession, deleteUserAccount, getSessionUser, publicUser, revokeSession,
-  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  acceptAnswers, countHumanApprovals, recruiterReview, AUTOPILOT_MIN_HUMAN_APPROVALS, changePassword, consumeAuthToken, sha256, detectBoard, ingestCareerPageJsonLd, prettifyToken, followCompany, unfollowCompany, listCompanies, issueAuthToken, listSessions, markEmailVerified, resetPassword, revokeOtherSessions, revokeSessionById,
+  savedAnswersOf, upsertSavedAnswer, deleteSavedAnswer, clearSavedAnswers,
+  googleOAuthConfigured, buildGoogleAuthUrl, exchangeGoogleCode, upsertGoogleUser,
+  getOrCreateAtsAccount, listAtsAccounts,
+  vapidPublicKey, savePushSubscription, removePushSubscription, listPushSubscriptions,
+  ensureInboundEmail, handleInboundEmailWebhook, markGhostedApplications,
+  getPlanStatus, createStripeCheckoutSession, createStripePortalSession, verifyStripeWebhookSignature, handleStripeWebhookEvent,
+  findAndDraftOutreach, markOutreachSent,
   ONBOARDING_STEPS, SESSION_COOKIE, SESSION_TTL_MS, type SessionUser,
   computeMatchesForUser, findAndRank, getGraph, getProfile, ingestResume, matchJobs, onRunEvent, pollTenant, researchCompany, resolveProvider,
   retryApplication, runApplication, skipApplication, toRunEvent,
@@ -28,7 +35,7 @@ import {
 import { pickDriver } from "@jobgraph/drivers";
 import { captureError, sentryEnabled, sentrySelfTest } from "./sentry.js";
 import {
-  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, telegramBotUsername, verifyWhatsAppSignature, waitForVerificationCode, TOOLKITS,
+  composioAvailable, connectToolkit, listConnections, sendToUser, syncInbox, syncTrackerSheet, telegramBotUsername, verifyWhatsAppSignature, parseTwilioWebhook, verifyTwilioSignature, sendTwilioSms, twilioConfigured, waitForVerificationCode, TOOLKITS,
   type ChannelRouter,
 } from "@jobgraph/channels";
 import { mountMcp } from "./mcp.js";
@@ -160,7 +167,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       try {
         do {
           state.rerun = false;
-          const r = await computeMatchesForUser(db, userId, { staleBefore: new Date() });
+          const r = await computeMatchesForUser(db, userId, { staleBefore: new Date(), limit: 60 });
           if (r.computed) console.log(`[api] scored ${r.computed} job(s) for user ${userId}`);
         } while (state.rerun);
       } catch (err) {
@@ -289,6 +296,27 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     await revokeSession(db, getCookie(c, SESSION_COOKIE));
     clearSession(c);
     return c.body(null, 204);
+  });
+
+  // ---------- Stage 1: Google OAuth ----------
+  app.get("/api/auth/google", (c) => {
+    if (c.req.query("check") === "1") return c.json({ configured: googleOAuthConfigured() });
+    if (!googleOAuthConfigured()) throw bad("Google Sign-In is not configured on this server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)", 503);
+    const redirectUri = `${webUrl.replace(/\/$/, "")}/api/auth/google/callback`;
+    const next = c.req.query("next") ?? "/dashboard";
+    return c.redirect(buildGoogleAuthUrl(redirectUri, next));
+  });
+
+  app.get("/api/auth/google/callback", async (c) => {
+    const code = c.req.query("code");
+    if (!code) throw bad("Missing Google OAuth code", 400);
+    const redirectUri = `${webUrl.replace(/\/$/, "")}/api/auth/google/callback`;
+    const info = await exchangeGoogleCode(code, redirectUri);
+    const { user, isNew } = await upsertGoogleUser(db, info);
+    setSession(c, await createSession(db, user.id, c.req.header("user-agent")));
+    const state = c.req.query("state");
+    const dest = isNew ? "/onboarding" : state && state.startsWith("/") && !state.startsWith("//") ? state : "/dashboard";
+    return c.redirect(`${webUrl.replace(/\/$/, "")}${dest}`);
   });
 
   // Permanently deletes the signed-in user and all their data. Needs a real session cookie, never the DEFAULT_USER_EMAIL fallback.
@@ -444,11 +472,86 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       }
       if (!doc.hadTextLayer && doc.text.length < 20) throw bad(doc.error ?? SCANNED_PDF_ERROR, 422);
       if (doc.text.length < 20) throw bad("No text found in the file", 422);
-      const result = await saveResumeText(c, c.get("user").id, doc.text, doc.links);
+      const replace = form.replace === "true" || form.replace === "1" || c.req.query("replace") === "1";
+      const result = await saveResumeText(c, c.get("user").id, doc.text, doc.links, replace);
       return c.json({
         ...result, extractedChars: doc.text.length, pages: doc.pages, layout: doc.layout, hadTextLayer: doc.hadTextLayer,
       });
     });
+
+  // ---------- remembered form answers ----------
+  app.get("/api/profile/saved-answers", async (c) => {
+    const profile = await getProfile(db, c.get("user").id);
+    return c.json({ savedAnswers: savedAnswersOf(profile.preferences) });
+  });
+
+  app.put("/api/profile/saved-answers", async (c) => {
+    const { label, value } = await body(c, z.object({ label: z.string().trim().min(1).max(200), value: z.string().trim().min(1).max(200) }));
+    const savedAnswers = await upsertSavedAnswer(db, c.get("user").id, label, value);
+    return c.json({ savedAnswers });
+  });
+
+  app.delete("/api/profile/saved-answers/:key", async (c) => {
+    const key = decodeURIComponent(c.req.param("key"));
+    const savedAnswers = await deleteSavedAnswer(db, c.get("user").id, key);
+    return c.json({ savedAnswers });
+  });
+
+  app.delete("/api/profile/saved-answers", async (c) => {
+    const savedAnswers = await clearSavedAnswers(db, c.get("user").id);
+    return c.json({ savedAnswers });
+  });
+
+  // ---------- Stage 3: owned inbound email & Stage 5: ATS account vault ----------
+  app.get("/api/profile/inbound-email", async (c) => {
+    const inboundEmail = await ensureInboundEmail(db, c.get("user").id);
+    return c.json({ inboundEmail });
+  });
+
+  app.get("/api/profile/ats-accounts", async (c) => {
+    const accounts = await listAtsAccounts(db, c.get("user").id);
+    return c.json({ accounts });
+  });
+
+  app.post("/api/profile/ats-accounts", async (c) => {
+    const user = c.get("user");
+    const b = await body(c, z.object({ atsType: z.enum(ATS_TYPES), employerKey: z.string().trim().min(1).max(200), email: z.string().email().optional() }));
+    const email = b.email || (await ensureInboundEmail(db, user.id));
+    const account = await getOrCreateAtsAccount(db, user.id, b.atsType, b.employerKey, email);
+    return c.json({ account }, 201);
+  });
+
+  // ---------- Stage 1: Web Push subscriptions ----------
+  app.get("/api/push/vapid", async (c) => {
+    const subs = await listPushSubscriptions(db, c.get("user").id);
+    return c.json({ configured: Boolean(vapidPublicKey()), publicKey: vapidPublicKey(), subscribed: subs.length > 0, count: subs.length });
+  });
+
+  app.post("/api/push/subscribe", async (c) => {
+    const sub = await body(c, z.object({ endpoint: z.string().url(), keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }) }));
+    return c.json(await savePushSubscription(db, c.get("user").id, sub, c.req.header("user-agent")), 201);
+  });
+
+  app.delete("/api/push/subscribe", async (c) => {
+    const { endpoint } = await body(c, z.object({ endpoint: z.string().url() }));
+    return c.json({ removed: await removePushSubscription(db, c.get("user").id, endpoint) });
+  });
+
+  // ---------- Stage 6: Plans & Stripe Billing ----------
+  app.get("/api/billing/status", async (c) => {
+    return c.json(await getPlanStatus(db, c.get("user").id));
+  });
+
+  app.post("/api/billing/checkout", async (c) => {
+    const user = c.get("user");
+    return c.json(await createStripeCheckoutSession(user, `${webUrl.replace(/\/$/, "")}/settings`));
+  });
+
+  app.post("/api/billing/portal", async (c) => {
+    const user = c.get("user");
+    if (!user.stripeCustomerId) throw bad("No active billing subscription found", 400);
+    return c.json(await createStripePortalSession(user.stripeCustomerId, `${webUrl.replace(/\/$/, "")}/settings`));
+  });
 
   // ---------- onboarding ----------
   app.get("/api/onboarding", async (c) => {
@@ -583,7 +686,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     }));
   });
 
-  const BoardRef = z.object({ atsType: z.enum(["greenhouse", "lever", "ashby", "smartrecruiters"]), token: z.string().min(1).max(200) });
+  const BoardRef = z.object({ atsType: z.enum(ATS_TYPES), token: z.string().min(1).max(200) })
+    .refine((b) => b.atsType !== "workday" || b.token.includes(":"), "Workday board token must be tenant:shard:site");
 
   app.post("/api/companies/follow", async (c) => {
     const { atsType, token } = await body(c, BoardRef);
@@ -602,7 +706,16 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const { url } = await body(c, z.object({ url: z.string().trim().url().max(2000) }));
     const user = c.get("user");
     const found = await detectBoard(url).catch((err) => { throw bad(err instanceof Error ? err.message : "Could not read that link", 422); });
-    if (!found) throw bad("No supported job board (Greenhouse, Lever, Ashby or SmartRecruiters) was found on that page. Try pasting a link to one of its job postings.", 422);
+    if (!found) {
+      // Fallback: check if the careers page directly publishes schema.org/JobPosting JSON-LD listings.
+      const ld = await ingestCareerPageJsonLd(db, url).catch(() => ({ added: 0, total: 0, ids: [] as string[], companyName: undefined }));
+      if (ld.total > 0) {
+        const host = new URL(url).hostname.replace(/^(www|jobs|careers)\./i, "");
+        await computeMatchesForUser(db, user.id, { jobIds: ld.ids, limit: Math.max(1, ld.ids.length) }).catch(() => undefined);
+        return c.json({ atsType: "web", token: host, name: ld.companyName || prettifyToken(host.split(".")[0] ?? host), openJobs: ld.total, added: ld.added });
+      }
+      throw bad("No supported job board (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, Workable, Rippling, Recruitee, BambooHR, Pinpoint, Breezy, Dover, Personio or JobPosting markup) was found on that page. Try pasting a link to one of its job postings.", 422);
+    }
     const res = await pollTenant(db, found.atsType, found.token).catch(() => { throw bad(`Found the ${found.atsType} board "${found.token}", but its job feed did not answer. Check the link and try again.`, 422); });
     if (res.total === 0) throw bad(`The ${found.atsType} board "${found.token}" has no open jobs right now.`, 422);
     await db.update(companies).set({ name: found.name }).where(and(eq(companies.atsType, found.atsType), eq(companies.atsToken, found.token), sql`${companies.name} = ${prettifyToken(found.token)}`));
@@ -651,6 +764,22 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     const d = await jobDetail(c, c.req.param("id"));
     const research = d.company?.research ?? (c.req.query("refresh") !== "0" ? await researchCompany(db, d.job.companyName, d.company?.domain ?? undefined) : null);
     return c.json({ company: d.company, research });
+  });
+
+  // ---------- Stage 7: People at <company> Outreach ----------
+  app.get("/api/jobs/:id/outreach", async (c) => {
+    const id = c.req.param("id");
+    if (!uuidOk(id)) throw bad("Job not found", 404);
+    const contacts = await findAndDraftOutreach(db, c.get("user").id, id);
+    return c.json({ contacts });
+  });
+
+  app.post("/api/outreach/:id/sent", async (c) => {
+    const id = c.req.param("id");
+    if (!uuidOk(id)) throw bad("Outreach draft not found", 404);
+    const updated = await markOutreachSent(db, c.get("user").id, id);
+    if (!updated) throw bad("Outreach draft not found", 404);
+    return c.json({ contact: updated });
   });
 
   // ---------- applications ----------
@@ -814,6 +943,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.get("/api/tracker/stats", async (c) => {
     const user = c.get("user");
+    if (c.req.query("wait")) await markGhostedApplications(db).catch(() => 0);
+    else void markGhostedApplications(db).catch(() => 0);
     const rows = await db.select({ status: applications.status, n: sql<number>`count(*)::int` }).from(applications)
       .where(eq(applications.userId, user.id)).groupBy(applications.status);
     const byStatus: Record<string, number> = {};
@@ -840,7 +971,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     .filter((r) => r.kind !== "web")));
 
   app.post("/api/channels", async (c) => {
-    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "email"]), address: z.string().min(1).max(320), meta: z.record(z.string(), z.unknown()).optional() }));
+    const b = await body(c, z.object({ kind: z.enum(["slack", "telegram", "whatsapp", "sms", "email"]), address: z.string().min(1).max(320), meta: z.record(z.string(), z.unknown()).optional() }));
     const user = c.get("user");
     // An address belongs to whoever linked it first. Re-pointing someone else's chat at this account would send their
     // commands here and this account's notifications (resumes, job details) to their phone.
@@ -983,6 +1114,51 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   // ---------- webhooks ----------
+  app.post("/api/webhooks/resend", async (c) => {
+    const payload = await c.req.json().catch(() => { throw bad("Body must be JSON"); });
+    const data = (payload?.data ?? payload) as { id?: string; from: string; to: string | string[]; subject?: string; text?: string; html?: string; created_at?: string };
+    if (!data?.from || !data?.to) throw bad("Missing from or to in inbound email payload", 400);
+    const res = await handleInboundEmailWebhook(db, data);
+    return c.json({ ok: true, ...res });
+  });
+
+  app.post("/api/webhooks/stripe", async (c) => {
+    const raw = await c.req.text();
+    const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+    if (secret) {
+      const sig = c.req.header("stripe-signature") ?? "";
+      if (!verifyStripeWebhookSignature(raw, sig, secret)) throw bad("Bad Stripe webhook signature", 401);
+    }
+    let event: { type: string; data?: { object?: Record<string, any> } };
+    try { event = JSON.parse(raw); } catch { throw bad("Body must be JSON"); }
+    const res = await handleStripeWebhookEvent(db, event);
+    return c.json({ received: true, ...res });
+  });
+
+  app.post("/api/webhooks/twilio", async (c) => {
+    const formData = await c.req.parseBody().catch(() => ({}));
+    const params: Record<string, string> = {};
+    for (const [k, v] of Object.entries(formData)) if (typeof v === "string") params[k] = v;
+    if (process.env.TWILIO_AUTH_TOKEN && process.env.NODE_ENV === "production") {
+      if (!verifyTwilioSignature(c.req.url, params, c.req.header("x-twilio-signature"))) {
+        throw bad("Bad Twilio signature", 401);
+      }
+    }
+    const inbound = parseTwilioWebhook(params);
+    if (!inbound) throw bad("Missing From or Body", 400);
+    const [ch] = await db
+      .select()
+      .from(channels)
+      .where(and(inArray(channels.kind, ["sms", "whatsapp"]), eq(channels.address, inbound.address)))
+      .limit(1);
+    if (!ch) return c.text("<Response></Response>", 200, { "content-type": "text/xml" });
+    const out = await chatOnce(db, chatAgent, ch.userId, ch.kind, ch.address, inbound.text);
+    if (twilioConfigured() && out.text) {
+      await sendTwilioSms(inbound.address, out.text).catch(() => {});
+    }
+    return c.json({ ok: true, reply: out.text });
+  });
+
   app.get("/api/webhooks/whatsapp", (c) => {
     if (!opts.router) throw bad("WhatsApp webhook not enabled", 503);
     const challenge = opts.router.whatsapp.verifyWebhook(c.req.query());

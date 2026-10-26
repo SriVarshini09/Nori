@@ -8,6 +8,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { ONBOARDING_STEPS, type IngestResult, type Integration, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
 import { Icon, Notice, buttonClass, cx } from "../ui";
+import { NoriMascot3D } from "../mascot/NoriMascot3D";
 import { IntegrationsStep } from "./IntegrationsStep";
 import { ResumeStep } from "./ResumeStep";
 import { AuthorizationStep, ContactStep, PreferencesStep, ScreeningStep } from "./steps";
@@ -153,8 +154,16 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
   // ---------------------------------------------------------------- finish
   if (done) {
     return (
-      <div className="mx-auto flex max-w-xl flex-col items-start gap-4 py-10">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-tint text-accent-fg"><Icon icon={Check} size={20} /></span>
+      <div className="mx-auto flex max-w-xl flex-col items-start gap-5 py-10">
+        <NoriMascot3D
+          variant="hero"
+          cheer={1}
+          messages={[
+            `Woohoo! You're all set up, ${first}!`,
+            "Your career graph is ready to match roles.",
+            "I'll always ask before sending anything.",
+          ]}
+        />
         <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-ink">You are set up, {first}</h1>
         <p className="text-[16px] leading-relaxed text-ink-2">Your career graph is ready. Nori will start finding roles inside your lane, and it will always ask before anything is sent.</p>
         <button type="button" onClick={open} className={buttonClass({ variant: "primary", size: "lg" }, "mt-2")}>
@@ -168,15 +177,27 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
   if (welcome) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6 py-8">
-        <p className="text-meta text-muted">Set-up takes about ten minutes</p>
-        <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[2.5rem]">Hi {first}. Six short steps and Nori can start.</h1>
-        <p className="text-[16px] leading-relaxed text-ink-2">It needs your resume, the answers forms always ask, and what you are looking for. You can save and finish later at any point.</p>
-        <ul className="grid gap-3 sm:grid-cols-3">
+        <NoriMascot3D
+          variant="hero"
+          messages={[
+            `Hi ${first}! Let's build your career graph.`,
+            "Drop your resume first—it takes under 30 seconds.",
+            "Every line I write will trace back to your facts.",
+          ]}
+        />
+        <div>
+          <p className="text-meta font-semibold uppercase tracking-wide text-accent-fg">Set-up takes about ten minutes</p>
+          <h1 className="mt-1.5 text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[2.5rem]">Hi {first}. Six short steps and Nori can start.</h1>
+          <p className="mt-2.5 text-[16px] leading-relaxed text-ink-2">It needs your resume, the answers forms always ask, and what you are looking for. You can save and finish later at any point.</p>
+        </div>
+        <ul className="grid gap-3.5 sm:grid-cols-3">
           {PROMISES.map((p) => (
-            <li key={p.title} className="rounded-card border border-line bg-surface p-4">
-              <Icon icon={p.icon} size={18} className="text-ink" />
-              <p className="mt-2 text-[14.5px] font-semibold text-ink">{p.title}</p>
-              <p className="mt-0.5 text-[13px] text-ink-2">{p.text}</p>
+            <li key={p.title} className="rounded-card border border-line bg-surface p-4 shadow-xs">
+              <span className="flex h-8 w-8 items-center justify-center rounded-control bg-sunken text-accent">
+                <Icon icon={p.icon} size={17} />
+              </span>
+              <p className="mt-3 text-[14.5px] font-semibold text-ink">{p.title}</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{p.text}</p>
             </li>
           ))}
         </ul>
@@ -225,9 +246,16 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
       </section>
 
       <aside className="flex flex-col gap-3 lg:sticky lg:top-6 lg:self-start">
-        <div className="rounded-card bg-sunken p-4">
+        <NoriMascot3D
+          variant="rail"
+          messages={[
+            `Step ${current + 1} of ${STEP_META.length}: ${meta.label}`,
+            meta.lead,
+          ]}
+        />
+        <div className="rounded-card border border-line bg-surface p-4 shadow-xs">
           <p className="text-body-sm font-semibold text-ink">Why this step</p>
-          <p className="mt-1 text-meta text-ink-2">{meta.why}</p>
+          <p className="mt-1 text-meta leading-relaxed text-ink-2">{meta.why}</p>
         </div>
         {meta.id === "resume" && found != null && (
           <div className="rounded-card bg-accent-tint p-4 text-accent-fg">

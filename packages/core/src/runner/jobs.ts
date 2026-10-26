@@ -110,8 +110,8 @@ export async function rowsForNormalized(db: Db, list: NormalizedJob[]): Promise<
 /** Words in "find senior frontend roles, remote" that say nothing about which jobs to look at. */
 const QUERY_NOISE = new Set(["find", "search", "look", "for", "me", "my", "show", "get", "some", "any", "role", "roles", "job", "jobs", "position", "positions", "opening", "openings", "work", "remote", "remotely", "anywhere", "in", "at", "a", "an", "the", "and", "or", "with", "on", "of", "to", "new", "open", "please", "near", "based", "hybrid"]);
 
-/** The web search (Parallel) is optional. Without its key, search the jobs Nori already holds instead of failing. */
-const SEARCH_OFF = /PARALLEL_API_KEY|search\/extract\/research is unavailable/i;
+/** The web search (Parallel/Exa) is optional. Without its key (or on a 401/403 key error), search the jobs Nori already holds instead of failing. */
+const SEARCH_OFF = /PARALLEL_API_KEY|EXA_API_KEY|No web search is configured|search\/extract\/research is unavailable|(?:Parallel|Exa) search failed: (?:401|403|429)/i;
 
 /** Best matches among jobs already in the database whose title, company or place mention the query. */
 async function searchHeld(db: Db, userId: string, query: DiscoverQuery): Promise<RankedJob[]> {

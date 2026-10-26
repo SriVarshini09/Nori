@@ -95,10 +95,10 @@ async function followedTenants(db: Db, userId: string, prefs: Preferences): Prom
     if (FEEDS[atsType]) out.set(`${atsType}:${token}`, { atsType, token, lastPolledAt });
   };
   for (const entry of prefs.followCompanies ?? []) {
-    const m = /^(greenhouse|lever|ashby|smartrecruiters):(.+)$/i.exec(entry.trim());
-    if (m) {
-      const [row] = await db.select().from(companies).where(and(eq(companies.atsType, m[1].toLowerCase() as AtsType), eq(companies.atsToken, m[2]))).limit(1);
-      add(m[1].toLowerCase() as AtsType, m[2], row?.lastPolledAt ?? null);
+    const m = /^([a-z0-9_]+):(.+)$/i.exec(entry.trim());
+    if (m && FEEDS[m[1]!.toLowerCase() as AtsType]) {
+      const [row] = await db.select().from(companies).where(and(eq(companies.atsType, m[1]!.toLowerCase() as AtsType), eq(companies.atsToken, m[2]!))).limit(1);
+      add(m[1]!.toLowerCase() as AtsType, m[2]!, row?.lastPolledAt ?? null);
       continue;
     }
     const rows = await db.select().from(companies).where(sql`lower(${companies.name}) = ${entry.trim().toLowerCase()}`).limit(3);
@@ -161,15 +161,21 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
   const prefs = (profile.preferences ?? {}) as Preferences;
   const notify: Notify = deps.notify ?? (async () => undefined);
 
-  // (a) discovery
+  // (a) discovery — poll followed boards concurrently (up to 4 at once) instead of sequentially
   try {
-    for (const t of await followedTenants(db, userId, prefs)) {
-      if (t.lastPolledAt && now.getTime() - t.lastPolledAt.getTime() < FOLLOW_POLL_EVERY_MS) continue;
-      try {
-        const r = await (deps.poll ?? pollTenant)(db, t.atsType, t.token);
-        s.discovered += r.added;
-      } catch (e) { s.errors.push(`poll ${t.atsType}/${t.token}: ${errMsg(e)}`); }
-    }
+    const dueTenants = (await followedTenants(db, userId, prefs)).filter(
+      (t) => !t.lastPolledAt || now.getTime() - t.lastPolledAt.getTime() >= FOLLOW_POLL_EVERY_MS,
+    );
+    const pollQueue = [...dueTenants];
+    const pollWorkers = Array.from({ length: Math.min(4, pollQueue.length) }, async () => {
+      for (let t = pollQueue.shift(); t; t = pollQueue.shift()) {
+        try {
+          const r = await (deps.poll ?? pollTenant)(db, t.atsType, t.token);
+          s.discovered += r.added;
+        } catch (e) { s.errors.push(`poll ${t.atsType}/${t.token}: ${errMsg(e)}`); }
+      }
+    });
+    await Promise.all(pollWorkers);
     const q = discoverQueryFrom(prefs, profile.remotePreference);
     const last = prefs.agent?.lastDiscoverAt ? Date.parse(prefs.agent.lastDiscoverAt) : 0;
     if (q && (deps.parallelAvailable ?? searchAvailable)() && now.getTime() - last >= DISCOVER_EVERY_MS) {
@@ -297,26 +303,30 @@ async function tick(db: Db, userId: string, deps: AgentTickDeps): Promise<TickSu
       : undefined;
   }
 
-  // (d) advance through the runner
+  // (d) advance through the runner (up to 2 applications in parallel to overlap LLM tailoring with browser form filling)
   try {
     const active = await db.select().from(applications)
       .where(and(eq(applications.userId, userId), inArray(applications.status, ACTIVE_STATUSES)))
       .orderBy(applications.updatedAt).limit(deps.maxAdvance ?? 5);
-    for (const app of active) {
-      try {
-        const status = await runApplication(db, app.id, deps.runner);
-        if (status === "submitted") {
-          const [fresh] = await db.select().from(applications).where(eq(applications.id, app.id)).limit(1);
-          const [job] = await db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1);
-          s.submitted++;
-          await logAgentEvent(db, {
-            userId, kind: "submitted", applicationId: app.id, jobId: app.jobId, message: `Submitted ${job.title} at ${job.companyName}`,
-            data: { job: { title: job.title, companyName: job.companyName }, dryRun: fresh.receipt?.dryRun ?? false },
-          });
-          await notify(userId, submittedNote(fresh, job));
-        }
-      } catch (e) { s.errors.push(`run ${app.id}: ${errMsg(e)}`); }
-    }
+    const runQueue = [...active];
+    const runWorkers = Array.from({ length: Math.min(2, runQueue.length) }, async () => {
+      for (let app = runQueue.shift(); app; app = runQueue.shift()) {
+        try {
+          const status = await runApplication(db, app.id, deps.runner);
+          if (status === "submitted") {
+            const [fresh] = await db.select().from(applications).where(eq(applications.id, app.id)).limit(1);
+            const [job] = await db.select().from(jobs).where(eq(jobs.id, app.jobId)).limit(1);
+            s.submitted++;
+            await logAgentEvent(db, {
+              userId, kind: "submitted", applicationId: app.id, jobId: app.jobId, message: `Submitted ${job.title} at ${job.companyName}`,
+              data: { job: { title: job.title, companyName: job.companyName }, dryRun: fresh.receipt?.dryRun ?? false },
+            });
+            await notify(userId, submittedNote(fresh, job));
+          }
+        } catch (e) { s.errors.push(`run ${app.id}: ${errMsg(e)}`); }
+      }
+    });
+    await Promise.all(runWorkers);
   } catch (e) { s.errors.push(`advance: ${errMsg(e)}`); }
 
   // (e) announce what is waiting on the user
