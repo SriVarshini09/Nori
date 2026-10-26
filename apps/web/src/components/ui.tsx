@@ -23,11 +23,33 @@ export function Chip({ children, tone = "slate", className }: { children: ReactN
   return <Pill mark={TONE_MARK[tone]} className={className}>{children}</Pill>;
 }
 
-/** Page header: one title, one line of context, actions on the right. `label` and `index` are kept for older callers. */
+function poseForTitle(title: ReactNode): string {
+  const s = typeof title === "string" ? title.toLowerCase() : "";
+  if (s.includes("job") || s.includes("compan")) return "/mascot/3d/nori-3d-curious.png";
+  if (s.includes("resume") || s.includes("profile")) return "/mascot/3d/nori-3d-typing.png";
+  if (s.includes("graph")) return "/mascot/3d/nori-3d-wink.png";
+  if (s.includes("lane") || s.includes("autopilot")) return "/mascot/3d/nori-3d-celebrate.png";
+  if (s.includes("inbox") || s.includes("chat")) return "/mascot/3d/nori-3d-wave.png";
+  return "/mascot/3d/nori-3d-idle.png";
+}
+
+/** Page header: Sunlit Botanical Banner Card with Nori 3D pose, title, subtitle, and actions. */
 export function PageHeader({ label, title, subtitle, actions }: {
   label?: ReactNode; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; index?: string;
 }) {
-  return <SectionHeader as="h1" size="xl" label={label} title={title} description={subtitle} actions={actions} className="mb-6 sm:mb-8" />;
+  const pose = poseForTitle(title);
+  return (
+    <div className="bento-hero mb-6 flex flex-wrap items-center justify-between gap-4 rounded-card border border-[#bce6d1] p-5 shadow-[0_10px_28px_-10px_rgba(13,117,86,0.10)] sm:mb-7 sm:px-6">
+      <div className="flex min-w-0 items-center gap-4">
+        <div className="hidden h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#bce6d1] bg-white p-1 shadow-xs sm:flex">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pose} alt="" aria-hidden="true" className="h-full w-full object-contain" />
+        </div>
+        <SectionHeader as="h1" size="xl" label={label} title={title} description={subtitle} className="flex-1" />
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
+    </div>
+  );
 }
 
 /** Card with an optional header row: a title on the left, actions on the right. */
@@ -37,7 +59,7 @@ export function Card({ children, className, title, actions, pad = true, id, tone
   return (
     <Frame as="section" className={className} id={id} tone={tone}>
       {(title || actions) && (
-        <header className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-4 py-2.5 sm:px-5">
+        <header className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line/80 bg-sunken/35 px-4 py-2.5 sm:px-5 rounded-t-card">
           <h2 className="text-body-sm font-semibold text-ink">{title}</h2>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
@@ -48,11 +70,13 @@ export function Card({ children, className, title, actions, pad = true, id, tone
 }
 
 const btnBase =
-  "group inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-[13px] font-semibold transition-[background-color,border-color,color,opacity] duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-45";
+  "group inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-[13px] font-semibold transition-all duration-150 ease-[var(--ease)] disabled:pointer-events-none disabled:opacity-45";
 const btnVariants = {
-  primary: "bg-ink px-4 text-on-ink hover:bg-ink-2",
-  secondary: "border border-control bg-surface px-4 text-ink hover:bg-sunken",
-  ghost: "px-2 text-ink hover:bg-sunken",
+  primary:
+    "bg-[linear-gradient(180deg,#158f6a_0%,#0b664a_100%)] px-4 text-white shadow-[0_3px_10px_rgba(13,117,86,0.22),inset_0_1px_0_rgba(255,255,255,0.25)] hover:brightness-105 active:translate-y-px",
+  secondary:
+    "border border-control/60 bg-surface px-4 text-ink shadow-[0_1px_2px_rgba(19,28,24,0.04)] hover:bg-sunken/75 hover:border-control",
+  ghost: "px-2.5 text-ink hover:bg-sunken/80",
   danger: "border border-danger bg-surface px-4 text-danger hover:bg-danger-tint",
 } as const;
 const btnSizes = { sm: "h-8", md: "h-10", lg: "h-12 text-[14px]" } as const;
@@ -142,14 +166,35 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
   );
 }
 
-/** Empty state: what is missing, why it matters, the one action that fixes it. Nori appears here and nowhere decorative. */
-export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; icon?: LucideIcon; action?: ReactNode }) {
+/** Empty state: what is missing, why it matters, the one action that fixes it. Features Nori's 3D mascot pose. */
+export function EmptyState({
+  title,
+  children,
+  action,
+  pose = "sleeping",
+}: {
+  title: string;
+  children?: ReactNode;
+  icon?: LucideIcon;
+  action?: ReactNode;
+  pose?: "idle" | "wave" | "celebrate" | "shy" | "typing" | "curious" | "wink" | "sleeping";
+}) {
   return (
-    <Frame surface="none" className="flex flex-col items-start gap-3 px-6 py-8">
-      <NoriMark size={40} />
-      <p className="text-title font-semibold text-ink">{title}</p>
-      {children && <div className="max-w-prose text-body-sm text-muted">{children}</div>}
-      {action}
+    <Frame surface="none" className="flex flex-col items-start gap-3.5 px-6 py-8 sm:flex-row sm:items-center sm:gap-5">
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-card border border-line bg-sunken p-1.5">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/mascot/3d/nori-3d-${pose}.png`}
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-contain"
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-title font-semibold text-ink">{title}</p>
+        {children && <div className="mt-1 max-w-prose text-body-sm text-muted">{children}</div>}
+        {action && <div className="mt-3">{action}</div>}
+      </div>
     </Frame>
   );
 }

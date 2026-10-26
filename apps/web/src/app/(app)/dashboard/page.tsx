@@ -16,14 +16,14 @@ export const metadata: Metadata = { title: "Today" };
 const REPLY_KINDS: InboxMessage["kind"][] = ["interview", "offer", "recruiter_reply", "rejection", "confirmation"];
 
 function StatusLine({ status }: { status: AgentStatus | null }) {
-  if (!status) return <p className="text-body-sm text-muted">Agent status is unavailable right now.</p>;
+  if (!status) return <p className="text-body-sm text-ink-2">Agent status is unavailable right now.</p>;
   const items = [
     status.mode ? MODE_LABEL[status.mode] : null,
     status.lastTickAt ? `Last cycle ${ago(status.lastTickAt)}` : "No cycle yet",
     status.nextTickAt ? `next in ${inMin(status.nextTickAt)}` : null,
   ].filter(Boolean);
   return (
-    <p className="text-body-sm text-muted" suppressHydrationWarning>
+    <p className="text-body-sm text-ink-2" suppressHydrationWarning>
       {items.join(" · ")}
     </p>
   );
@@ -38,23 +38,28 @@ function CapCard({ status }: { status: AgentStatus | null }) {
   const trust = status.autopilotTrust;
   const autopilot = status.autopilot ?? "off";
   return (
-    <Card title="Today's cap" actions={<TextLink href="/agent">Lanes</TextLink>}>
+    <Card title="Today's cap" actions={<TextLink href="/agent">Lanes</TextLink>} className="bento-mint">
       <div className="flex items-baseline justify-between">
-        <span className="text-display-md font-semibold text-ink tnum">{used}<span className="text-body-sm font-normal text-muted"> of {cap}</span></span>
-        <span className="text-meta text-muted">{lanesOn} lane{lanesOn === 1 ? "" : "s"} on</span>
+        <span className="text-display-md font-semibold text-ink tnum">
+          {used}
+          <span className="text-body-sm font-normal text-ink-2"> of {cap}</span>
+        </span>
+        <span className="rounded-full bg-white/85 px-2.5 py-0.5 text-meta font-medium text-accent-fg shadow-2xs">
+          {lanesOn} lane{lanesOn === 1 ? "" : "s"} on
+        </span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={used} aria-label="Applications started today">
-        <div className="h-full rounded-full bg-ink" style={{ width: `${share}%` }} />
+      <div className="mt-2.5 h-2.5 overflow-hidden rounded-full bg-white/90 shadow-inner" role="progressbar" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={used} aria-label="Applications started today">
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,#158f6a_0%,#0b664a_100%)] transition-all" style={{ width: `${share}%` }} />
       </div>
-      {cap === 0 && <p className="mt-2 text-meta text-attn-fg">The cap is 0, so Nori starts nothing on its own.</p>}
-      <div className="mt-5 border-t border-line pt-4">
+      {cap === 0 && <p className="mt-2.5 text-meta font-medium text-attn-fg">The cap is 0, so Nori starts nothing on its own.</p>}
+      <div className="mt-5 border-t border-[#bce6d1]/70 pt-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-body-sm font-semibold text-ink">Autopilot</span>
-          <span className={cx("rounded-full px-2 py-0.5 text-[12px] font-medium", autopilot === "off" ? "bg-sunken text-muted" : "bg-accent-tint text-accent-fg")}>
+          <span className={cx("rounded-full px-2.5 py-0.5 text-[12px] font-semibold", autopilot === "off" ? "bg-white/85 text-ink-2" : "bg-accent text-white")}>
             {autopilot === "off" ? "Off" : autopilot === "safe" ? "On, profile answers only" : "On, short answers allowed"}
           </span>
         </div>
-        <p className="mt-1.5 text-meta text-muted">
+        <p className="mt-1.5 text-meta text-ink-2">
           {trust ? <>{trust.needed === 0 ? "No hand approvals needed. " : `Trust: ${trust.approved} of ${trust.needed} hand approvals. `}</> : null}
           Minimum match {pct(status.minScore)}%.
         </p>
@@ -63,6 +68,14 @@ function CapCard({ status }: { status: AgentStatus | null }) {
     </Card>
   );
 }
+
+const KPI_TILES: { label: string; key: "found" | "queued" | "skipped" | "waiting" | "sent"; cls: string }[] = [
+  { label: "Found", key: "found", cls: "bento-sky border" },
+  { label: "Queued", key: "queued", cls: "bento-mint border" },
+  { label: "Skipped", key: "skipped", cls: "border border-line bg-sunken/70" },
+  { label: "Waiting", key: "waiting", cls: "bento-honey border" },
+  { label: "Sent", key: "sent", cls: "bento-lavender border" },
+];
 
 export default async function TodayPage() {
   const [apps, status, activity, inbox] = await Promise.all([
@@ -77,15 +90,35 @@ export default async function TodayPage() {
   const cycle = cycleSummary(activity);
   const replies = inbox.filter((m) => REPLY_KINDS.includes(m.kind)).sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt)).slice(0, 4);
 
+  const kpiValues = {
+    found: cycle.found,
+    queued: cycle.queued,
+    skipped: cycle.skipped,
+    waiting: waiting.length,
+    sent: cycle.sent,
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[1.75rem] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-display-xl">Today</h1>
+      {/* Sunlit Matcha & Honey Morning Briefing Banner */}
+      <div className="bento-hero flex flex-wrap items-center justify-between gap-4 rounded-card border border-[#bce6d1] p-5 shadow-[0_10px_30px_-10px_rgba(13,117,86,0.10)] sm:px-6">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-[1.8rem] font-semibold leading-tight tracking-[-0.024em] text-ink sm:text-display-xl">Today</h1>
+            {waiting.length > 0 ? (
+              <span className="rounded-full bg-attn px-3 py-0.5 text-[12px] font-semibold text-white shadow-2xs tnum">
+                {waiting.length} waiting on you
+              </span>
+            ) : (
+              <span className="rounded-full border border-[#bce6d1] bg-[#e5f8ee] px-3 py-0.5 text-[12px] font-semibold text-accent-fg shadow-2xs">
+                All caught up
+              </span>
+            )}
+          </div>
           <div className="mt-1"><StatusLine status={status} /></div>
         </div>
         <RunCycle />
-      </header>
+      </div>
 
       {apps === null && <Notice tone="red">Cannot load your applications right now. Try again in a moment.</Notice>}
 
@@ -101,7 +134,7 @@ export default async function TodayPage() {
           {waiting.length > 0 ? (
             <WaitingList items={waiting} />
           ) : (
-            <EmptyState title="Nothing is waiting on you">
+            <EmptyState title="Nothing is waiting on you" pose="sleeping">
               {status?.nextTickAt ? <>All caught up. The next cycle runs in {inMin(status.nextTickAt)}. </> : "All caught up. "}
               Nothing was sent without you.
             </EmptyState>
@@ -114,47 +147,40 @@ export default async function TodayPage() {
 
         <Card className="lg:col-span-2" title={status?.lastTickAt ? <span suppressHydrationWarning>Last 24 hours</span> : "Last 24 hours"}>
           <dl className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-            {[
-              ["Found", cycle.found],
-              ["Queued", cycle.queued],
-              ["Skipped", cycle.skipped],
-              ["Waiting", cycle.waiting],
-              ["Sent", cycle.sent],
-            ].map(([k, v]) => (
-              <div key={k as string} className="rounded-control bg-sunken px-3 py-2.5">
-                <dt className="text-[12px] text-muted">{k}</dt>
-                <dd className="text-title font-semibold text-ink tnum">{v}</dd>
+            {KPI_TILES.map((tile) => (
+              <div key={tile.label} className={cx("rounded-control px-3.5 py-3 shadow-2xs", tile.cls)}>
+                <dt className="text-meta font-medium text-ink-2">{tile.label}</dt>
+                <dd className="mt-1 text-display-md font-semibold text-ink tnum">{kpiValues[tile.key]}</dd>
               </div>
             ))}
           </dl>
           {cycle.reasons.length > 0 && (
-            <details className="group mt-4">
-              <summary className="inline-flex cursor-pointer items-center gap-1 text-meta font-medium text-accent underline-offset-4 hover:underline">
-                Why {cycle.skipped} {cycle.skipped === 1 ? "was" : "were"} skipped
-              </summary>
-              <ul className="mt-2 flex flex-col gap-1">
-                {cycle.reasons.map(([r, n]) => (
-                  <li key={r} className="flex items-baseline justify-between gap-3 text-meta">
-                    <span className="text-ink-2">{r}</span>
-                    <span className="text-muted tnum">{n}</span>
+            <div className="mt-4 border-t border-line pt-3">
+              <p className="text-meta font-medium text-ink">Why jobs were skipped</p>
+              <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                {cycle.reasons.map(([r, c]) => (
+                  <li key={r} className="rounded-full bg-sunken px-2.5 py-0.5 text-meta text-ink-2 tnum">
+                    {r} <span className="text-muted">· {c}</span>
                   </li>
                 ))}
               </ul>
-            </details>
+            </div>
           )}
         </Card>
 
-        <Card title="Recent replies" actions={<TextLink href="/inbox">Inbox</TextLink>}>
+        <Card title="Recent replies" actions={<TextLink href="/inbox">Inbox</TextLink>} className="bento-sky">
           {replies.length === 0 ? (
-            <p className="text-body-sm text-muted">No replies yet. They show up here when your inbox is connected.</p>
+            <p className="text-body-sm text-ink-2">No replies yet. Confirmations, interview invites and rejections appear here.</p>
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className="divide-y divide-line">
               {replies.map((m) => (
-                <li key={m.id}>
-                  <Link href={m.applicationId ? `/applications/${m.applicationId}` : "/inbox"} className="block rounded-control hover:bg-sunken/60">
-                    <span className={cx("inline-flex h-5 items-center rounded-full px-2 text-[11px] font-semibold", m.kind === "interview" || m.kind === "offer" ? "bg-accent-tint text-accent-fg" : "bg-sunken text-ink-2")}>{INBOX_LABEL[m.kind]}</span>
-                    <span className="mt-1 block truncate text-body-sm text-ink">{m.subject}</span>
-                    <TimeAgo iso={m.receivedAt} className="text-[12px] text-muted" />
+                <li key={m.id} className="py-2.5 first:pt-0 last:pb-0">
+                  <Link href={m.applicationId ? `/applications/${m.applicationId}` : "/inbox"} className="block rounded-control hover:bg-white/60">
+                    <div className="flex items-center justify-between gap-2 text-meta">
+                      <span className="font-medium text-ink">{INBOX_LABEL[m.kind]}</span>
+                      <TimeAgo iso={m.receivedAt} className="text-muted" />
+                    </div>
+                    <p className="mt-0.5 truncate text-body-sm text-ink-2">{m.subject}</p>
                   </Link>
                 </li>
               ))}
@@ -162,8 +188,8 @@ export default async function TodayPage() {
           )}
         </Card>
 
-        <Card className="lg:col-span-3" title="Activity">
-          <ActivityFeed items={activity} />
+        <Card className="lg:col-span-3" title="Activity" actions={<TextLink href="/agent">Lanes and autopilot</TextLink>}>
+          <ActivityFeed items={activity.slice(0, 12)} />
         </Card>
       </div>
     </div>

@@ -313,20 +313,28 @@ export function InboundAndPushPanel({ initialInboundEmail }: { initialInboundEma
   );
 }
 
+const DEFAULT_PLAN_STATUS: PlanStatus = {
+  plan: "free",
+  limits: { plan: "free", dailyApplicationsCap: 3, maxLanes: 2, dailyTokenCap: 300_000, autopilotIncluded: false },
+  usedToday: 0,
+  remainingToday: 3,
+  referralCode: "nori-invite",
+  stripeConfigured: false,
+  hasCustomer: false,
+};
+
 /** Stage 6: Plan, Daily Application Allowance, Stripe Billing & Referral Code. */
 export function BillingPlanCard({ initial }: { initial?: PlanStatus | null }) {
-  const [status, setStatus] = useState<PlanStatus | null>(initial ?? null);
+  const [status, setStatus] = useState<PlanStatus>(initial ?? DEFAULT_PLAN_STATUS);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!status) {
+    if (!initial) {
       api.planStatus().then(setStatus).catch(() => {});
     }
-  }, [status]);
-
-  if (!status) return null;
+  }, [initial]);
 
   async function openBilling() {
     setBusy(true);

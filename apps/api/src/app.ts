@@ -167,7 +167,7 @@ export function createApp(db: Db, opts: AppOptions = {}) {
       try {
         do {
           state.rerun = false;
-          const r = await computeMatchesForUser(db, userId, { staleBefore: new Date() });
+          const r = await computeMatchesForUser(db, userId, { staleBefore: new Date(), limit: 60 });
           if (r.computed) console.log(`[api] scored ${r.computed} job(s) for user ${userId}`);
         } while (state.rerun);
       } catch (err) {
@@ -942,7 +942,8 @@ export function createApp(db: Db, opts: AppOptions = {}) {
 
   app.get("/api/tracker/stats", async (c) => {
     const user = c.get("user");
-    await markGhostedApplications(db).catch(() => 0);
+    if (c.req.query("wait")) await markGhostedApplications(db).catch(() => 0);
+    else void markGhostedApplications(db).catch(() => 0);
     const rows = await db.select({ status: applications.status, n: sql<number>`count(*)::int` }).from(applications)
       .where(eq(applications.userId, user.id)).groupBy(applications.status);
     const byStatus: Record<string, number> = {};

@@ -358,7 +358,8 @@ CREATE TABLE IF NOT EXISTS outreach (
   follow_up_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS outreach_user_idx ON outreach(user_id, created_at)
+CREATE INDEX IF NOT EXISTS outreach_user_idx ON outreach(user_id, created_at);
+CREATE INDEX IF NOT EXISTS jobs_company_open_idx ON jobs(company_id) WHERE closed_at IS NULL
 `,
   },
 ];

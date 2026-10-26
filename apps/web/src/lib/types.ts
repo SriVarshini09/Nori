@@ -484,7 +484,9 @@ export type AgentTickSummary = {
   note?: string;
 };
 
-export type BoardAts = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export type BoardAts =
+  | "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workday"
+  | "workable" | "rippling" | "recruitee" | "bamboohr" | "pinpoint" | "breezy" | "dover" | "personio";
 export type WatchedCompany = { id: string; name: string; atsType: BoardAts; token: string; openJobs: number; followed: boolean };
 export type CompanyList = { companies: WatchedCompany[]; total: number };
 export type DetectedCompany = { atsType: BoardAts; token: string; name: string; openJobs: number; added: number };

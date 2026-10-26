@@ -126,7 +126,7 @@ export interface NoriMascot3DProps {
   /** Bump this counter to trigger a celebratory hop & sparkles. */
   cheer?: number;
   /** Size variant. */
-  variant?: "rail" | "hero" | "auth" | "floating";
+  variant?: "rail" | "hero" | "showcase" | "auth" | "banner" | "floating";
   /** Show the speech bubble next to Nori. */
   showBubble?: boolean;
   className?: string;
@@ -795,15 +795,29 @@ export function NoriMascot3D({
     }
   };
 
+  const triggerMood = (nextMood: NoriMood, text: string) => {
+    moodRef.current = nextMood;
+    setMood(nextMood);
+    if (nextMood === "celebrate") pokeRef.current();
+    setTransientMsg(text);
+    setTimeout(() => {
+      if (moodRef.current === nextMood) {
+        moodRef.current = forcedShy ? "shy" : "idle";
+        setMood(forcedShy ? "shy" : "idle");
+      }
+      setTransientMsg(null);
+    }, 2800);
+  };
+
   if (variant === "rail") {
     return (
-      <div className={cx("rounded-card border border-line bg-surface p-2.5", className)}>
-        <div className="flex items-center gap-2.5">
+      <div className={cx("rounded-card border border-line bg-sunken/65 p-3", className)}>
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={handlePoke}
             aria-label="Poke Nori the 3D mascot"
-            className="relative h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-control bg-sunken/60 transition-transform active:scale-95"
+            className="relative h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-control border border-line bg-surface shadow-xs transition-transform active:scale-95"
           >
             <div ref={hostRef} className="h-full w-full">
               <canvas
@@ -822,14 +836,14 @@ export function NoriMascot3D({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                <span className="text-[11px] font-semibold tracking-wide text-accent-fg">
                   {mood === "shy"
                     ? "Eyes closed"
                     : mood === "typing"
-                      ? "Listening..."
+                      ? "Taking notes"
                       : mood === "excited"
-                        ? "Ready!"
-                        : "Nori"}
+                        ? "Ready to help"
+                        : "Nori companion"}
                 </span>
               </div>
               <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-ink-2" role="status" aria-live="polite">
@@ -842,11 +856,38 @@ export function NoriMascot3D({
     );
   }
 
+  if (variant === "banner") {
+    return (
+      <button
+        type="button"
+        onClick={handlePoke}
+        aria-label="Poke Nori the 3D mascot to hop"
+        className={cx(
+          "relative h-20 w-20 shrink-0 cursor-pointer overflow-hidden rounded-card border border-line bg-sunken/70 transition-transform active:scale-95 sm:h-22 sm:w-22",
+          className,
+        )}
+      >
+        <div ref={hostRef} className="h-full w-full">
+          <canvas
+            ref={canvasRef}
+            aria-hidden="true"
+            className={cx("h-full w-full transition-opacity duration-500", ready ? "opacity-100" : "opacity-0")}
+          />
+          {!ready && (
+            <span className="absolute inset-0 flex items-center justify-center">
+              <NoriMark size={44} />
+            </span>
+          )}
+        </div>
+      </button>
+    );
+  }
+
   return (
     <div
       className={cx(
-        "relative flex items-center gap-3 rounded-card border border-line bg-surface p-3",
-        variant === "hero" ? "sm:p-3.5" : "",
+        "relative flex items-center gap-3.5 rounded-card border border-line bg-sunken/60 p-3.5",
+        variant === "hero" ? "sm:p-4" : "",
         className,
       )}
     >
@@ -855,8 +896,12 @@ export function NoriMascot3D({
         onClick={handlePoke}
         aria-label="Poke Nori the 3D mascot to make it hop"
         className={cx(
-          "relative shrink-0 cursor-pointer overflow-hidden rounded-control bg-sunken/60 transition-transform active:scale-95",
-          variant === "hero" ? "h-20 w-20 sm:h-24 sm:w-24" : "h-20 w-20",
+          "relative shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-[#bce6d1] bg-[radial-gradient(circle_at_50%_35%,#ffffff_0%,#e3f7ee_100%)] shadow-[0_6px_18px_-6px_rgba(13,117,86,0.18)] transition-transform active:scale-95",
+          variant === "showcase"
+            ? "h-32 w-32 sm:h-36 sm:w-36"
+            : variant === "hero"
+              ? "h-24 w-24 sm:h-28 sm:w-28"
+              : "h-22 w-22",
         )}
       >
         <div ref={hostRef} className="h-full w-full">
@@ -876,19 +921,42 @@ export function NoriMascot3D({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="inline-block h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
-            <span className="text-[11.5px] font-semibold text-muted">
+            <span className="text-[11.5px] font-semibold text-accent-fg">
               {mood === "shy"
                 ? "Nori · Eyes closed"
                 : mood === "typing"
                   ? "Nori · Taking notes"
                   : mood === "excited"
                     ? "Nori · Excited"
-                    : "Nori · Click me to hop"}
+                    : "Nori · Interactive 3D"}
             </span>
           </div>
           <p className="mt-1 text-[13.5px] font-medium leading-snug text-ink" role="status" aria-live="polite">
             {activeMessage}
           </p>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => triggerMood("celebrate", "Woohoo! Ready to find your next role!")}
+              className="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11.5px] font-medium text-ink-2 transition-colors hover:border-control hover:text-ink"
+            >
+              Lucky hop
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerMood("excited", "Hi there! Every line traces to your graph.")}
+              className="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11.5px] font-medium text-ink-2 transition-colors hover:border-control hover:text-ink"
+            >
+              Wave hello
+            </button>
+            <button
+              type="button"
+              onClick={() => triggerMood("shy", "Peek-a-boo! Your credentials stay private.")}
+              className="rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11.5px] font-medium text-ink-2 transition-colors hover:border-control hover:text-ink"
+            >
+              Cover eyes
+            </button>
+          </div>
         </div>
       )}
     </div>

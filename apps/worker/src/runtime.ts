@@ -127,14 +127,15 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
   const seeded = await seedBoardRegistry(db);
   if (seeded) log(`board registry: added ${seeded} companies to watch`);
 
-  // The curated registry carries tens of thousands of postings, so each board is re-read every few hours here.
-  // Boards a user follows or applied to are refreshed hourly by that user's agent tick.
+  // The curated registry carries tens of thousands of postings, so each cycle refreshes a bounded batch of boards
+  // and yields between them so interactive HTTP requests never wait behind a 186-board bulk sweep.
   const BOARD_REFRESH_MS = 3 * 3600_000;
+  const MAX_BOARDS_PER_SWEEP = 8;
   every("feeds", POLL_EVERY, async () => {
     const rows = await db.select().from(companies).where(and(
       isNotNull(companies.atsToken),
       or(isNull(companies.lastPolledAt), lt(companies.lastPolledAt, new Date(Date.now() - BOARD_REFRESH_MS))),
-    ));
+    )).limit(MAX_BOARDS_PER_SWEEP);
     for (const c of rows) {
       if (stopping) return;
       if (!FEEDS[c.atsType as AtsType]) continue;
@@ -144,11 +145,12 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
         if (r.ids.length) {
           for (const userId of await usersWithGraph(db)) {
             if (stopping) return;
-            const m = await computeMatchesForUser(db, userId, { jobIds: r.ids, limit: r.ids.length });
+            const m = await computeMatchesForUser(db, userId, { jobIds: r.ids, limit: Math.min(60, r.ids.length) });
             if (m.computed) log(`feed ${c.atsType}/${c.atsToken}: scored ${m.computed} job(s) for user ${userId}`);
           }
         }
       } catch (e) { log(`feed ${c.atsType}/${c.atsToken} failed: ${errMsg(e)}`); }
+      await new Promise((r) => setTimeout(r, 200));
     }
   });
 
