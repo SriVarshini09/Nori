@@ -14,8 +14,8 @@ import { STATUS_MARK } from "./StatusPill";
 import { TimeAgo } from "./TimeAgo";
 import { EmptyState } from "./ui";
 import {
-  DEFAULT_FILTERS, SENIORITY_ORDER, activeFilterCount, filtersToParams, placeName, postedIso,
-  seniorityKey, seniorityLabel, skillChips, sourceLabel, workMode, type BoardFilters,
+  DEFAULT_FILTERS, SENIORITY_ORDER, VIEW_PARAMS, activeFilterCount, filtersToParams, placeName, postedIso,
+  seniorityKey, seniorityLabel, skillChips, sourceLabel, workMode, type BoardFilters, type JobsView,
 } from "./jobMeta";
 
 export type BoardApp = { id: string; status: ApplicationStatus };
@@ -38,6 +38,8 @@ export function BoardCard({ item, app, href }: { item: JobWithMatch; app?: Board
   const { job, match } = item;
   const mode = workMode(job);
   const place = placeName(job.location);
+  const more = (item.locations ?? 1) - 1;
+  const moreNames = item.locationNames?.join(", ") ?? "";
   const sen = seniorityKey(job);
   const chips = skillChips(match, 4);
   const status = app?.status ?? item.applicationStatus ?? null;
@@ -52,7 +54,13 @@ export function BoardCard({ item, app, href }: { item: JobWithMatch; app?: Board
           <MatchBadge score={match?.score} />
         </div>
         <p className="mt-0.5 truncate text-meta text-muted">
-          {job.companyName} · {place ?? (mode === "Remote" ? "Anywhere" : "Location not listed")} · {mode}{sen ? ` · ${seniorityLabel(sen)}` : ""} · {sourceLabel(job.atsType)} · <TimeAgo iso={postedIso(job)} />
+          {job.companyName} · {place ?? (mode === "Remote" ? "Anywhere" : "Location not listed")}
+          {more > 0 && (
+            <>
+              {" "}<span title={moreNames} className="font-medium text-ink-2">+{more} {more === 1 ? "location" : "locations"}<span className="sr-only">: {moreNames}</span></span>
+            </>
+          )}
+          {" "}· {mode}{sen ? ` · ${seniorityLabel(sen)}` : ""} · {sourceLabel(job.atsType)} · <TimeAgo iso={postedIso(job)} />
         </p>
         {chips.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Skills the posting asks for">
@@ -86,7 +94,13 @@ export function BoardCard({ item, app, href }: { item: JobWithMatch; app?: Board
 }
 
 /** Job list: a compact filter bar (more filters behind a disclosure), then ranked rows. */
-export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps: Record<string, BoardApp>; initial: BoardFilters }) {
+export function JobBoard({ items, apps, initial, view, viewQuery = "" }: {
+  items: JobWithMatch[]; apps: Record<string, BoardApp>; initial: BoardFilters;
+  /** Which server view these items came from (best match, newest, new today); the list keeps the server's order. */
+  view: JobsView;
+  /** The view's own URL params (view, clearance, older), kept on every link so opening a job does not reset the view. */
+  viewQuery?: string;
+}) {
   const [f, setF] = useState<BoardFilters>(initial);
   const [more, setMore] = useState(initial.seniority.length + initial.sources.length > 0);
   const set = <K extends keyof BoardFilters>(k: K, v: BoardFilters[K]) => setF((prev) => ({ ...prev, [k]: v }));
@@ -97,8 +111,10 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
   useEffect(() => {
     const cur = new URLSearchParams(window.location.search);
     const next = new URLSearchParams(params);
-    const job = cur.get("job");
-    if (job) next.set("job", job);
+    for (const k of ["job", ...VIEW_PARAMS]) {
+      const v = cur.get(k);
+      if (v) next.set(k, v);
+    }
     const qs = next.toString();
     if (qs !== cur.toString()) window.history.replaceState(window.history.state, "", `/jobs${qs ? `?${qs}` : ""}`);
   }, [params]);
@@ -134,8 +150,7 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
       if (f.hideApplied && (apps[job.id] || applicationStatus)) return false;
       return true;
     });
-    const t = (j: JobWithMatch) => new Date(postedIso(j.job)).getTime() || 0;
-    return out.sort((a, b) => (f.sort === "new" ? t(b) - t(a) : (b.match?.score ?? -1) - (a.match?.score ?? -1) || t(b) - t(a)));
+    return out; // the server already ordered them for the chosen view
   }, [items, apps, f]);
 
   const PAGE = 20;
@@ -147,6 +162,7 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
   const extra = f.seniority.length + f.sources.length;
   const hrefFor = (id: string) => {
     const p = new URLSearchParams(params);
+    for (const [k, v] of new URLSearchParams(viewQuery)) p.set(k, v);
     p.set("job", id);
     return `/jobs?${p}`;
   };
@@ -172,10 +188,6 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
               {[0, 50, 60, 70, 80, 90].map((n) => <option key={n} value={n}>{n === 0 ? "Any match" : `${n}% or more`}</option>)}
             </select>
           </label>
-          <select value={f.sort} onChange={(e) => set("sort", e.target.value as BoardFilters["sort"])} aria-label="Sort" className="h-10 rounded-control border border-control bg-surface pl-3 text-body-sm text-ink">
-            <option value="match">Best match first</option>
-            <option value="new">Newest first</option>
-          </select>
         </div>
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
           <button type="button" role="switch" aria-checked={f.remote} onClick={() => set("remote", !f.remote)} className={chip(f.remote)}>Remote only <span className="font-normal tnum">{facets.remote}</span></button>
@@ -205,13 +217,15 @@ export function JobBoard({ items, apps, initial }: { items: JobWithMatch[]; apps
       </div>
 
       <p className="text-meta text-muted tnum">
-        <span className="font-semibold text-ink">{shown.length}</span> of {items.length} roles, {f.sort === "new" ? "newest first" : "best match first"}.
+        <span className="font-semibold text-ink">{shown.length}</span> of {items.length} roles, {view === "best" ? "best match first" : "newest first"}.
         <span className="ml-2 hidden sm:inline">Solid chips are in your graph; dashed ones are missing.</span>
       </p>
 
       {shown.length === 0 ? (
-        <EmptyState title={items.length === 0 ? "No jobs yet" : "No roles match these filters"}>
-          {items.length === 0 ? "Poll a company's board or paste a posting link above to start." : "Loosen a filter, or add more roles above."}
+        <EmptyState title={items.length === 0 ? (view === "today" ? "Nothing new in the last 24 hours" : "No jobs yet") : "No roles match these filters"}>
+          {items.length === 0
+            ? view === "today" ? "Check Newest for the latest postings, or come back later today." : "Poll a company's board or paste a posting link above to start."
+            : "Loosen a filter, or add more roles above."}
         </EmptyState>
       ) : (
         <>

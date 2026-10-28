@@ -14,6 +14,9 @@ export { extractRequirements, ensureRequirements, heuristicRequirements, JobRequ
 export { UnsafeUrlError, assertPublicUrl, isPrivateAddress, safeFetch } from "./ssrf.js";
 export { BOARD_REGISTRY, VERIFIED_AT, type BoardEntry } from "./board-registry.js";
 export { seedBoardRegistry } from "./registry-seed.js";
+export { BLOCKED_SOURCES, BlockedSourceError, isBlockedBoard, isBlockedCompany, purgeBlockedSources, type BlockedSource } from "./blocklist.js";
+export { RateLimitedError, FEED_USER_AGENT, fetchWithRetry, parseRetryAfter } from "./http.js";
+export { HostBackoff, feedHost } from "./throttle.js";
 export { detectBoard, findBoardsInHtml, type DetectedBoard } from "./detect.js";
 export { listCompanies, followCompany, unfollowCompany, type CompanyRow } from "./companies.js";
 export { prettifyToken } from "./http.js";

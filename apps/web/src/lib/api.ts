@@ -7,7 +7,7 @@
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, Channel, Company, DiscoverQuery, Graph,
-  InboxMessage, Integration, IngestResult, Job, JobDetail, JobWithMatch, Lane, Me, ModelSettings, OnboardingState, OnboardingStepId,
+  InboxMessage, Integration, IngestResult, Job, JobDetail, JobsSummary, JobWithMatch, Lane, Me, ModelSettings, OnboardingState, OnboardingStepId,
   BoardAts, CompanyList, DetectedCompany, Preferences, Profile, Resume, ResumeContent, ResumeDoc, ResumeDocSummary, ResumeFormat, ResumePreview, ResumeTemplates, ResumeTheme, ResumeVersion, SessionInfo, TelegramInfo, TelegramLink, TrackerStats, User,
 } from "./types";
 
@@ -97,6 +97,12 @@ function mockSession(on: boolean) {
 }
 
 const mock = () => import("./mock");
+/** GET /api/jobs. Server defaults: status open, sort best, maxAgeDays 60 (0 = any age), lanes on for best, group on, clearance show. */
+export type ListJobsParams = {
+  q?: string; limit?: number; minScore?: number; status?: string;
+  sort?: "best" | "new"; maxAgeDays?: number; lanes?: boolean; group?: boolean; clearance?: "hide" | "show";
+};
+
 const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
@@ -202,8 +208,9 @@ export const api = {
     USE_MOCK ? { nodesCreated: 2 } : request("POST", "/api/graph/facts", { text }),
 
   // ---- jobs
-  listJobs: async (p: { q?: string; limit?: number; minScore?: number; status?: string } = {}): Promise<JobWithMatch[]> =>
+  listJobs: async (p: ListJobsParams = {}): Promise<JobWithMatch[]> =>
     USE_MOCK ? (await mock()).listJobs(p) : request("GET", `/api/jobs${qs(p)}`),
+  jobsSummary: async (): Promise<JobsSummary> => (USE_MOCK ? (await mock()).jobsSummary() : request("GET", "/api/jobs/summary")),
   discoverJobs: async (q: DiscoverQuery): Promise<{ added: number; jobs: JobWithMatch[] | Job[] }> =>
     USE_MOCK ? { added: 3, jobs: (await mock()).listJobs({ limit: 3 }) } : request("POST", "/api/jobs/discover", q),
   addJobByUrl: async (url: string): Promise<{ job: Job }> =>

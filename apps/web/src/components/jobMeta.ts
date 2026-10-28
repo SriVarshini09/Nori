@@ -71,7 +71,6 @@ export function skillChips(match: Match | null, max = 5): SkillChip[] {
 export const postedIso = (job: Pick<Job, "postedAt" | "firstSeenAt">) => job.postedAt ?? job.firstSeenAt;
 
 // ---------- board filters (URL <-> state) ----------
-export type BoardSort = "match" | "new";
 export type BoardFilters = {
   q: string;
   min: number;
@@ -79,9 +78,8 @@ export type BoardFilters = {
   seniority: string[];
   sources: string[];
   hideApplied: boolean;
-  sort: BoardSort;
 };
-export const DEFAULT_FILTERS: BoardFilters = { q: "", min: 0, remote: false, seniority: [], sources: [], hideApplied: false, sort: "match" };
+export const DEFAULT_FILTERS: BoardFilters = { q: "", min: 0, remote: false, seniority: [], sources: [], hideApplied: false };
 
 type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
@@ -96,7 +94,6 @@ export function parseFilters(sp: SP): BoardFilters {
     seniority: list(sp.sen),
     sources: list(sp.src),
     hideApplied: first(sp.hide) === "1" || first(sp.status) === "new",
-    sort: first(sp.sort) === "new" ? "new" : "match",
   };
 }
 
@@ -108,9 +105,37 @@ export function filtersToParams(f: BoardFilters): URLSearchParams {
   if (f.seniority.length) p.set("sen", f.seniority.join(","));
   if (f.sources.length) p.set("src", f.sources.join(","));
   if (f.hideApplied) p.set("hide", "1");
-  if (f.sort !== "match") p.set("sort", f.sort);
   return p;
 }
 
 export const activeFilterCount = (f: BoardFilters) =>
   (f.q ? 1 : 0) + (f.min ? 1 : 0) + (f.remote ? 1 : 0) + f.seniority.length + f.sources.length + (f.hideApplied ? 1 : 0);
+
+// ---------- job views (server-fetched; tabs are links) ----------
+/** Best match (lanes on), Newest (everything open, newest first) and New today (last 24 hours). */
+export type JobsView = "best" | "new" | "today";
+export const JOB_VIEWS: { id: JobsView; label: string }[] = [
+  { id: "best", label: "Best match" },
+  { id: "new", label: "Newest" },
+  { id: "today", label: "New today" },
+];
+/** URL params that belong to the view, not the board filters. */
+export const VIEW_PARAMS = ["view", "clearance", "older"] as const;
+export const CLEARANCE_STORAGE_KEY = "nori.jobs.hideClearance";
+
+export type ViewState = { view: JobsView; hideClearance: boolean; older: boolean };
+
+export function parseView(sp: SP): ViewState {
+  const v = first(sp.view);
+  const view: JobsView = v === "new" || v === "today" || v === "best" ? v : first(sp.sort) === "new" ? "new" : "best"; // ?sort=new is the old link
+  return { view, hideClearance: first(sp.clearance) === "hide", older: view !== "today" && first(sp.older) === "1" };
+}
+
+/** Query for the view alone, leaving out values that are the default so the URL stays short. */
+export function viewToParams(s: ViewState): URLSearchParams {
+  const p = new URLSearchParams();
+  if (s.view !== "best") p.set("view", s.view);
+  if (s.hideClearance) p.set("clearance", "hide");
+  if (s.older) p.set("older", "1");
+  return p;
+}

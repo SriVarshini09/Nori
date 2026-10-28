@@ -13,9 +13,9 @@
  *  - channel router (Telegram long-poll, WhatsApp webhook adapter, Slack triggers) with the chat agent, plus the
  *    console channel (stdin/stdout) when CHANNEL_CONSOLE=1
  */
-import { and, eq, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
-  applications, channels, companies, FEEDS, MAX_ATTEMPTS, STALE_MS, ensureDefaultUser, createAgent, computeMatchesForUser, usersWithGraph,
+  applications, channels, companies, FEEDS, HostBackoff, RateLimitedError, feedHost, MAX_ATTEMPTS, STALE_MS, ensureDefaultUser, createAgent, computeMatchesForUser, usersWithGraph,
   acquireLease, releaseLease, withLease,
   agentTick, announceInbox, seedBoardRegistry, pruneAuthTokens, pruneSessions, maybeMorningBrief, maybeWeeklySummary, pickRunnable, pollTenant, pruneArtifacts, recoverStuckCodeWaits, retryApplication, runApplication, withUserLLM,
   type AtsType, type Db, type OutboundMessage, type RunnerDeps,
@@ -120,22 +120,32 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
     }
   });
 
-  const seeded = await seedBoardRegistry(db);
+  const seeded = await seedBoardRegistry(db, { log });
   if (seeded) log(`board registry: added ${seeded} companies to watch`);
 
   // The curated registry carries tens of thousands of postings, so each board is re-read every few hours here.
   // Boards a user follows or applied to are refreshed hourly by that user's agent tick.
   const BOARD_REFRESH_MS = 3 * 3600_000;
+  // Be a polite reader: a short pause between boards, and when a host keeps answering 429/503 (after the per-request
+  // retries in http.ts) leave its remaining boards for the next cycle instead of hammering it.
+  const BOARD_PAUSE_MS = 750;
   every("feeds", POLL_EVERY, async () => {
+    // Boards never read first, then the most overdue, so a cycle cut short does not starve the same boards every time.
     const rows = await db.select().from(companies).where(and(
       isNotNull(companies.atsToken),
       or(isNull(companies.lastPolledAt), lt(companies.lastPolledAt, new Date(Date.now() - BOARD_REFRESH_MS))),
-    ));
+    )).orderBy(sql`${companies.lastPolledAt} asc nulls first`);
+    const backoff = new HostBackoff(2);
+    let polled = 0, skipped = 0;
     for (const c of rows) {
       if (stopping) return;
       if (!FEEDS[c.atsType as AtsType]) continue;
+      const host = feedHost(c.atsType as AtsType);
+      if (backoff.isBackedOff(host)) { skipped++; continue; }
+      if (polled++) await new Promise<void>((resolve) => setTimeout(resolve, BOARD_PAUSE_MS));
       try {
         const r = await pollTenant(db, c.atsType, c.atsToken);
+        backoff.ok(host);
         if (r.added || r.closed) log(`feed ${c.atsType}/${c.atsToken}: +${r.added} new, ${r.closed} closed (${r.total} open)`);
         if (r.ids.length) {
           for (const userId of await usersWithGraph(db)) {
@@ -144,8 +154,14 @@ export async function startRuntime(db: Db, opts: RuntimeOptions = {}): Promise<R
             if (m.computed) log(`feed ${c.atsType}/${c.atsToken}: scored ${m.computed} job(s) for user ${userId}`);
           }
         }
-      } catch (e) { log(`feed ${c.atsType}/${c.atsToken} failed: ${errMsg(e)}`); }
+      } catch (e) {
+        log(`feed ${c.atsType}/${c.atsToken} failed: ${errMsg(e)}`);
+        if (e instanceof RateLimitedError) {
+          if (backoff.rateLimited(host)) log(`feeds: ${host} keeps refusing (429/503); backing it off for the rest of this cycle`);
+        } else backoff.ok(host);
+      }
     }
+    if (skipped) log(`feeds: left ${skipped} board(s) on ${backoff.backedOffHosts.join(", ")} for the next cycle`);
   });
 
   every("housekeeping", 60 * 60_000, async () => {

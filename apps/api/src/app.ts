@@ -9,7 +9,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, ne, sql, type SQL } from "drizzle-orm";
 import {
   clearResumeNodes, deleteGraphNode,
   applications, channels, companies, inboxMessages, jobs, matches, profiles, resumes, runEvents, users,
@@ -39,6 +39,7 @@ import { mountFontRoute, mountResumeRoutes } from "./resume-routes.js";
 import { MAX_RESUME_BYTES, extractResumeFile, resumeKind } from "./extract.js";
 import { SCANNED_PDF_ERROR, type ExtractedLink, type ExtractedResume } from "@jobgraph/core";
 import { ProfileBody, STEP_SCHEMAS, buildProfilePatch } from "./profile-fields.js";
+import { DEFAULT_MAX_AGE_DAYS, STATUS_FILTERS, jobsSummary, listJobsForUser, type StatusFilter } from "./jobs-feed.js";
 
 export type AppEnv = { Variables: { user: SessionUser } };
 
@@ -69,9 +70,6 @@ export function defaultRunnerDeps(overrides: Partial<RunnerDeps> = {}): RunnerDe
   return { pickDriver, waitForCode: (db, userId, hint, timeoutMs) => waitForVerificationCode(db, userId, hint, timeoutMs), ...overrides };
 }
 
-/** GET /api/jobs scores at most this many unscored rows per request. */
-const LAZY_MATCH_CAP = 40;
-const STATUS_FILTERS = ["open", "closed", "new", "applied"] as const;
 const Answers = z.record(z.string(), z.string());
 const DiscoverBody = z.object({
   objective: z.string().min(1), titles: z.array(z.string()).optional(), locations: z.array(z.string()).optional(),
@@ -530,35 +528,44 @@ export function createApp(db: Db, opts: AppOptions = {}) {
   });
 
   // ---------- jobs ----------
+  /** `1`/`true`/`on` and `0`/`false`/`off` (anything else: the default). */
+  const flag = (v: string | undefined, dflt: boolean) => (v === undefined ? dflt : /^(1|true|on|yes)$/i.test(v) ? true : /^(0|false|off|no)$/i.test(v) ? false : dflt);
+  /** Enabled lanes the job list should fit, or none when the user has no lanes (then nothing is filtered by lane). */
+  const enabledLanes = async (userId: string) => (await lanesOf(userId)).filter((l) => l.enabled !== false);
+
   app.get("/api/jobs", async (c) => {
     const user = c.get("user");
     const q = c.req.query("q")?.trim();
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50) || 50, 1), 500);
     const minScore = c.req.query("minScore") !== undefined ? Number(c.req.query("minScore")) : undefined;
-    const status = c.req.query("status");
-    if (status && !(STATUS_FILTERS as readonly string[]).includes(status)) throw bad(`status must be one of ${STATUS_FILTERS.join(", ")}`);
-    const hasApp = db.select({ x: applications.id }).from(applications).where(and(eq(applications.userId, user.id), eq(applications.jobId, jobs.id)));
-    const where: SQL[] = [];
-    if (q) where.push(or(ilike(jobs.title, `%${q}%`), ilike(jobs.companyName, `%${q}%`))!);
-    if (minScore !== undefined && !Number.isNaN(minScore)) where.push(gte(matches.score, minScore));
-    if (status === "open") where.push(isNull(jobs.closedAt));
-    if (status === "closed") where.push(isNotNull(jobs.closedAt));
-    if (status === "new") where.push(notExists(hasApp));
-    if (status === "applied") where.push(sql`exists (${hasApp})`);
-    const select = () => db.select({ job: jobs, match: matches, application: { id: applications.id, status: applications.status } }).from(jobs)
-      .leftJoin(matches, and(eq(matches.jobId, jobs.id), eq(matches.userId, user.id)))
-      .leftJoin(applications, and(eq(applications.jobId, jobs.id), eq(applications.userId, user.id)))
-      .where(where.length ? and(...where) : undefined)
-      .orderBy(sql`${matches.score} desc nulls last`, sql`${jobs.postedAt} desc nulls last`, desc(jobs.firstSeenAt))
-      .limit(limit);
-    let rows = await select();
-    // Score unscored rows on this page (capped) so a fresh account never sees a wall of 0%.
-    const unscored = rows.filter((r) => !r.match && !r.job.closedAt).slice(0, LAZY_MATCH_CAP).map((r) => r.job.id);
-    if (unscored.length) {
-      const r = await computeMatchesForUser(db, user.id, { jobIds: unscored, limit: LAZY_MATCH_CAP });
-      if (r.computed) rows = await select();
-    }
-    return c.json(rows.map((r) => ({ job: slimJob(r.job), match: r.match, application: r.application?.id ? r.application : null })));
+    const status = (c.req.query("status") || "open") as StatusFilter;
+    if (!(STATUS_FILTERS as readonly string[]).includes(status)) throw bad(`status must be one of ${STATUS_FILTERS.join(", ")}`);
+    const sort = c.req.query("sort") ?? "best";
+    if (sort !== "best" && sort !== "new") throw bad("sort must be best or new");
+    const clearance = c.req.query("clearance") ?? "show";
+    if (clearance !== "show" && clearance !== "hide") throw bad("clearance must be show or hide");
+    // Browsing views (open, new, all) get the quality defaults; looking up applied or closed rows is not trimmed unless asked.
+    const browse = status === "open" || status === "new" || status === "all";
+    const ageParam = c.req.query("maxAgeDays");
+    const age = ageParam !== undefined && ageParam !== "" ? Number(ageParam) : NaN;
+    const maxAgeDays = Number.isFinite(age) ? Math.min(Math.max(Math.floor(age), 0), 3650) : browse ? DEFAULT_MAX_AGE_DAYS : 0;
+    // A typed search looks across everything, so lanes are not applied to it unless asked for.
+    const useLanes = flag(c.req.query("lanes"), browse && sort === "best" && !q);
+    const rows = await listJobsForUser(db, user.id, {
+      q, limit, minScore, status, sort, maxAgeDays,
+      lanes: useLanes ? await enabledLanes(user.id) : [],
+      group: flag(c.req.query("group"), browse),
+      hideClearance: clearance === "hide",
+    });
+    return c.json(rows);
+  });
+
+  // Counts for the line above the jobs list. Registered before /api/jobs/:id so "summary" is not read as an id.
+  app.get("/api/jobs/summary", async (c) => {
+    const user = c.get("user");
+    const age = Number(c.req.query("maxAgeDays"));
+    const maxAgeDays = c.req.query("maxAgeDays") !== undefined && Number.isFinite(age) ? Math.min(Math.max(Math.floor(age), 0), 3650) : DEFAULT_MAX_AGE_DAYS;
+    return c.json(await jobsSummary(db, user.id, { lanes: await enabledLanes(user.id), maxAgeDays }));
   });
 
   app.post("/api/jobs/discover", async (c) => {

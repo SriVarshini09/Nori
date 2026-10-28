@@ -5,7 +5,7 @@
  */
 import type {
   AgentActivity, AgentStatus, AgentTickSummary, Application, ApplicationDetail, ApplicationListItem, ApplicationStatus, AtsCheck, Channel, Company,
-  Graph, GraphEdge, GraphNode, InboxMessage, Integration, Job, JobDetail, JobWithMatch, Lane, Match, Me, ModelSettings, TelegramInfo, TelegramLink,
+  Graph, GraphEdge, GraphNode, InboxMessage, Integration, Job, JobDetail, JobsSummary, JobWithMatch, Lane, Match, Me, ModelSettings, TelegramInfo, TelegramLink,
   IngestResult, OnboardingState, Resume, ResumeChange, ResumeContent, RunEventRow, TrackerStats,
 } from "./types";
 
@@ -216,7 +216,7 @@ function buildMatch(s: JobSeed): Match {
 const jobs: Job[] = seeds.map(buildJob);
 const jobsWithMatch: JobWithMatch[] = seeds.map((s, i) => ({ job: jobs[i], match: buildMatch(s), applicationStatus: s.appStatus ?? null }));
 
-export function listJobs(params: { q?: string; limit?: number; minScore?: number; status?: string } = {}): JobWithMatch[] {
+export function listJobs(params: { q?: string; limit?: number; minScore?: number; status?: string; sort?: "best" | "new"; maxAgeDays?: number } = {}): JobWithMatch[] {
   let out = jobsWithMatch.slice();
   if (params.q) {
     const q = params.q.toLowerCase();
@@ -225,8 +225,16 @@ export function listJobs(params: { q?: string; limit?: number; minScore?: number
   if (params.minScore != null) out = out.filter(({ match }) => (match?.score ?? 0) >= params.minScore!);
   if (params.status === "applied") out = out.filter((j) => j.applicationStatus);
   if (params.status === "new") out = out.filter((j) => !j.applicationStatus);
-  out.sort((a, b) => (b.match?.score ?? 0) - (a.match?.score ?? 0));
+  const posted = (j: JobWithMatch) => new Date(j.job.postedAt ?? j.job.firstSeenAt).getTime();
+  if (params.maxAgeDays) out = out.filter((j) => Date.now() - posted(j) <= params.maxAgeDays! * 86_400_000);
+  out.sort(params.sort === "new" ? (a, b) => posted(b) - posted(a) : (a, b) => (b.match?.score ?? 0) - (a.match?.score ?? 0));
   return out.slice(0, params.limit ?? 100);
+}
+
+export function jobsSummary(): JobsSummary {
+  const at = (j: JobWithMatch) => new Date(j.job.postedAt ?? j.job.firstSeenAt).getTime();
+  const within = (days: number) => jobsWithMatch.filter((j) => Date.now() - at(j) <= days * 86_400_000).length;
+  return { open: jobsWithMatch.length, newToday: within(1), newThisWeek: within(7), fitsLanes: jobsWithMatch.length, hasLanes: false };
 }
 
 export function getJob(id: string): JobDetail {

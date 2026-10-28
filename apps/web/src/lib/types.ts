@@ -175,7 +175,13 @@ export type JobWithMatch = {
   match: Match | null;
   /** Present when the API annotates the job with the user's application state. */
   applicationStatus?: ApplicationStatus | null;
+  /** Grouped list rows: how many places this posting is open in (same company and title), and up to 8 of their names. */
+  locations?: number;
+  locationNames?: string[];
 };
+
+/** GET /api/jobs/summary: counts over open jobs from the last 60 days. */
+export type JobsSummary = { open: number; newToday: number; newThisWeek: number; fitsLanes: number; hasLanes: boolean };
 
 export type DiscoverQuery = {
   objective: string;

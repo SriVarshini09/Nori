@@ -6,6 +6,7 @@ import {
 } from "../db/schema.js";
 import type { DiscoverQuery, OutboundMessage } from "../contracts.js";
 import { discoverJobs, searchAvailable } from "../feeds/discover.js";
+import { isBlockedBoard } from "../feeds/blocklist.js";
 import { pollTenant } from "../feeds/normalize.js";
 import { FEEDS } from "../feeds/registry.js";
 import { ensureRequirements } from "../feeds/requirements.js";
@@ -92,7 +93,7 @@ export const STARTER_BOARDS: [AtsType, string][] = [
 async function followedTenants(db: Db, userId: string, prefs: Preferences): Promise<{ atsType: AtsType; token: string; lastPolledAt: Date | null }[]> {
   const out = new Map<string, { atsType: AtsType; token: string; lastPolledAt: Date | null }>();
   const add = (atsType: AtsType, token: string, lastPolledAt: Date | null) => {
-    if (FEEDS[atsType]) out.set(`${atsType}:${token}`, { atsType, token, lastPolledAt });
+    if (FEEDS[atsType] && !isBlockedBoard(atsType, token)) out.set(`${atsType}:${token}`, { atsType, token, lastPolledAt });
   };
   for (const entry of prefs.followCompanies ?? []) {
     const m = /^(greenhouse|lever|ashby|smartrecruiters):(.+)$/i.exec(entry.trim());

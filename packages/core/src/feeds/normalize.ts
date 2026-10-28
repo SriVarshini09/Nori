@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import type { NormalizedJob } from "../contracts.js";
 import type { Db } from "../db/client.js";
 import { companies, jobs, type AtsType } from "../db/schema.js";
+import { BlockedSourceError, isBlockedBoard, isBlockedCompany } from "./blocklist.js";
 import { FEEDS } from "./registry.js";
 
 const CHUNK = 100;
@@ -21,9 +22,14 @@ async function ensureCompany(db: Db, atsType: AtsType, token: string, name: stri
  * Updates lastSeenAt, clears closedAt, and resets cached requirements when the description changed.
  */
 export async function upsertJobs(db: Db, input: NormalizedJob[]): Promise<{ added: number; updated: number; ids: string[] }> {
-  // Dedupe within the batch; the last occurrence wins.
+  // Dedupe within the batch; the last occurrence wins. Postings from reposting aggregators are dropped unless the
+  // user pasted the link (or sent it from the extension) themselves.
   const byKey = new Map<string, NormalizedJob>();
-  for (const j of input) byKey.set(`${j.atsType}\u0000${j.externalId}`, j);
+  for (const j of input) {
+    const explicit = j.discoveredVia === "pasted" || j.discoveredVia === "extension";
+    if (!explicit && isBlockedCompany({ name: j.companyName, token: j.companyToken })) continue;
+    byKey.set(`${j.atsType}\u0000${j.externalId}`, j);
+  }
   const list = [...byKey.values()];
   if (!list.length) return { added: 0, updated: 0, ids: [] };
 
@@ -99,6 +105,7 @@ export async function upsertJobs(db: Db, input: NormalizedJob[]): Promise<{ adde
 export async function pollTenant(db: Db, atsType: AtsType, token: string): Promise<{ added: number; updated: number; closed: number; total: number; ids: string[] }> {
   const feed = FEEDS[atsType];
   if (!feed) throw new Error(`No feed source for ats type "${atsType}"`);
+  if (isBlockedBoard(atsType, token)) throw new BlockedSourceError(token);
   const fetched = await feed.fetchJobs(token);
   const result = await upsertJobs(db, fetched);
 
