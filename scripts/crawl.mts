@@ -18,6 +18,11 @@ const pagesVisited: { url: string; as: string; final: string; status: number; ti
 const linkChecked = new Map<string, string>();
 const args = process.argv.slice(2);
 const checkExternal = !args.includes("--no-external");
+/**
+ * The marketing site (nori-landing) is a separate project on its own domain. Signed-out visits to `/` redirect there and
+ * "Home" links point there; this crawl checks the redirect but never loads that site, which deploys and is checked on its own.
+ */
+const LANDING_ORIGIN = new URL(process.env.NEXT_PUBLIC_LANDING_URL?.trim() || "https://norinote.xyz").origin;
 const AXE_SOURCE = await readFile(path.join(ROOT, "node_modules/axe-core/axe.min.js"), "utf8");
 /** Impacts that fail the crawl; "minor" and "moderate" are listed in the report as notes only. */
 const AXE_FAIL = new Set(["serious", "critical"]);
@@ -137,6 +142,7 @@ async function checkLink(ctx: BrowserContext, href: string, from: string, signed
   if (linkChecked.has(key)) return;
   const internal = u.origin === WEB;
   if (!internal && !checkExternal) return;
+  if (u.origin === LANDING_ORIGIN) return;
   let result = "ok";
   try {
     const res = await ctx.request.get(u.href, { maxRedirects: 5, timeout: 20_000, headers: { "user-agent": "Mozilla/5.0 NoriLinkCheck" } });
@@ -160,7 +166,15 @@ try {
   await authed.addCookies([{ name: cookie[0], value: cookie.slice(1).join("="), url: WEB, httpOnly: true, sameSite: "Lax" }]);
 
   // ---- signed out
-  for (const p of ["/", "/login", "/signup", "/forgot-password", "/privacy", "/terms"]) {
+  // `/` has no page: a visitor is redirected to the landing site.
+  {
+    const res = await anon.request.get(WEB + "/", { maxRedirects: 0 });
+    const to = res.headers()["location"] ?? "";
+    if (![307, 308].includes(res.status()) || new URL(to, WEB).origin !== LANDING_ORIGIN) {
+      issues.push({ page: "visitor: /", kind: "redirect", detail: `expected a redirect to ${LANDING_ORIGIN}, got ${res.status()} ${to}` });
+    }
+  }
+  for (const p of ["/login", "/signup", "/forgot-password", "/privacy", "/terms"]) {
     const r = await visit(anon, WEB + p, "visitor", { expectFinal: new RegExp(`^${p}$`), expected401: true });
     if (r) for (const l of r.links) await checkLink(anon, l, r.label, false);
   }
@@ -184,7 +198,7 @@ try {
   const anonPhone = await browser.newContext(phone);
   const authedPhone = await browser.newContext(phone);
   await authedPhone.addCookies([{ name: cookie[0], value: cookie.slice(1).join("="), url: WEB, httpOnly: true, sameSite: "Lax" }]);
-  for (const p of ["/", "/privacy", "/terms", "/login", "/signup", "/forgot-password", "/reset-password?token=x".replace("x", "x".repeat(24))]) await visit(anonPhone, WEB + p, "visitor@phone", { expected401: true });
+  for (const p of ["/privacy", "/terms", "/login", "/signup", "/forgot-password", "/reset-password?token=x".replace("x", "x".repeat(24))]) await visit(anonPhone, WEB + p, "visitor@phone", { expected401: true });
   for (const p of routes) await visit(authedPhone, WEB + p, "user@phone", { expectFinal: p === "/" ? /^\/dashboard/ : /^\/(?!login)/ });
 
   // an unknown application and an unknown job must fail gracefully, not crash
