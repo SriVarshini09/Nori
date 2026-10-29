@@ -55,7 +55,7 @@ function CapCard({ status }: { status: AgentStatus | null }) {
           </span>
         </div>
         <p className="mt-1.5 text-meta text-muted">
-          {trust ? <>Trust: {trust.approved} of {trust.needed} hand approvals. </> : null}
+          {trust ? <>{trust.needed === 0 ? "No hand approvals needed. " : `Trust: ${trust.approved} of ${trust.needed} hand approvals. `}</> : null}
           Minimum match {pct(status.minScore)}%.
         </p>
         <TextLink href="/agent#checks" className="mt-2">See the checks</TextLink>
