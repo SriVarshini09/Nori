@@ -1,3 +1,4 @@
+import { savedKey } from "./saved-answers.js";
 import type { ApplicantProfile, Evidence, FormField } from "../contracts.js";
 import { getLLM, withFallback } from "../llm/index.js";
 import type { CompanyResearch, Eeo, ResumeContent, SalaryExpectation, WorkAuth, profiles } from "../db/schema.js";
@@ -590,6 +591,8 @@ export type AnswerContext = {
   education?: EducationFact[];
   /** Sink for every composed answer, keyed by field label. */
   composed?: Record<string, ComposedAnswer>;
+  /** Answers the person already gave to the same question on an earlier application, by normalised label. */
+  saved?: Record<string, string>;
 };
 
 /** Fields the composer writes: free-text boxes that are textareas or whose label reads as an open question. */
@@ -627,12 +630,20 @@ For a question with fixed options, reply with exactly one of the options.`;
  * questions nothing in the profile or graph can honestly answer.
  */
 export function makeAnswerQuestion(ctx: AnswerContext) {
+  /** An answer the person gave to this question on an earlier form; for a choice, only when the same option is offered here. */
+  const rememberedFor = (field: FormField): string | null => {
+    const remembered = ctx.saved?.[savedKey(field.label)];
+    if (!remembered || field.kind === "file") return null;
+    if (!field.options?.length) return remembered;
+    return field.options.find((o) => o.trim().toLowerCase() === remembered.trim().toLowerCase()) ?? null;
+  };
   return async (field: FormField, jobContext: string): Promise<string | null> => {
     // Education dates and term confirmations come from the graph and the job title, before the profile's own
     // start-date answer can claim "Start date month".
     if (field.kind !== "file") {
       const edu = educationAnswer(field, ctx.education ?? [], ctx.compose?.job.title ?? ctx.jobTitle);
-      if (edu !== undefined) return edu;
+      // Nothing in the graph answers it (null): an answer the person gave before still counts.
+      if (edu !== undefined) return edu ?? rememberedFor(field);
     }
     const fromProfile = heuristicAnswer(field, ctx.profile);
     if (fromProfile !== null && ctx.composed) {
@@ -645,6 +656,10 @@ export function makeAnswerQuestion(ctx: AnswerContext) {
       if (kind) ctx.composed[field.label] = { answer: fromProfile, kind, sources: [], usedLLM: false };
     }
     if (fromProfile !== null || field.kind === "file") return fromProfile;
+    // The person already answered this exact question on an earlier form: use it, never ask twice. A choice only when the
+    // same option is offered here.
+    const remembered = rememberedFor(field);
+    if (remembered !== null) return remembered;
     const kind = classifyQuestion(field.label, field);
     if (NEVER_COMPOSE.has(kind)) return null;
     if (shouldCompose(field, kind)) {
