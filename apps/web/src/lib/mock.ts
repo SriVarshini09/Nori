@@ -14,14 +14,14 @@ const ago = (minutes: number) => new Date(Date.now() - minutes * MIN).toISOStrin
 
 // ---------------------------------------------------------------- me
 export const me: Me = {
-  user: { id: "u1", email: "alex.chen@example.com", name: "Alex Chen", createdAt: ago(60 * 24 * 40) },
+  user: { id: "u1", email: "wren.castellano@example.com", name: "Wren Castellano", createdAt: ago(60 * 24 * 40) },
   profile: {
     userId: "u1",
-    fullName: "Alex Chen",
-    email: "alex.chen@example.com",
+    fullName: "Wren Castellano",
+    email: "wren.castellano@example.com",
     phone: "+1 415 555 0134",
-    linkedin: "https://linkedin.com/in/alexchen",
-    website: "https://alexchen.dev",
+    linkedin: "https://linkedin.com/in/wrencastellano",
+    website: "https://wrencastellano.dev",
     location: "San Francisco, CA",
     workAuth: { authorizedUS: true, needsSponsorship: false, notes: "US citizen" },
     preferences: {
@@ -40,7 +40,7 @@ export const me: Me = {
     city: "San Francisco",
     state: "CA",
     country: "United States",
-    github: "https://github.com/alexchen",
+    github: "https://github.com/wrencastellano",
     pronouns: null,
     willingToRelocate: false,
     remotePreference: "hybrid",
@@ -254,7 +254,7 @@ export function researchCompany(jobId: string): Company["research"] {
 function resumeFor(jobId: string, appId: string): Resume {
   const job = jobs.find((j) => j.id === jobId) ?? jobs[0];
   const content: ResumeContent = {
-    name: "Alex Chen",
+    name: "Wren Castellano",
     contact: { email: me.profile.email!, phone: me.profile.phone!, location: me.profile.location!, linkedin: me.profile.linkedin!, website: me.profile.website! },
     summary: `Frontend engineer with 7 years building fast, accessible product UI in React and TypeScript. Targeting ${job.title} at ${job.companyName}.`,
     experience: [
@@ -346,10 +346,10 @@ function buildApplication(seed: AppSeed): Application {
   };
   if (seed.status === "form_review" || seed.status === "needs_user" || submitted || seed.status === "failed") {
     base.answers = {
-      "Full name": "Alex Chen",
-      "Email": "alex.chen@example.com",
+      "Full name": "Wren Castellano",
+      "Email": "wren.castellano@example.com",
       "Phone": "+1 415 555 0134",
-      "LinkedIn profile": "https://linkedin.com/in/alexchen",
+      "LinkedIn profile": "https://linkedin.com/in/wrencastellano",
       "Are you legally authorized to work in the United States?": "Yes",
       "Will you now or in the future require sponsorship?": "No",
       "Why do you want to work here?": "I have spent the last three years making analytics dashboards fast and accessible, and your product sits right at that intersection.",
@@ -365,7 +365,7 @@ function buildApplication(seed: AppSeed): Application {
   if (submitted) {
     base.receipt = {
       fields: Object.entries(base.answers).map(([label, value]) => ({ label, value, kind: "text" })),
-      files: ["Alex_Chen_Resume.pdf"], screenshotPath: `data/artifacts/${seed.id}/confirmation.png`,
+      files: ["Wren_Castellano_Resume.pdf"], screenshotPath: `data/artifacts/${seed.id}/confirmation.png`,
       confirmationText: "Thank you for applying! Your application has been received and our team will review it shortly.",
       submittedVia: "greenhouse", dryRun: false, durationMs: 41_300,
     };
@@ -455,9 +455,9 @@ export const inbox: InboxMessage[] = [
   },
   {
     id: "m2", applicationId: "app-7", fromAddress: "maya.ortiz@parcel.example.com", subject: "Interview with Parcel: next steps",
-    bodyText: "Hi Alex,\n\nThanks for applying. We would love to set up a 45-minute call with our Head of Engineering. Does Thursday at 2pm PT or Friday at 10am PT work?\n\nBest,\nMaya",
+    bodyText: "Hi Wren,\n\nThanks for applying. We would love to set up a 45-minute call with our Head of Engineering. Does Thursday at 2pm PT or Friday at 10am PT work?\n\nBest,\nMaya",
     receivedAt: ago(60 * 5), kind: "interview", code: null,
-    draftReply: "Hi Maya,\n\nThanks for reaching out, I am excited to chat. Friday at 10am PT works well for me.\n\nBest,\nAlex",
+    draftReply: "Hi Maya,\n\nThanks for reaching out, I am excited to chat. Friday at 10am PT works well for me.\n\nBest,\nWren",
     read: false, source: "composio_gmail",
   },
   {
@@ -467,7 +467,7 @@ export const inbox: InboxMessage[] = [
   },
   {
     id: "m4", applicationId: null, fromAddress: "recruiting@northpoint.example.com", subject: "Frontend role at Northpoint: quick intro?",
-    bodyText: "Hi Alex, I came across your profile and think you would be a strong fit for a Senior Frontend role on our growth team. Open to a 15 minute intro this week?",
+    bodyText: "Hi Wren, I came across your profile and think you would be a strong fit for a Senior Frontend role on our growth team. Open to a 15 minute intro this week?",
     receivedAt: ago(60 * 30), kind: "recruiter_reply", code: null,
     draftReply: "Hi, thanks for reaching out. I am currently focused on a few late-stage processes but happy to hear more. Could you share the compensation range and team size?",
     read: false, source: "composio_gmail",
@@ -479,7 +479,7 @@ export const inbox: InboxMessage[] = [
   },
   {
     id: "m6", applicationId: null, fromAddress: "offers@tidewater.example.com", subject: "Offer discussion: Tidewater",
-    bodyText: "Congratulations Alex! We would like to extend an offer for the Frontend Engineer, Design Systems role. Please let us know a time to walk through the details.",
+    bodyText: "Congratulations Wren! We would like to extend an offer for the Frontend Engineer, Design Systems role. Please let us know a time to walk through the details.",
     receivedAt: ago(60 * 70), kind: "offer", code: null, draftReply: "Thank you so much, I am delighted. I am available Monday afternoon for a call to review the details.", read: true, source: "composio_gmail",
   },
 ];
@@ -490,7 +490,7 @@ export const trackerStats: TrackerStats = {
 };
 
 export const channels: Channel[] = [
-  { id: "ch1", kind: "telegram", address: "@alexchen (chat 502931145)", createdAt: ago(60 * 24 * 10) },
+  { id: "ch1", kind: "telegram", address: "@wrencastellano (chat 502931145)", createdAt: ago(60 * 24 * 10) },
 ];
 
 export const integrations: Integration[] = [

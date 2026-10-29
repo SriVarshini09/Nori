@@ -48,7 +48,7 @@ function Steps({ current, furthest, onSelect }: { current: number; furthest: num
           {STEP_META.map((s, i) => (
             <li key={s.id}>
               <button type="button" aria-label={`Step ${i + 1}: ${s.label}`} aria-current={i === current ? "step" : undefined} disabled={i > furthest} onClick={() => onSelect(i)}
-                className={cx("block h-1.5 w-full rounded-full", i === current ? "bg-accent" : i < furthest ? "bg-ink" : "bg-line")} />
+                className={cx("block h-1.5 w-full rounded-full", i === current ? "bg-ink" : i < furthest ? "bg-accent" : "bg-line")} />
             </li>
           ))}
         </ol>
@@ -68,7 +68,7 @@ function Steps({ current, furthest, onSelect }: { current: number; furthest: num
                   aria-current={isCurrent ? "step" : undefined}
                   className={cx("flex min-h-10 w-full items-center gap-3 rounded-control px-2 text-left", isCurrent ? "bg-sunken font-semibold text-ink" : reachable ? "text-ink-2 hover:bg-sunken/70" : "text-muted")}
                 >
-                  <span className={cx("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold tnum", isDone ? "bg-ink text-on-ink" : isCurrent ? "bg-accent text-on-ink" : "border border-control text-muted")}>
+                  <span className={cx("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold tnum", isDone ? "bg-accent text-on-ink" : isCurrent ? "bg-ink text-on-ink" : "border border-control text-muted")}>
                     {isDone ? <Icon icon={Check} size={13} /> : i + 1}
                   </span>
                   <span className="text-[13.5px]">{s.label}</span>

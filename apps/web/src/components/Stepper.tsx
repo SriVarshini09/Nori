@@ -44,7 +44,7 @@ export function Stepper({ status, lastStep }: { status: ApplicationStatus; lastS
               <span
                 className={cx(
                   "block h-1.5 rounded-full",
-                  isDone && "bg-ink",
+                  isDone && "bg-accent",
                   isCurrent && (problem === "failed" ? "bg-danger" : waiting ? "bg-attn" : "bg-accent"),
                   !isDone && !isCurrent && "bg-line",
                 )}
