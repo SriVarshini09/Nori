@@ -49,7 +49,7 @@ export function ForgotPasswordForm() {
 
   if (sent) {
     return (
-      <LinkCard badge="Check your email" title={<>Link on<br />its way.</>}>
+      <LinkCard badge="Check your email" title={<>Link on its way.</>}>
         <p role="status" className="mt-5 flex items-start gap-2 text-[15px] leading-relaxed text-ink-2">
           <Icon icon={CircleCheck} className="mt-[3px] shrink-0 text-accent-fg" />
           <span>If an account exists for <strong className="text-ink">{email.trim()}</strong>, we have sent a link to choose a new password. It works for one hour.</span>
@@ -59,7 +59,7 @@ export function ForgotPasswordForm() {
     );
   }
   return (
-    <LinkCard badge="Reset password" title={<>Forgot your<br />password?</>}>
+    <LinkCard badge="Reset password" title={<>Forgot your password?</>}>
       <p className="mt-4 text-[15px] leading-relaxed text-ink-2">Enter the email you signed up with and we will send you a link to choose a new one.</p>
       <form onSubmit={submit} className="mt-8 space-y-5">
         <label className="block">
@@ -89,7 +89,7 @@ export function ResetPasswordForm({ token }: { token?: string }) {
 
   if (!token) {
     return (
-      <LinkCard badge="Reset password" title={<>That link is<br />incomplete.</>}>
+      <LinkCard badge="Reset password" title={<>That link is incomplete.</>}>
         <p className="mt-4 text-[15px] leading-relaxed text-ink-2">Open the link from the email exactly as it was sent, or ask for a new one.</p>
         <p className="mt-6"><Link href="/forgot-password" className={textLink}>Send a new link</Link></p>
         {backLink}
@@ -117,7 +117,7 @@ export function ResetPasswordForm({ token }: { token?: string }) {
     );
   }
   return (
-    <LinkCard badge="Reset password" title={<>Choose a<br />new password.</>}>
+    <LinkCard badge="Reset password" title={<>Choose a new password.</>}>
       <form onSubmit={submit} className="mt-8 space-y-5">
         {[["New password", password, setPassword, "new-password"], ["Repeat it", again, setAgain, "new-password"]].map(([label, value, set, ac], i) => (
           <label key={label as string} className="block">
@@ -153,7 +153,7 @@ export function VerifyEmailStatus({ token }: { token?: string }) {
   }, [token]);
 
   return (
-    <LinkCard badge="Email" title={state === "ok" ? <>You are<br />confirmed.</> : state === "working" ? <>Confirming<br />your email.</> : <>We could not<br />confirm that.</>}>
+    <LinkCard badge="Email" title={state === "ok" ? <>You are confirmed.</> : state === "working" ? <>Confirming your email.</> : <>We could not confirm that.</>}>
       {state === "working" && <p role="status" className="mt-5 flex items-center gap-2 text-[15px] leading-relaxed text-ink-2"><Icon icon={LoaderCircle} className="animate-spin" />One moment.</p>}
       {state === "ok" && (
         <>

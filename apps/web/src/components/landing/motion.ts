@@ -47,15 +47,15 @@ export function useInView(ref: RefObject<Element | null>, { once = true, margin 
 
 /**
  * How far the page has scrolled through a tall element, 0 at its top reaching the top of the viewport and 1 when its
- * bottom reaches the bottom. Read once per frame; React only re-renders when the value moves.
+ * bottom reaches the bottom. React only re-renders when the value moves.
  */
 export function useScrollProgress(ref: RefObject<HTMLElement | null>) {
   const [p, setP] = useState(0);
   useEffect(() => {
-    let frame = 0;
     let last = -1;
+    // Scroll events already arrive at most once per frame, so read straight away: waiting for an animation frame
+    // would freeze the value in a background tab.
     const read = () => {
-      frame = 0;
       const el = ref.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
@@ -63,14 +63,12 @@ export function useScrollProgress(ref: RefObject<HTMLElement | null>) {
       const next = travel > 0 ? clamp(-r.top / travel) : r.top <= 0 ? 1 : 0;
       if (Math.abs(next - last) > 0.0008) { last = next; setP(next); }
     };
-    const onScroll = () => { if (!frame) frame = requestAnimationFrame(read); };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    read();
+    window.addEventListener("scroll", read, { passive: true });
+    window.addEventListener("resize", read);
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", read);
+      window.removeEventListener("resize", read);
     };
   }, [ref]);
   return p;
@@ -80,20 +78,16 @@ export function useScrollProgress(ref: RefObject<HTMLElement | null>) {
 export function usePageProgress() {
   const [p, setP] = useState(0);
   useEffect(() => {
-    let frame = 0;
     const read = () => {
-      frame = 0;
       const max = document.documentElement.scrollHeight - window.innerHeight;
       setP(max > 0 ? clamp(window.scrollY / max) : 0);
     };
-    const onScroll = () => { if (!frame) frame = requestAnimationFrame(read); };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    read();
+    window.addEventListener("scroll", read, { passive: true });
+    window.addEventListener("resize", read);
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", read);
+      window.removeEventListener("resize", read);
     };
   }, []);
   return p;

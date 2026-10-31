@@ -72,9 +72,9 @@ export function Finale() {
       <footer className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 pb-6 pt-6 text-[13px] text-muted sm:px-6 lg:px-8">
         <p>Nori, an open-source personal job agent.</p>
         <nav aria-label="Legal and project" className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href="/privacy" className="underline-offset-4 hover:text-ink hover:underline">Privacy</Link>
-          <Link href="/terms" className="underline-offset-4 hover:text-ink hover:underline">Terms</Link>
-          {REPO_URL && <a href={REPO_URL} target="_blank" rel="noreferrer" className="underline-offset-4 hover:text-ink hover:underline">Source code</a>}
+          <Link href="/privacy" className="inline-block py-2 underline-offset-4 hover:text-ink hover:underline">Privacy</Link>
+          <Link href="/terms" className="inline-block py-2 underline-offset-4 hover:text-ink hover:underline">Terms</Link>
+          {REPO_URL && <a href={REPO_URL} target="_blank" rel="noreferrer" className="inline-block py-2 underline-offset-4 hover:text-ink hover:underline">Source code</a>}
         </nav>
       </footer>
     </section>

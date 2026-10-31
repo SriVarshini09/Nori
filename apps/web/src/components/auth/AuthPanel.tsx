@@ -7,9 +7,7 @@ import { ArrowRight, CircleAlert, Eye, EyeOff, LoaderCircle, Lock, Mail, UserRou
 import { api, ApiError } from "@/lib/api";
 import { btnPrimary, chip, field, fieldLabel, textLink } from "@/components/home/styles";
 import { cx } from "@/components/cx";
-
-/** Only same-site paths are honoured as a post-login destination. */
-const safeNext = (n?: string) => (n && n.startsWith("/") && !n.startsWith("//") && !n.startsWith("/\\") ? n : "/dashboard");
+import { safeNext } from "./next";
 
 function Field({ id, label, icon: Icon, hint, children }: { id: string; label: string; icon: LucideIcon; hint?: string; children: React.ReactNode }) {
   return (

@@ -121,6 +121,8 @@ function usePointerField(
       const r = cv.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
       w = r.width; h = r.height;
+      // a hidden or collapsed canvas has no size yet: wait for a real one (the observer calls again)
+      if (w < 2 || h < 2) return;
       cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       build(w, h);
@@ -132,8 +134,10 @@ function usePointerField(
       last = now;
       windTarget *= 0.94;
       p.wind += (windTarget + Math.sin(now / 3200) * 0.12 - p.wind) * Math.min(1, dt * 3);
-      ctx.clearRect(0, 0, w, h);
-      draw(now / 1000, w, h, p);
+      if (w >= 2 && h >= 2) {
+        ctx.clearRect(0, 0, w, h);
+        draw(now / 1000, w, h, p);
+      }
       if (visible) raf = requestAnimationFrame(frame);
     };
     const onMove = (e: PointerEvent) => {
