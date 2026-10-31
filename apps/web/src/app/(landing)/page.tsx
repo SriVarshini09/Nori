@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
-import { FinalCall, Hero, HowItWorks, PromiseSection, Studio } from "@/components/home/Landing";
-import { SiteHeader } from "@/components/home/SiteHeader";
-import { PublicFooter } from "@/components/public/Chrome";
+import { Anywhere } from "@/components/landing/Anywhere";
+import { Finale, Yours } from "@/components/landing/Finale";
+import { Header } from "@/components/landing/Header";
+import { Hero } from "@/components/landing/Hero";
+import { Honest } from "@/components/landing/Honest";
+import { Story } from "@/components/landing/Story";
 
 export const metadata: Metadata = {
   title: { absolute: "Nori: a job agent that cannot lie about you" },
@@ -18,17 +21,17 @@ export default async function LandingPage() {
     if (signedIn) redirect("/dashboard");
   }
   return (
-    <div className="min-h-screen bg-bg text-ink">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-ink focus:px-3 focus:py-2 focus:text-on-ink">Skip to content</a>
-      <SiteHeader />
+    <>
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-control focus:bg-ink focus:px-3 focus:py-2 focus:text-on-ink">Skip to content</a>
+      <Header />
       <main id="main">
         <Hero />
-        <HowItWorks />
-        <PromiseSection />
-        <Studio />
-        <FinalCall />
+        <Story />
+        <Honest />
+        <Anywhere />
+        <Yours />
+        <Finale />
       </main>
-      <PublicFooter />
-    </div>
+    </>
   );
 }
