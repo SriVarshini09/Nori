@@ -3,8 +3,8 @@ import { cx } from "./cx";
 
 const BODY = "M32 12C27 12 22.5 15.5 17 27C12 37 7 43 7 50C7 57.5 13 60.5 20 60.5H44C51 60.5 57 57.5 57 50C57 43 52 37 47 27C41.5 15.5 37 12 32 12Z";
 
-/** Nori: a rice ball in a seaweed wrap with a sprout on top. The same character as the mascot. */
-export function NoriMark({ size = 32, className, title }: { size?: number; className?: string; title?: string }) {
+/** The mascot: a rice ball in a seaweed wrap with a sprout on top. Not used as the logo at the moment. */
+export function NoriMascot({ size = 32, className, title }: { size?: number; className?: string; title?: string }) {
   const id = useId().replace(/:/g, "");
   return (
     <svg viewBox="0 0 64 64" width={size} height={size} className={cx("shrink-0", className)} role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
@@ -32,18 +32,28 @@ export function NoriMark({ size = 32, className, title }: { size?: number; class
   );
 }
 
-/** The lowercase wordmark, drawn as strokes so it needs no font. Takes its colour from the text colour. */
+/**
+ * The logo mark, shared with the landing site: three linked nodes, a small career graph.
+ * `tone="light"` lifts the tile for dark backgrounds.
+ */
+export function NoriMark({ size = 32, className, title, tone = "dark" }: { size?: number; className?: string; title?: string; tone?: "dark" | "light" }) {
+  return (
+    <svg viewBox="0 0 32 32" width={size} height={size} className={cx("shrink-0", className)} role={title ? "img" : undefined} aria-label={title} aria-hidden={title ? undefined : true}>
+      <rect width="32" height="32" rx="8" fill={tone === "light" ? "#2a2822" : "#1a1914"} />
+      <path d="M11 12 L21 12 L16 21 Z" stroke="#5f5d55" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+      <circle cx="11" cy="12" r="3.5" fill="#5ec2b0" />
+      <circle cx="21" cy="12" r="3.5" fill="#f5f4f0" />
+      <circle cx="16" cy="21" r="3.5" fill="#f5f4f0" />
+    </svg>
+  );
+}
+
+/** The wordmark: "Nori" in the display serif. Takes its colour from the text colour. */
 export function NoriWordmark({ height = 20, className }: { height?: number; className?: string }) {
   return (
-    <svg viewBox="-4 -8 126 54" height={height} width={(height * 126) / 54} className={cx("shrink-0", className)} aria-hidden="true">
-      <g fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 8V34M3 20C3 12.5 9 8 17 8C25 8 31 12.5 31 21V34" />
-        <circle cx="56" cy="21" r="13" />
-        <path d="M80 8V34M80 20C80 12.5 86 8 95 8" />
-        <path d="M108 8V34" />
-      </g>
-      <circle cx="108" cy="-3" r="3.6" fill="#18a874" />
-    </svg>
+    <span aria-hidden="true" className={cx("font-display leading-none tracking-[-0.01em]", className)} style={{ fontSize: Math.round(height * 1.15) }}>
+      Nori
+    </span>
   );
 }
 
@@ -51,8 +61,8 @@ export function NoriWordmark({ height = 20, className }: { height?: number; clas
 export function NoriLogo({ size = 32, tone = "dark", className }: { size?: number; tone?: "dark" | "light"; className?: string }) {
   return (
     <span className={cx("inline-flex items-center gap-2", tone === "light" ? "text-white" : "text-ink", className)}>
-      <NoriMark size={size} />
-      <NoriWordmark height={Math.round(size * 0.56)} />
+      <NoriMark size={size} tone={tone} />
+      <NoriWordmark height={Math.round(size * 0.62)} />
       <span className="sr-only">Nori</span>
     </span>
   );

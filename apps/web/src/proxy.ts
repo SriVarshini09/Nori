@@ -31,7 +31,7 @@ function forwardToApi(req: NextRequest) {
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   if (pathname === "/api" || pathname.startsWith("/api/") || pathname === "/mcp" || pathname.startsWith("/mcp/")) return forwardToApi(req);
-  // The landing page is public too; it sends signed-in visitors on to the dashboard itself.
+  // `/` is public: it sends signed-in visitors to the dashboard and everyone else to the landing site (app/page.tsx).
   if (pathname === "/") return NextResponse.next();
   if (PUBLIC.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next();
   if (req.cookies.get("jg_session")?.value) return NextResponse.next();

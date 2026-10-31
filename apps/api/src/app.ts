@@ -48,6 +48,8 @@ export type AppOptions = {
   /** Channel router for the WhatsApp webhook. Omit to disable the webhook (returns 503). */
   router?: ChannelRouter;
   webUrl?: string;
+  /** Extra browser origins allowed to call the API with credentials. Defaults to CORS_ORIGINS (comma separated). */
+  corsOrigins?: string[];
   /** Disable the /mcp endpoint. */
   mcp?: boolean;
   /**
@@ -206,8 +208,15 @@ export function createApp(db: Db, opts: AppOptions = {}) {
     return row;
   };
 
+  // The dashboard, plus any other site of ours that calls the API from the browser (the marketing site's
+  // sign up and sign in forms). Exact matches only, since credentials are allowed.
+  const allowedOrigins = new Set(
+    [webUrl, ...(opts.corsOrigins ?? (process.env.CORS_ORIGINS ?? "").split(","))]
+      .map((o) => o.trim().replace(/\/+$/, ""))
+      .filter(Boolean),
+  );
   app.use("*", cors({
-    origin: (origin) => (!origin || origin === webUrl || /^http:\/\/(localhost|127\.0\.0\.1):3000$/.test(origin) ? origin || "*" : null),
+    origin: (origin) => (!origin || allowedOrigins.has(origin) || /^http:\/\/(localhost|127\.0\.0\.1):3000$/.test(origin) ? origin || "*" : null),
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["content-type", "mcp-session-id", "mcp-protocol-version", "last-event-id"],
     exposeHeaders: ["mcp-session-id"],

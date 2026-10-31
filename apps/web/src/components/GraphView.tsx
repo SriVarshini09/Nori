@@ -163,9 +163,9 @@ export function GraphView({ graph, focus }: { graph: Graph; focus?: string }) {
     const cs = getComputedStyle(document.documentElement);
     const tok = (n: string, fb: string) => cs.getPropertyValue(n).trim() || fb;
     const C: Palette = {
-      ink: tok("--ink", "#2b2722"), ink2: tok("--ink-2", "#4a443c"), paper: tok("--surface", "#fffefc"), stone: tok("--sunken", "#f3f1ed"),
-      stone2: tok("--line", "#e9e5df"), line: tok("--line", "#e9e5df"), lineStrong: tok("--control", "#8e877d"),
-      muted: tok("--muted", "#6b645b"), faint: tok("--muted", "#6b645b"), accent: tok("--accent", "#2f5a8a"),
+      ink: tok("--ink", "#1a1914"), ink2: tok("--ink-2", "#3a3833"), paper: tok("--surface", "#fbfaf7"), stone: tok("--sunken", "#f1f0ea"),
+      stone2: tok("--line", "#e2dfd6"), line: tok("--line", "#e2dfd6"), lineStrong: tok("--control", "#8c897f"),
+      muted: tok("--muted", "#5f5d55"), faint: tok("--muted", "#5f5d55"), accent: tok("--accent", "#0f766e"),
     };
     const font = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
 

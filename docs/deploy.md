@@ -45,7 +45,8 @@ Then `fly certs add api.norinote.xyz` (Fly shows the exact record if it differs;
 
 ## 5. Cookies and CORS: two options
 - **Recommended: Next.js proxy (default).** The browser only calls `https://jobs.norinote.xyz/api/*`, which Next rewrites to `API_URL`. The cookie is same-origin: `Secure; HttpOnly; SameSite=Lax`, host-only. Leave `COOKIE_DOMAIN` unset.
-- **Direct cross-origin.** If the browser must call `api.norinote.xyz` itself, `fly secrets set COOKIE_DOMAIN=.norinote.xyz`. In production the cookie then becomes `Secure; SameSite=None; Domain=.norinote.xyz`, and CORS allows only `WEB_URL` with credentials. Use this only if you cannot proxy (the proxy adds one hop).
+- **Direct cross-origin.** If the browser must call `api.norinote.xyz` itself, `fly secrets set COOKIE_DOMAIN=.norinote.xyz`. In production the cookie then becomes `Secure; SameSite=None; Domain=.norinote.xyz`, and CORS allows `WEB_URL` (plus any `CORS_ORIGINS`) with credentials. Use this only if you cannot proxy (the proxy adds one hop).
+- **Landing site sign up and sign in.** The marketing site (`norinote.xyz`, repo `nori-landing`) posts its forms to the dashboard's proxy, `https://jobs.norinote.xyz/api/auth/*`, so the session cookie lands host-only on `jobs.norinote.xyz` exactly as above. Allow its origin with `fly secrets set CORS_ORIGINS=https://norinote.xyz` (comma separate more than one). The dashboard has no landing page of its own: `/` sends signed-out visitors to `NEXT_PUBLIC_LANDING_URL` (default `https://norinote.xyz`). Both sites are on `norinote.xyz`, so the request is same-site and the `SameSite=Lax` cookie is set; `COOKIE_DOMAIN` stays unset. In the landing site, set `NEXT_PUBLIC_API_URL=https://jobs.norinote.xyz`.
 
 ## 6. Smoke checklist
 - [ ] `curl https://api.norinote.xyz/api/health` returns `{"ok":true,...,"embeddedWorker":true}`

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LANDING_URL } from "@/lib/site";
 import { ArrowLeft } from "lucide-react";
 import { NoriLogo } from "@/components/Logo";
 import { BrandPanel } from "@/components/auth/BrandPanel";
@@ -15,8 +16,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="flex min-h-screen flex-col">
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-ink focus:px-3 focus:py-2 focus:text-bg">Skip to content</a>
         <header className="flex h-16 items-center justify-between gap-3 px-4 sm:px-8">
-          <Link href="/" aria-label="Nori home" className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><NoriLogo size={32} /></Link>
-          <Link href="/" className={`${quiet} inline-flex items-center gap-1.5 text-[14px] font-medium`}><ArrowLeft size={16} aria-hidden="true" />Home</Link>
+          <Link href={LANDING_URL} aria-label="Nori home" className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"><NoriLogo size={32} /></Link>
+          <Link href={LANDING_URL} className={`${quiet} inline-flex items-center gap-1.5 text-[14px] font-medium`}><ArrowLeft size={16} aria-hidden="true" />Home</Link>
         </header>
         <main id="main" className="flex flex-1 items-center justify-center px-4 py-10 sm:px-8">
           <div className="w-full max-w-[420px]">{children}</div>

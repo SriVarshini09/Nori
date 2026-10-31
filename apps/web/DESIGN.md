@@ -1,6 +1,7 @@
 # Nori dashboard design system
 
-Airy warm stone, warm ink, one ink-blue accent, three signals. A personal tool: calm until something needs you.
+Warm paper, warm ink, one kelp teal accent, three signals, shared with the landing site (`nori-landing`).
+A personal tool: calm until something needs you.
 If a screen grows rainbow badges, gradients, shadows or a colour that means nothing, it has drifted.
 
 ## Principles
@@ -24,21 +25,21 @@ pairing passes WCAG AA (4.5:1); control edges pass 3:1.
 
 | Role | Token | Light | Use |
 | --- | --- | --- | --- |
-| Page | `bg` | `#fbfaf8` | page background |
-| Surface | `surface` | `#fffefc` | cards, inputs |
-| Sunken | `sunken` | `#f3f1ed` | quiet fills, hover rows, selected nav |
-| Line | `line` | `#e9e5df` | card edges and dividers |
-| Control | `control` | `#8e877d` | input and secondary button edges (3:1) |
-| Ink | `ink` | `#2b2722` | text and primary buttons |
-| Ink 2 | `ink-2` | `#4a443c` | secondary text on surfaces |
-| Muted | `muted` | `#6b645b` | hints, metadata |
-| Accent | `accent`, `accent-tint`, `accent-fg` | `#2f5a8a` | links, focus, sources, good outcomes |
-| Needs you | `attn`, `attn-tint`, `attn-fg` | `#b5480f` | items waiting on the person, and nothing else |
+| Page | `bg` | `#f5f4f0` | page background |
+| Surface | `surface` | `#fbfaf7` | cards, inputs |
+| Sunken | `sunken` | `#f1f0ea` | quiet fills, hover rows, selected nav |
+| Line | `line` | `#e2dfd6` | card edges and dividers |
+| Control | `control` | `#8c897f` | input and secondary button edges (3:1) |
+| Ink | `ink` | `#1a1914` | text and primary buttons |
+| Ink 2 | `ink-2` | `#3a3833` | secondary text on surfaces |
+| Muted | `muted` | `#5f5d55` | hints, metadata |
+| Accent | `accent`, `accent-tint`, `accent-fg` | `#0f766e` | kelp teal: links, focus, sources, good outcomes, finished steps |
+| Needs you | `attn`, `attn-tint`, `attn-fg` | `#b45309` | amber: items waiting on the person, and nothing else |
 | Dry run | `sandbox`, `sandbox-fg`, `sandbox-line` | `#efeaf6` | the dry run band |
 | Danger | `danger`, `danger-tint`, `danger-fg` | `#b4281c` | failures, errors, destructive actions |
 
 Rules:
-- **Orange only means "you must act".** Waiting cards get a 2px `border-attn` edge; nothing decorative is orange.
+- **Amber only means "you must act".** Waiting cards get a 2px `border-attn` edge; nothing decorative is amber.
 - **Violet only means dry run.** Live mode shows no band at all.
 - **A rejection is not red.** It is an outcome; red is for failures and destructive actions.
 - **Never colour alone.** Every pill carries a word; working stages add a breathing dot, skipped is dashed, an offer
@@ -47,14 +48,16 @@ Rules:
 
 ## Type
 
-One family, Inter (`--font-inter`), plus Geist Mono for times and codes. Two weights in practice: 400 and 600.
-Sentence case everywhere; no uppercase labels, no index numbers.
+Three families, as on the landing site: Geist (`--font-geist`) for all UI text, Newsreader (`--font-newsreader`,
+`font-display`) for display type, Geist Mono for times and codes. A rule in `globals.css` sets every
+`text-display-*` size and every `h1` in Newsreader at weight 400, so headings need no extra class. UI text uses
+400 and 600. Sentence case everywhere; no uppercase labels, no index numbers.
 
 | Utility | Size / line height | Use |
 | --- | --- | --- |
-| `text-display-xl` | 32 / 1.15 | page `h1` (28px on phones) |
-| `text-display-lg` | 26 / 1.2 | review title, big numbers |
-| `text-display-md` | 22 / 1.25 | drawer and message titles |
+| `text-display-xl` | 32 / 1.15 | page `h1` (28px on phones), serif |
+| `text-display-lg` | 26 / 1.2 | review title, big numbers, serif |
+| `text-display-md` | 22 / 1.25 | drawer and message titles, serif |
 | `text-title` | 17 / 1.35 | section headings |
 | `text-body` | 15 / 1.55 | reading text |
 | `text-body-sm` | 14 / 1.5 | default UI text |
@@ -66,7 +69,7 @@ Numbers that line up use `tnum` (automatic on `table` and `time`).
 ## Space, shape, layout
 
 - 4px base. Cards pad 16 to 20px; sections sit 20 to 24px apart.
-- Corners: `rounded-control` (8px) for buttons, inputs and chips' containers; `rounded-card` (12px) for cards.
+- Corners: `rounded-control` (12px) for buttons, inputs and chips' containers; `rounded-card` (16px) for cards.
   Pills are fully rounded.
 - No shadows, except the one floating sheet (the jobs filter panel has none; the drawer uses an overlay).
 - Shell: a 232px rail on desktop (Work, Rules and evidence, Talk; Profile and Settings at the foot); on phones a
@@ -80,18 +83,19 @@ Primitives are re-exported from `ui.tsx`.
 
 | Component | Notes |
 | --- | --- |
-| `Frame` | Flat card. `surface="paper" \| "stone" \| "none"`, `tone="attn"` for the orange edge. |
+| `Frame` | Flat card. `surface="paper" \| "stone" \| "none"`, `tone="attn"` for the amber edge. |
 | `Card` | `Frame` with a title row and actions. |
 | `Button`, `LinkButton`, `TextLink` | `primary` ink, `secondary` outlined, `ghost` text, `danger` brick outline. Sizes `sm` 32, `md` 40, `lg` 48. |
-| `Field`, `inputClass`, `Toggle`, `Switch` | Sentence-case labels above; blue focus ring. |
+| `Field`, `inputClass`, `Toggle`, `Switch` | Sentence-case labels above; teal focus ring. |
 | `Pill`, `Tag`, `StatusPill` | Status by meaning (see Colour). |
-| `Notice` | Tinted row: red danger, orange needs you, blue done, neutral info. |
+| `Notice` | Tinted row: red danger, amber needs you, teal done, neutral info. |
 | `EmptyState` | The Nori mark, what is missing, why it matters, the one action that fixes it. |
+| `Logo` | `NoriMark` is the landing site's three node mark, `NoriLogo` adds "Nori" in the serif. The rice ball mascot is kept as `NoriMascot` but is not used as the logo. |
 | `DryRunBand` | Full-width violet band; `compact` for the companion. |
-| `Stepper` | Segments: done ink, current orange at a gate or blue while working, upcoming faint. |
+| `Stepper` | Segments: done teal, current amber at a gate or teal while working, upcoming faint. |
 | `EventLog` | The run log, named steps with times, polite live region. |
 | `review/ChangeCard` | One tailored line: what it replaced, the new line, a source button that opens the fact, Keep and Revert. |
-| `today/WaitingList` | Orange-edged cards, each one link to its decision with the button label that answers it. |
+| `today/WaitingList` | Amber-edged cards, each one link to its decision with the button label that answers it. |
 
 ## Pages
 

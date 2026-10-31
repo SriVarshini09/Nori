@@ -266,6 +266,21 @@ describe("auth and onboarding", () => {
     authApp = createApp(db, { mcp: false, defaultUserEmail: null });
   });
 
+  it("allows credentialed requests only from the dashboard and configured origins", async () => {
+    const corsApp = createApp(db, { mcp: false, defaultUserEmail: null, webUrl: "https://jobs.example.com", corsOrigins: [" https://example.com/ "] });
+    const preflight = (origin: string) => corsApp.request("/api/auth/signup", {
+      method: "OPTIONS",
+      headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "content-type" },
+    });
+    for (const origin of ["https://jobs.example.com", "https://example.com"]) {
+      const res = await preflight(origin);
+      expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+      expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    }
+    expect((await preflight("https://evil.example")).headers.get("access-control-allow-origin")).toBeNull();
+    expect((await preflight("https://example.com.evil.example")).headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("requires a session when there is no fallback user", async () => {
     expect((await req("GET", "/api/me")).status).toBe(401);
     expect((await req("GET", "/api/auth/session")).status).toBe(401);

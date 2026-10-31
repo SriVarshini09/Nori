@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { NoriLogo } from "@/components/Logo";
 import { btnPrimary } from "@/components/home/styles";
 import { cx } from "@/components/cx";
+import { LANDING_URL } from "@/lib/site";
 
 /**
  * The public source repository, or null. Links to it are shown only when NEXT_PUBLIC_REPO_URL is set: while the repo is
@@ -13,7 +14,7 @@ export const CONTACT = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || null;
 
 export function Wordmark({ light = false }: { light?: boolean }) {
   return (
-    <Link href="/" className="inline-flex items-center rounded-control" aria-label="Nori home">
+    <Link href={LANDING_URL} className="inline-flex items-center rounded-control" aria-label="Nori home">
       <NoriLogo size={30} tone={light ? "light" : "dark"} />
     </Link>
   );
