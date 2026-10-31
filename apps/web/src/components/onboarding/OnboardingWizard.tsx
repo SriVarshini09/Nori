@@ -7,21 +7,32 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { ONBOARDING_STEPS, type IngestResult, type Integration, type OnboardingStep, type OnboardingStepId, type Profile } from "@/lib/types";
+import { Doll } from "../Doll";
 import { Icon, Notice, buttonClass, cx } from "../ui";
 import { IntegrationsStep } from "./IntegrationsStep";
 import { ResumeStep } from "./ResumeStep";
 import { AuthorizationStep, ContactStep, PreferencesStep, ScreeningStep } from "./steps";
 
-type Meta = { id: OnboardingStepId; label: string; icon: LucideIcon; title: string; lead: string; why: string; skippable: boolean };
+/** `note` is what Nori says on its sticky note for the step: short, it is hand-lettered on a small card. */
+type Meta = { id: OnboardingStepId; label: string; icon: LucideIcon; title: string; lead: string; why: string; note: string; skippable: boolean };
 
 export const STEP_META: Meta[] = [
-  { id: "resume", label: "Resume", icon: FileUp, title: "Start with your resume", lead: "Nori turns it into facts it can cite.", why: "Every resume line and every answer Nori writes later must trace to a fact found here. Nothing is invented.", skippable: false },
-  { id: "contact", label: "Contact", icon: UserRound, title: "How employers reach you", lead: "Filled in from your resume. Check it.", why: "These go on every form exactly as written here.", skippable: true },
-  { id: "authorization", label: "Work authorization", icon: BadgeCheck, title: "Where you can work", lead: "Every US form asks these.", why: "Nori never guesses legal answers. A gap here makes it stop and ask you on each form.", skippable: true },
-  { id: "screening", label: "Screening answers", icon: ListChecks, title: "Answers forms always ask", lead: "Set once, reused on every application.", why: "Salary, start date, how you heard about the role. Answering now saves a question on almost every application.", skippable: true },
-  { id: "preferences", label: "Preferences and first lane", icon: SlidersHorizontal, title: "What should Nori look for?", lead: "This becomes your first lane. You can add more later.", why: "A lane is a rule for which jobs Nori may queue. Without one it queues nothing on its own.", skippable: true },
-  { id: "integrations", label: "Channels and apps", icon: Plug, title: "Connect your tools", lead: "Optional. You can do this later in Settings.", why: "A channel lets you approve from your phone; connected apps let Nori read mail, keep a sheet and hold interview times.", skippable: true },
+  { id: "resume", label: "Resume", icon: FileUp, title: "Start with your resume", lead: "Nori turns it into facts it can cite.", why: "Every resume line and every answer Nori writes later must trace to a fact found here. Nothing is invented.", note: "Drop your resume and I will read it.", skippable: false },
+  { id: "contact", label: "Contact", icon: UserRound, title: "How employers reach you", lead: "Filled in from your resume. Check it.", why: "These go on every form exactly as written here.", note: "Quick check: is this how they reach you?", skippable: true },
+  { id: "authorization", label: "Work authorization", icon: BadgeCheck, title: "Where you can work", lead: "Every US form asks these.", why: "Nori never guesses legal answers. A gap here makes it stop and ask you on each form.", note: "Forms always ask this. Answer once.", skippable: true },
+  { id: "screening", label: "Screening answers", icon: ListChecks, title: "Answers forms always ask", lead: "Set once, reused on every application.", why: "Salary, start date, how you heard about the role. Answering now saves a question on almost every application.", note: "Set once, reused on every form.", skippable: true },
+  { id: "preferences", label: "Preferences and first lane", icon: SlidersHorizontal, title: "What should Nori look for?", lead: "This becomes your first lane. You can add more later.", why: "A lane is a rule for which jobs Nori may queue. Without one it queues nothing on its own.", note: "Tell me what you want next.", skippable: true },
+  { id: "integrations", label: "Channels and apps", icon: Plug, title: "Connect your tools", lead: "Optional. You can do this later in Settings.", why: "A channel lets you approve from your phone; connected apps let Nori read mail, keep a sheet and hold interview times.", note: "Last step! Connect your tools.", skippable: true },
 ];
+
+/** Nori in a box of its own size: the canvas fills whatever height the caller gives it. */
+function Stage({ messages, cheer = 0, className }: { messages: string[]; cheer?: number; className: string }) {
+  return (
+    <div className={cx("relative", className)}>
+      <Doll messages={messages} cheer={cheer} />
+    </div>
+  );
+}
 
 /** Index of the first unfinished step; "done" sits one past the last so every step reads as complete. */
 const stepIndex = (s: OnboardingStep) => (s === "done" ? ONBOARDING_STEPS.length : Math.max(0, ONBOARDING_STEPS.indexOf(s)));
@@ -101,6 +112,8 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [found, setFound] = useState<number | null>(null);
+  // Bumped on every step forward: Nori hops and sparkles.
+  const [cheer, setCheer] = useState(0);
   const meta = STEP_META[current];
   const first = (profile.fullName ?? "").trim().split(/\s+/)[0] || "there";
 
@@ -130,6 +143,7 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
     if (!(await save(data, base))) return;
     const next = Math.min(current + 1, STEP_META.length - 1);
     setFurthest((f) => Math.max(f, next));
+    setCheer((c) => c + 1);
     go(next);
   }
 
@@ -154,6 +168,7 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
   if (done) {
     return (
       <div className="mx-auto flex max-w-xl flex-col items-start gap-4 py-10">
+        <Stage messages={[`All set, ${first}!`, "I will ask before anything is sent."]} className="h-[220px] w-full max-w-[300px]" />
         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-tint text-accent-fg"><Icon icon={Check} size={20} /></span>
         <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-ink">You are set up, {first}</h1>
         <p className="text-[16px] leading-relaxed text-ink-2">Your career graph is ready. Nori will start finding roles inside your lane, and it will always ask before anything is sent.</p>
@@ -168,6 +183,7 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
   if (welcome) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6 py-8">
+        <Stage messages={[`Hi ${first}! I'm Nori.`, "Six short steps and I can start."]} className="h-[220px] w-full max-w-[300px]" />
         <p className="text-meta text-muted">Set-up takes about ten minutes</p>
         <h1 className="text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[2.5rem]">Hi {first}. Six short steps and Nori can start.</h1>
         <p className="text-[16px] leading-relaxed text-ink-2">It needs your resume, the answers forms always ask, and what you are looking for. You can save and finish later at any point.</p>
@@ -225,6 +241,11 @@ export function OnboardingWizard({ initialStep, serverStep, profile: initialProf
       </section>
 
       <aside className="flex flex-col gap-3 lg:sticky lg:top-6 lg:self-start">
+        <Stage
+          messages={[meta.id === "resume" && found != null ? `I found ${found} facts about you!` : meta.note]}
+          cheer={cheer}
+          className="mx-auto h-[200px] w-full max-w-[300px] lg:h-[230px]"
+        />
         <div className="rounded-card bg-sunken p-4">
           <p className="text-body-sm font-semibold text-ink">Why this step</p>
           <p className="mt-1 text-meta text-ink-2">{meta.why}</p>
