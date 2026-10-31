@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, Check } from "lucide-react";
 import { Doll } from "@/components/Doll";
 import { Meadow, MeadowFront } from "./Meadow";
@@ -9,18 +9,56 @@ import { Meadow, MeadowFront } from "./Meadow";
 const LINE_1 = ["Applies", "for", "you."];
 const LINE_2 = ["Stops", "before", "it"];
 
-/** The opening: a daisy meadow at golden hour, the promise in the sky, Nori standing in the flowers. */
+/** Where Nori stands on wide screens, in px against the content column. Null: in the flow, under the words. */
+type Spot = { w: number; right: number; bottom: number };
+
+/** The opening: a daisy meadow at golden hour, the promise in the sky, Nori standing in the empty part of it. */
 export function Hero() {
   const [cheer, setCheer] = useState(0);
+  const [spot, setSpot] = useState<Spot | null>(null);
+  const card = useRef<HTMLDivElement>(null);
+  const column = useRef<HTMLDivElement>(null);
+  const sends = useRef<HTMLSpanElement>(null);
+  const checks = useRef<HTMLUListElement>(null);
+
+  // Nori goes where the meadow is empty, measured rather than guessed: on the hill to the right of the headline when
+  // there is room for it, otherwise in the daisies under the checklist, sized to the gap. Phones keep it in the flow.
+  useEffect(() => {
+    const place = () => {
+      const c = card.current?.getBoundingClientRect(), col = column.current?.getBoundingClientRect();
+      const s = sends.current?.getBoundingClientRect(), k = checks.current?.getBoundingClientRect();
+      if (!c || !col || !s || !k || window.innerWidth < 1024) { setSpot(null); return; }
+      const edge = c.right - 28;
+      // the box's top-left corner is empty sky (Nori stands in its lower left), so it may tuck a little under "sends."
+      const hill = Math.min(340, window.innerWidth * 0.24, edge - s.right + 10);
+      if (hill >= 280) {
+        // the near hill's crest is at 57% of the meadow; Nori's feet sit a little above the box's bottom edge
+        setSpot({ w: hill, right: col.right - edge, bottom: c.height * 0.39 });
+        return;
+      }
+      // stand a little forward of the nearest daisies, so they frame Nori's feet instead of hiding it
+      const lift = c.height * 0.04;
+      const h = Math.max(170, Math.min(320, c.bottom - k.bottom - 24 - lift));
+      setSpot({ w: h * 1.08, right: col.right - (c.right - 16), bottom: lift });
+    };
+    const ro = new ResizeObserver(place);
+    if (card.current) ro.observe(card.current);
+    if (column.current) ro.observe(column.current);
+    place();
+    // once the headline has risen and the fonts have loaded, measure again
+    const late = window.setTimeout(place, 1400);
+    document.fonts?.ready.then(place).catch(() => undefined);
+    return () => { ro.disconnect(); window.clearTimeout(late); };
+  }, []);
 
   const hop = () => setCheer((c) => c + 1);
 
   return (
     <section aria-labelledby="hero-title" className="relative px-2 pt-2 sm:px-3 sm:pt-3">
-      <div className="relative isolate overflow-hidden rounded-[26px] shadow-[0_30px_80px_-50px_rgba(60,60,20,0.6)] sm:rounded-[36px]">
+      <div ref={card} className="relative isolate overflow-hidden rounded-[26px] shadow-[0_30px_80px_-50px_rgba(60,60,20,0.6)] sm:rounded-[36px]">
         <Meadow variant="day" className="-z-10" />
 
-        <div className="relative mx-auto flex min-h-[max(720px,calc(100svh-16px))] w-full max-w-[1240px] flex-col items-center px-5 pt-24 text-center sm:px-8 lg:px-10 lg:pt-[10vh]">
+        <div ref={column} className="relative mx-auto flex min-h-[max(720px,calc(100svh-16px))] w-full max-w-[1240px] flex-col items-center px-5 pt-24 text-center sm:px-8 lg:min-h-[max(840px,calc(100svh-16px))] lg:px-10 lg:pt-[10vh]">
           <div className="relative z-30 flex flex-col items-center">
             {/* a soft breath of light behind the words, so they read on the sky */}
             <span aria-hidden="true" className="absolute -inset-x-16 -inset-y-10 -z-10 rounded-full bg-[radial-gradient(closest-side,rgba(255,252,240,0.5),rgba(255,248,230,0.18)_60%,transparent)] blur-xl" />
@@ -33,7 +71,7 @@ export function Hero() {
               <span className="block">{LINE_1.map((w, i) => <span key={w} className="ln-word mx-[0.11em]" style={{ ["--i" as string]: i }}>{w}</span>)}</span>
               <span className="block">
                 {LINE_2.map((w, i) => <span key={w} className="ln-word mx-[0.11em]" style={{ ["--i" as string]: i + 3 }}>{w}</span>)}
-                <span className="ln-word relative mx-[0.11em]" style={{ ["--i" as string]: 6 }}>
+                <span ref={sends} className="ln-word relative mx-[0.11em]" style={{ ["--i" as string]: 6 }}>
                   <span className="font-serif-display italic text-[var(--nori)]">sends.</span>
                   <svg aria-hidden="true" viewBox="0 0 220 24" preserveAspectRatio="none" className="ln-scribble absolute -bottom-[0.12em] left-0 h-[0.32em] w-full overflow-visible">
                     <path d="M4 15C46 6 96 4 146 9C172 11 196 14 216 10" fill="none" stroke="var(--attn)" strokeWidth="5" strokeLinecap="round" />
@@ -62,7 +100,7 @@ export function Hero() {
               </a>
             </div>
 
-            <ul className="ln-fade-up mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2.5 text-[14.5px] font-medium text-[#262118]" style={{ ["--d" as string]: "950ms" }}>
+            <ul ref={checks} className="ln-fade-up mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2.5 text-[14.5px] font-medium text-[#262118]" style={{ ["--d" as string]: "950ms" }}>
               {["Every line traces to a fact", "Nothing is sent without you", "Nothing to configure"].map((t) => (
                 <li key={t} className="flex items-center gap-2">
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-[var(--sprout-ink)]"><Check size={13} strokeWidth={3} aria-hidden="true" /></span>
@@ -72,8 +110,11 @@ export function Hero() {
             </ul>
           </div>
 
-          {/* Nori: on the hill on the right on wide screens (xl), in the daisies below that */}
-          <div className="ln-fade-up relative mt-auto aspect-[1.08] w-full max-w-[460px] sm:max-w-[500px] lg:absolute lg:bottom-0 lg:right-[1%] lg:w-[min(480px,31vw)] xl:bottom-[39%] xl:right-[calc(36px_-_(100vw_-_24px_-_min(1240px,_100vw_-_24px))_/_2)] xl:w-[min(340px,24vw)]" style={{ ["--d" as string]: "300ms" }}>
+          {/* Nori: in the empty part of the meadow (see the effect above); on phones, in the flow under the words */}
+          <div
+            className="ln-fade-up relative mt-auto aspect-[1.08] w-full max-w-[460px] sm:max-w-[500px]"
+            style={{ ["--d" as string]: "300ms", ...(spot ? { position: "absolute", width: spot.w, maxWidth: "none", right: spot.right, bottom: spot.bottom } : {}) }}
+          >
             <div className="absolute inset-[4%_2%_0_0]">
               <Doll messages={["Hi! I'm Nori.", "I turn your resume into facts.", "I only write what you did.", "And I stop before I send."]} cheer={cheer} />
             </div>
