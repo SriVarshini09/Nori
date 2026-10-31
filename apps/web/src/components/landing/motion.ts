@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type RefObject } from "react";
+import { useEffect, useState, useSyncExternalStore, type MouseEvent, type RefObject } from "react";
 
 /** Motion helpers for the landing page. Everything here is still under prefers-reduced-motion. */
 
@@ -14,6 +14,21 @@ const subscribeReduce = (cb: () => void) => {
 /** True when the person asked for less motion. False during server render. */
 export function useReducedMotion() {
   return useSyncExternalStore(subscribeReduce, () => window.matchMedia(REDUCE).matches, () => false);
+}
+
+/**
+ * onClick for a same-page link ("#story"): glide to the section instead of jumping. Done per click, not with a
+ * page-wide `scroll-behavior: smooth`, which also smooths the Back button's scroll restore and drops the reader at the
+ * top. Reduced motion, and modified clicks (new tab), keep the browser's own behaviour.
+ */
+export function glide(e: MouseEvent<HTMLAnchorElement>) {
+  const hash = e.currentTarget.hash;
+  const el = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+  if (!el || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (window.matchMedia(REDUCE).matches) return;
+  e.preventDefault();
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  history.pushState(null, "", hash);
 }
 
 export const clamp = (v: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { NoriLogo } from "@/components/Logo";
 import { cx } from "@/components/cx";
-import { usePageProgress } from "./motion";
+import { glide, usePageProgress } from "./motion";
 
 const SECTIONS = [["#story", "See it work"], ["#honest", "Why trust it"], ["#anywhere", "Talk to it"]] as const;
 
@@ -22,7 +22,7 @@ export function Header() {
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1">
           {SECTIONS.map(([href, label]) => (
-            <a key={href} href={href} className="hidden rounded-full px-3.5 py-2 text-[14px] font-medium text-ink-2 transition-colors hover:bg-[var(--rice-2)] hover:text-ink md:inline-flex">{label}</a>
+            <a key={href} href={href} onClick={glide} className="hidden rounded-full px-3.5 py-2 text-[14px] font-medium text-ink-2 transition-colors hover:bg-[var(--rice-2)] hover:text-ink md:inline-flex">{label}</a>
           ))}
           <Link href="/login" className="rounded-full px-3.5 py-2 text-[14px] font-medium text-ink-2 transition-colors hover:bg-[var(--rice-2)] hover:text-ink">Sign in</Link>
           <Link href="/signup" className="ml-1 inline-flex h-10 items-center rounded-full bg-[var(--nori)] px-4 text-[14px] font-semibold text-[var(--rice)] transition-[transform,background-color] duration-200 hover:-translate-y-px hover:bg-[var(--nori-deep)]">

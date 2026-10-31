@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowDown, ArrowRight, Check } from "lucide-react";
 import { Meadow, MeadowFront } from "./Meadow";
+import { glide } from "./motion";
 
 const LINE_1 = ["Applies", "for", "you."];
 const LINE_2 = ["Stops", "before", "it"];
@@ -48,7 +49,7 @@ export function Hero() {
                 Start with your resume
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--sun)] text-[var(--nori)] transition-transform duration-300 group-hover:translate-x-0.5 group-hover:rotate-[-8deg]"><ArrowRight size={16} aria-hidden="true" /></span>
               </Link>
-              <a href="#story" className="group inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/45 px-5 py-3.5 text-[15.5px] font-semibold text-[#1c2615] backdrop-blur transition-colors hover:bg-white/70">
+              <a href="#story" onClick={glide} className="group inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/45 px-5 py-3.5 text-[15.5px] font-semibold text-[#1c2615] backdrop-blur transition-colors hover:bg-white/70">
                 Watch it work
                 <ArrowDown size={16} aria-hidden="true" className="transition-transform duration-300 group-hover:translate-y-0.5" />
               </a>
