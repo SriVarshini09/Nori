@@ -1,0 +1,156 @@
+/*
+ * The landing page: a daisy meadow at golden hour. Warm sunlit cream, meadow greens, daisy white and sun gold; the page
+ * opens on the meadow by day and closes on it at dusk. Orange still means one thing: the place where Nori stops and
+ * waits for you. Everything is scoped under .ln so none of it leaks into the app. Motion stops for reduced motion.
+ * (The variable names are older than the meadow: --rice is the cream, --nori the deep green, --sprout the light green.)
+ */
+.ln {
+  --rice: #fffaee;
+  --rice-2: #f8efd8;
+  --rice-line: #ece0c3;
+  --nori: #2a4620;
+  --nori-deep: #1b3015;
+  --nori-mid: #5b8a32;
+  --sprout: #dcec98;
+  --sprout-2: #7fb446;
+  --sprout-ink: #3b6320;
+  --sun: #f5bd4c;
+  --ln-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  background: var(--rice);
+  color: var(--ink);
+  overflow-x: clip;
+}
+
+.ln .font-serif-display { font-family: var(--font-serif), ui-serif, Georgia, serif; font-weight: 400; letter-spacing: -0.01em; }
+
+/* paper grain over the whole page, so flat cream reads as rice paper */
+.ln-grain::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 60; opacity: 0.05; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* ------------------------------------------------------------ the meadow's sky */
+
+.ln-rays {
+  background: repeating-conic-gradient(from 0deg, rgba(255, 244, 210, 0.16) 0deg 3deg, transparent 3deg 12deg);
+  mask-image: radial-gradient(closest-side, #000 8%, rgba(0, 0, 0, 0.35) 30%, transparent 62%);
+  animation: ln-spin 160s linear infinite;
+}
+@keyframes ln-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.ln-rays { transform: translate(-50%, -50%); }
+.ln-cloud {
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 45% 55% at 30% 45%, rgba(255, 255, 255, 0.95), transparent 70%),
+    radial-gradient(ellipse 40% 60% at 58% 38%, rgba(255, 255, 255, 0.9), transparent 70%),
+    radial-gradient(ellipse 35% 50% at 78% 52%, rgba(255, 250, 240, 0.85), transparent 70%),
+    radial-gradient(ellipse 70% 40% at 50% 78%, rgba(255, 214, 150, 0.75), transparent 72%);
+  filter: blur(5px);
+  animation: ln-cloud 90s ease-in-out infinite alternate;
+  animation-delay: var(--d, 0s);
+}
+@keyframes ln-cloud { to { transform: translateX(-9vw); } }
+.ln-wisp { border-radius: 50%; background: radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255, 255, 255, 0.75), transparent 72%); filter: blur(3px); transform: rotate(-4deg); }
+.ln-stars {
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 20%, #fff, transparent), radial-gradient(1px 1px at 28% 8%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 46% 26%, #fff, transparent), radial-gradient(1px 1px at 62% 12%, #fff, transparent),
+    radial-gradient(1.6px 1.6px at 78% 22%, #fff, transparent), radial-gradient(1px 1px at 90% 6%, #fff, transparent),
+    radial-gradient(1px 1px at 8% 40%, #fff, transparent), radial-gradient(1.3px 1.3px at 70% 38%, #fff, transparent),
+    radial-gradient(1px 1px at 36% 44%, #fff, transparent), radial-gradient(1.2px 1.2px at 54% 4%, #fff, transparent);
+  opacity: 0.8;
+  animation: ln-twinkle 5s ease-in-out infinite alternate;
+}
+@keyframes ln-twinkle { to { opacity: 0.45; } }
+
+/* ------------------------------------------------------------ hero */
+
+.ln-blob { position: absolute; border-radius: 9999px; filter: blur(60px); opacity: 0.55; will-change: transform; }
+.ln-blob-a { animation: ln-drift-a 18s ease-in-out infinite alternate; }
+.ln-blob-b { animation: ln-drift-b 22s ease-in-out infinite alternate; }
+.ln-blob-c { animation: ln-drift-c 26s ease-in-out infinite alternate; }
+@keyframes ln-drift-a { to { transform: translate3d(8%, 10%, 0) scale(1.15); } }
+@keyframes ln-drift-b { to { transform: translate3d(-10%, -6%, 0) scale(0.9); } }
+@keyframes ln-drift-c { to { transform: translate3d(6%, -12%, 0) scale(1.1); } }
+
+/* headline words rise out of a soft blur, one after another (--i) */
+.ln-word { display: inline-block; opacity: 0; transform: translateY(0.45em); filter: blur(8px); animation: ln-rise 0.9s var(--ln-ease) forwards; animation-delay: calc(var(--i) * 70ms + 120ms); }
+@keyframes ln-rise { to { opacity: 1; transform: none; filter: none; } }
+.ln-fade-up { opacity: 0; transform: translateY(14px); animation: ln-rise 0.9s var(--ln-ease) forwards; animation-delay: var(--d, 0ms); }
+
+/* the hand-drawn underline under "sends" */
+.ln-scribble path { stroke-dasharray: 260; stroke-dashoffset: 260; animation: ln-draw 0.9s var(--ln-ease) 1.15s forwards; }
+@keyframes ln-draw { to { stroke-dashoffset: 0; } }
+
+/* fact chips floating around Nori */
+.ln-chip { animation: ln-float 6s ease-in-out infinite; animation-delay: var(--d, 0s); }
+@keyframes ln-float { 50% { transform: translateY(-8px); } }
+.ln-tether { stroke-dasharray: 3 5; animation: ln-march 1.6s linear infinite; }
+@keyframes ln-march { to { stroke-dashoffset: -16; } }
+
+/* sources marquee */
+.ln-marquee { mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+.ln-marquee-track { display: flex; width: max-content; animation: ln-marquee 38s linear infinite; }
+.ln-marquee:hover .ln-marquee-track { animation-play-state: paused; }
+@keyframes ln-marquee { to { transform: translateX(-50%); } }
+
+/* ------------------------------------------------------------ 2D Nori */
+
+.nf-breathe { transform-origin: 32px 60px; animation: nf-breathe 3.2s ease-in-out infinite; }
+@keyframes nf-breathe { 50% { transform: scale(1.025, 0.975); } }
+.nf-sprout { transform-origin: 32px 12px; animation: nf-sway 2.8s ease-in-out infinite; }
+@keyframes nf-sway { 50% { transform: rotate(7deg); } }
+.nf-blink { transform-origin: 32px 31px; animation: nf-blink 4.6s infinite; }
+@keyframes nf-blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+.nf-shake { transform-origin: 32px 60px; animation: nf-shake 0.75s ease-in-out; }
+@keyframes nf-shake { 15% { transform: rotate(-9deg); } 35% { transform: rotate(8deg); } 55% { transform: rotate(-6deg); } 75% { transform: rotate(4deg); } 100% { transform: none; } }
+.nf-hop { transform-origin: 32px 60px; animation: nf-hop 0.7s var(--ln-ease); }
+@keyframes nf-hop { 0% { transform: scale(1.08, 0.9); } 40% { transform: translateY(-12px) scale(0.95, 1.06); } 70% { transform: translateY(0) scale(1.05, 0.95); } 100% { transform: none; } }
+
+/* ------------------------------------------------------------ the story */
+
+.ln-scene { transition: opacity 0.5s var(--ln-ease), transform 0.6s var(--ln-ease), filter 0.5s var(--ln-ease); }
+.ln-scene[data-on="false"] { opacity: 0; transform: translateY(10px) scale(0.985); filter: blur(4px); pointer-events: none; }
+.ln-caret::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: -0.12em; background: currentColor; animation: ln-caret 1s steps(1) infinite; }
+@keyframes ln-caret { 50% { opacity: 0; } }
+.ln-pulse { animation: ln-pulse 1.6s ease-out infinite; }
+@keyframes ln-pulse { 0% { box-shadow: 0 0 0 0 rgba(181, 72, 15, 0.45); } 100% { box-shadow: 0 0 0 14px rgba(181, 72, 15, 0); } }
+.ln-ripple { animation: ln-ripple 0.7s ease-out forwards; }
+@keyframes ln-ripple { from { transform: scale(0.2); opacity: 0.6; } to { transform: scale(2.4); opacity: 0; } }
+
+/* vine: the progress rail grows a leaf at each step it passes */
+.ln-leaf { transform-origin: 0 50%; transform: scale(0) rotate(-30deg); transition: transform 0.6s var(--ln-ease); }
+.ln-leaf[data-on="true"] { transform: scale(1) rotate(0deg); }
+
+/* ------------------------------------------------------------ honesty demo, chat */
+
+.ln-grow { animation: ln-grow 0.7s var(--ln-ease) both; transform-box: fill-box; transform-origin: center; }
+@keyframes ln-grow { from { transform: scale(0); opacity: 0; } 60% { transform: scale(1.15); } to { transform: scale(1); opacity: 1; } }
+.ln-draw-line { stroke-dasharray: 400; stroke-dashoffset: 400; animation: ln-draw 0.8s var(--ln-ease) forwards; }
+.ln-pop { animation: ln-pop 0.45s var(--ln-ease) both; }
+@keyframes ln-pop { from { opacity: 0; transform: translateY(8px) scale(0.96); } to { opacity: 1; transform: none; } }
+.ln-typing span { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: currentColor; opacity: 0.35; animation: ln-typing 1.1s infinite; }
+.ln-typing span:nth-child(2) { animation-delay: 0.15s; }
+.ln-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ln-typing { 30% { opacity: 1; transform: translateY(-3px); } }
+
+/* cards lift toward the pointer */
+.ln-lift { transition: transform 0.35s var(--ln-ease), box-shadow 0.35s var(--ln-ease); }
+.ln-lift:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -24px rgba(42, 70, 32, 0.45); }
+
+/* ------------------------------------------------------------ the finale */
+
+.ln-unfurl path { stroke-dasharray: 120; stroke-dashoffset: 120; }
+.ln-unfurl[data-on="true"] path { animation: ln-draw 1.4s var(--ln-ease) forwards; }
+.ln-unfurl .ln-unfurl-leaf { transform-box: fill-box; transform: scale(0); transition: transform 0.9s var(--ln-ease) 0.9s; }
+.ln-unfurl .ln-unfurl-leaf.l { transform-origin: 100% 100%; }
+.ln-unfurl .ln-unfurl-leaf.r { transform-origin: 0% 100%; }
+.ln-unfurl[data-on="true"] .ln-unfurl-leaf { transform: scale(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ln *, .ln *::before, .ln *::after { animation: none !important; transition: none !important; }
+  .ln .ln-word, .ln .ln-fade-up { opacity: 1; transform: none; filter: none; }
+  .ln .ln-scribble path, .ln .ln-unfurl path, .ln .ln-draw-line { stroke-dashoffset: 0; }
+  .ln .ln-unfurl .ln-unfurl-leaf, .ln .ln-leaf { transform: none; }
+  .ln .ln-rays { transform: translate(-50%, -50%); }
+}

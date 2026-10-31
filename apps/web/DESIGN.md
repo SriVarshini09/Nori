@@ -110,6 +110,21 @@ Primitives are re-exported from `ui.tsx`.
   apps, limits, account).
 - **Landing**, sign-in pages, onboarding (six steps with a "why this step" note), and the companion popover.
 
+## The landing page (`components/landing`)
+
+The one page allowed to perform. It is a daisy meadow at golden hour, painted in code (`Meadow.tsx`): sky, low sun,
+hazy hills and a tree line in CSS and SVG, the field in canvas, daisies that sway and lean away from the pointer. The
+page opens on the meadow by day and closes on it at dusk. Its palette lives in `landing.css` under `.ln` (sunlit
+cream, meadow greens, sun gold) and never leaks into the app. One or two italic words per heading use Instrument
+Serif; everything else is Inter. Orange keeps its meaning even here: it marks the place Nori stops for you, and
+nothing else.
+
+- Hero: the promise in the open sky over the meadow; the nearest daisies are drawn over the content layer for depth.
+- See it work: a film scrubbed by the scroll, five scenes on a fixed 760 x 500 screen scaled to fit.
+- Why trust it: a working demo; GraphQL has no evidence until you add the fact.
+- Every animation has a still version under prefers-reduced-motion (the film becomes five stills).
+- Samples are labelled as samples: fictional companies and a fictional person, no invented users or numbers.
+
 ## Copy
 
 Say what happens, in plain words. Errors say what happened, what was not affected and what to do. No internal
