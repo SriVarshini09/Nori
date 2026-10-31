@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { INBOX_LABEL, NEEDS_YOU, pct } from "@/lib/format";
 import type { AgentStatus, InboxMessage } from "@/lib/types";
 import { Card, EmptyState, Notice, TextLink, cx } from "@/components/ui";
+import { Doll } from "@/components/Doll";
 import { TimeAgo } from "@/components/TimeAgo";
 import { WaitingList } from "@/components/today/WaitingList";
 import { RunCycle } from "@/components/today/RunCycle";
@@ -76,6 +77,14 @@ export default async function TodayPage() {
     .sort((a, b) => +new Date(b.application.updatedAt) - +new Date(a.application.updatedAt));
   const cycle = cycleSummary(activity);
   const replies = inbox.filter((m) => REPLY_KINDS.includes(m.kind)).sort((a, b) => +new Date(b.receivedAt) - +new Date(a.receivedAt)).slice(0, 4);
+  // What Nori says on its sticky note, in turn. Short lines: the note is a small hand-lettered card.
+  const bubbles = [
+    waiting.length > 0 ? `${waiting.length} ${waiting.length === 1 ? "thing is" : "things are"} waiting on you.` : "All caught up!",
+    cycle.found > 0 ? `I found ${cycle.found} roles today.` : null,
+    cycle.sent > 0 ? `${cycle.sent} sent in the last day.` : null,
+    status?.nextTickAt ? `Next look in ${inMin(status.nextTickAt)}.` : null,
+    "Nothing goes out without you.",
+  ].filter((b): b is string => !!b);
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,6 +118,9 @@ export default async function TodayPage() {
         </section>
 
         <div className="flex flex-col gap-5">
+          <div className="relative h-[220px] lg:h-[240px]">
+            <Doll messages={bubbles} />
+          </div>
           <CapCard status={status} />
         </div>
 
