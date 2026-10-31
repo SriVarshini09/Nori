@@ -119,7 +119,7 @@ cream, meadow greens, sun gold) and never leaks into the app. One or two italic 
 Serif; everything else is Inter. Orange keeps its meaning even here: it marks the place Nori stops for you, and
 nothing else.
 
-- Hero: the promise in the sky, the 3D Nori (`Doll`) standing in the daisies; the nearest flowers are drawn in front of it.
+- Hero: the promise in the open sky over the meadow; the nearest daisies are drawn over the content layer for depth.
 - See it work: a film scrubbed by the scroll, five scenes on a fixed 760 x 500 screen scaled to fit.
 - Why trust it: a working demo; GraphQL has no evidence until you add the fact.
 - Every animation has a still version under prefers-reduced-motion (the film becomes five stills).
