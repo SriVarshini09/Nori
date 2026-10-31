@@ -72,8 +72,8 @@ export function Hero() {
             </ul>
           </div>
 
-          {/* Nori, standing in the daisies */}
-          <div className="ln-fade-up relative mt-auto aspect-[1.08] w-full max-w-[460px] sm:max-w-[500px] lg:absolute lg:bottom-0 lg:right-[1%] lg:w-[min(480px,31vw)]" style={{ ["--d" as string]: "300ms" }}>
+          {/* Nori: on the hill on the right on wide screens (xl), in the daisies below that */}
+          <div className="ln-fade-up relative mt-auto aspect-[1.08] w-full max-w-[460px] sm:max-w-[500px] lg:absolute lg:bottom-0 lg:right-[1%] lg:w-[min(480px,31vw)] xl:bottom-[39%] xl:right-[calc(36px_-_(100vw_-_24px_-_min(1240px,_100vw_-_24px))_/_2)] xl:w-[min(340px,24vw)]" style={{ ["--d" as string]: "300ms" }}>
             <div className="absolute inset-[4%_2%_0_0]">
               <Doll messages={["Hi! I'm Nori.", "I turn your resume into facts.", "I only write what you did.", "And I stop before I send."]} cheer={cheer} />
             </div>
