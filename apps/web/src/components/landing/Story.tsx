@@ -105,7 +105,7 @@ function Rail({ p, active }: { p: number; active: number }) {
           <div key={s.id} className="absolute left-0" style={{ top }}>
             <span className={cx("absolute left-[5px] top-[-7px] h-[14px] w-[14px] rounded-full border-2 transition-colors duration-300", i === active ? (s.gate ? "border-attn bg-attn" : "border-[var(--nori-mid)] bg-[var(--sprout)]") : passed ? "border-[var(--nori-mid)] bg-[var(--nori-mid)]" : "border-[var(--rice-line)] bg-[var(--rice)]")} />
             <svg viewBox="0 0 18 12" width="18" height="12" className="ln-leaf absolute left-[16px] top-[-14px]" data-on={passed}>
-              <path d="M1 11C2 4 8 0 17 1C16 8 9 12 1 11Z" fill="#22c58b" />
+              <path d="M1 11C2 4 8 0 17 1C16 8 9 12 1 11Z" fill="#7fb446" />
             </svg>
           </div>
         );
@@ -133,7 +133,7 @@ function Screen({ children }: { children: ReactNode }) {
   }, []);
   return (
     <div ref={box} className="relative w-full" style={{ height: H * k }} role="img" aria-label="An animated sample of Nori's dashboard">
-      <div className="absolute left-0 top-0 origin-top-left overflow-hidden rounded-[22px] border border-[var(--rice-line)] bg-[#fffefb] shadow-[0_40px_80px_-40px_rgba(11,63,49,0.45),0_2px_0_rgba(255,255,255,0.8)_inset]" style={{ width: W, height: H, transform: `scale(${k})` }}>
+      <div className="absolute left-0 top-0 origin-top-left overflow-hidden rounded-[22px] border border-[var(--rice-line)] bg-[#fffefb] shadow-[0_40px_80px_-40px_rgba(42,70,32,0.45),0_2px_0_rgba(255,255,255,0.8)_inset]" style={{ width: W, height: H, transform: `scale(${k})` }}>
         <div className="flex items-center gap-3 border-b border-[var(--rice-line)] bg-[var(--rice-2)]/70 px-4" style={{ height: BAR }}>
           <span className="flex gap-1.5"><i className="h-3 w-3 rounded-full bg-[#f0b3a5]" /><i className="h-3 w-3 rounded-full bg-[#f3d58f]" /><i className="h-3 w-3 rounded-full bg-[#b7e4a4]" /></span>
           <span className="mx-auto flex h-6 w-[300px] items-center justify-center gap-1.5 rounded-full bg-white/80 text-[12px] text-muted">
@@ -173,7 +173,7 @@ function Ring({ value, size = 40, strong = false }: { value: number; size?: numb
     <span className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
       <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#efe8d6" strokeWidth="4" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={strong ? "#17896a" : "#22c58b"} strokeWidth="4" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={strong ? "#5b8a32" : "#7fb446"} strokeWidth="4" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} />
       </svg>
       <span className="absolute text-[12px] font-semibold text-ink tnum">{Math.round(value)}</span>
     </span>
@@ -186,7 +186,7 @@ const JOBS = [
   { co: "Tidewater", mono: "T", tint: "#dbe7f3", ink: "#1f3f63", title: "Frontend Engineer, Design Systems", where: "Remote, US", score: 92 },
   { co: "Lumen Health", mono: "L", tint: "#ece3f5", ink: "#47336e", title: "Senior Frontend Engineer", where: "New York", score: 86 },
   { co: "Northwind", mono: "N", tint: "#ece8e1", ink: "#4a443c", title: "UI Engineer", where: "Arlington, VA", score: 81, skip: "Needs a security clearance" },
-  { co: "Kestrel", mono: "K", tint: "#d9f0ec", ink: "#0e5d43", title: "Product Engineer, Web", where: "Remote", score: 78 },
+  { co: "Kestrel", mono: "K", tint: "#d9f0ec", ink: "#3b6320", title: "Product Engineer, Web", where: "Remote", score: 78 },
   { co: "Parcel", mono: "P", tint: "#f5ead6", ink: "#6b4a10", title: "Frontend Intern", where: "Austin", score: 74, skip: "Internship, and you have 6 years" },
 ];
 const BOARDS = ["Greenhouse", "Lever", "Ashby", "Hacker News", "Wellfound"];
@@ -215,7 +215,7 @@ function SceneFind({ t }: { t: number }) {
           const s = j.skip ? span(t, 0.6 + k * 0.1, 0.7 + k * 0.1) : 0;
           const best = i === 0 ? span(t, 0.84, 0.94) : 0;
           return (
-            <li key={j.co} className={cx("relative flex items-center gap-3.5 rounded-[14px] border bg-white px-3.5 py-2.5", best > 0.5 ? "border-[var(--nori-mid)]" : "border-[var(--rice-line)]")} style={{ opacity: a * (1 - 0.45 * s), transform: `translateX(${(1 - a) * 36}px)`, boxShadow: best > 0 ? `0 0 0 ${3 * best}px rgba(34,197,139,0.25)` : undefined }}>
+            <li key={j.co} className={cx("relative flex items-center gap-3.5 rounded-[14px] border bg-white px-3.5 py-2.5", best > 0.5 ? "border-[var(--nori-mid)]" : "border-[var(--rice-line)]")} style={{ opacity: a * (1 - 0.45 * s), transform: `translateX(${(1 - a) * 36}px)`, boxShadow: best > 0 ? `0 0 0 ${3 * best}px rgba(127,180,70,0.25)` : undefined }}>
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-[16px] font-bold" style={{ background: j.tint, color: j.ink }}>{j.mono}</span>
               <div className="min-w-0 flex-1">
                 <p className={cx("truncate text-[15px] font-semibold text-ink", s > 0.5 && "line-through decoration-[#8e877d]")}>{j.title}</p>
@@ -309,14 +309,14 @@ function SceneTailor({ t }: { t: number }) {
           const node = at(n);
           const x0 = 446, y0 = b.y + 6;
           return (
-            <path key={b.old + n} d={`M${x0} ${y0} C ${x0 + 50} ${y0}, ${node.x - 70} ${node.y}, ${node.x - 46} ${node.y}`} fill="none" stroke="#22c58b" strokeWidth="2" strokeLinecap="round" pathLength={1} strokeDasharray="1" strokeDashoffset={1 - phase[i].type} opacity={0.85} />
+            <path key={b.old + n} d={`M${x0} ${y0} C ${x0 + 50} ${y0}, ${node.x - 70} ${node.y}, ${node.x - 46} ${node.y}`} fill="none" stroke="#7fb446" strokeWidth="2" strokeLinecap="round" pathLength={1} strokeDasharray="1" strokeDashoffset={1 - phase[i].type} opacity={0.85} />
           );
         }))}
       </svg>
       {NODES.map((n) => {
         const l = lit(n.id);
         return (
-          <span key={n.id} className={cx("absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border px-2.5 py-1 text-[12px] font-semibold", KIND_STYLE[n.kind])} style={{ left: n.x, top: n.y, boxShadow: l > 0 ? `0 0 0 ${5 * l}px rgba(196,242,106,0.55)` : undefined, transform: `translate(-50%, -50%) scale(${1 + 0.08 * l})` }}>
+          <span key={n.id} className={cx("absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border px-2.5 py-1 text-[12px] font-semibold", KIND_STYLE[n.kind])} style={{ left: n.x, top: n.y, boxShadow: l > 0 ? `0 0 0 ${5 * l}px rgba(220,236,152,0.55)` : undefined, transform: `translate(-50%, -50%) scale(${1 + 0.08 * l})` }}>
             {n.label}
           </span>
         );
@@ -429,7 +429,7 @@ function SceneApply({ t }: { t: number }) {
           </span>
           {sent && [0, 1, 2, 3, 4].map((i) => (
             <svg key={i} viewBox="0 0 14 10" width="14" height="10" className="ln-grow absolute" style={{ left: 40 + i * 36, top: -8 - (i % 2) * 10, animationDelay: `${i * 60}ms` }} aria-hidden="true">
-              <path d="M1 9C2 3 7 0 13 1C12 7 7 10 1 9Z" fill={i % 2 ? "#c4f26a" : "#22c58b"} />
+              <path d="M1 9C2 3 7 0 13 1C12 7 7 10 1 9Z" fill={i % 2 ? "#dcec98" : "#7fb446"} />
             </svg>
           ))}
         </div>

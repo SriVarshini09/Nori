@@ -34,8 +34,8 @@ export function Header() {
         <div className="relative h-full bg-gradient-to-r from-[var(--sprout-2)] to-[var(--sprout)]" style={{ width: `${p * 100}%` }}>
           {p > 0.01 && (
             <svg viewBox="0 0 14 10" width="14" height="10" className="absolute -right-2 -top-[7px]">
-              <path d="M1 9C2 3 7 0 13 1C12 7 7 10 1 9Z" fill="#22c58b" />
-              <path d="M1 9C5 6 8 4 12 2" stroke="#0e5d43" strokeWidth=".8" fill="none" opacity=".6" />
+              <path d="M1 9C2 3 7 0 13 1C12 7 7 10 1 9Z" fill="#7fb446" />
+              <path d="M1 9C5 6 8 4 12 2" stroke="#3b6320" strokeWidth=".8" fill="none" opacity=".6" />
             </svg>
           )}
         </div>

@@ -77,7 +77,7 @@ export function Honest() {
         <div className="mt-12 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-10">
           {/* the posting, and what Nori can back up */}
           <div className="flex flex-col gap-4">
-            <div className="rounded-[20px] border border-[var(--rice-line)] bg-white p-5 shadow-[0_24px_50px_-40px_rgba(11,63,49,0.5)]">
+            <div className="rounded-[20px] border border-[var(--rice-line)] bg-white p-5 shadow-[0_24px_50px_-40px_rgba(42,70,32,0.5)]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[13px] font-semibold text-muted">Tidewater is asking for</p>
                 <p className="text-[13px] font-semibold text-ink tnum">Matches {matched} of 4</p>
@@ -93,7 +93,7 @@ export function Honest() {
                       onClick={() => pick(r)}
                       className={cx(
                         "inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-[14px] font-semibold transition-[background-color,color,transform,box-shadow] duration-200 hover:-translate-y-px",
-                        sel === r ? "bg-[var(--nori)] text-[var(--rice)] shadow-[0_8px_20px_-10px_rgba(11,63,49,0.7)]" : gap ? "border border-dashed border-control bg-white text-ink-2" : "bg-[var(--rice-2)] text-ink",
+                        sel === r ? "bg-[var(--nori)] text-[var(--rice)] shadow-[0_8px_20px_-10px_rgba(42,70,32,0.7)]" : gap ? "border border-dashed border-control bg-white text-ink-2" : "bg-[var(--rice-2)] text-ink",
                       )}
                     >
                       {gap ? <X size={14} aria-hidden="true" /> : <Check size={14} strokeWidth={3} aria-hidden="true" />}
@@ -156,7 +156,7 @@ export function Honest() {
                 return (
                   <g key={a + b}>
                     <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#ddd3bd" strokeWidth="2" />
-                    {hot && <line key={`${sel}-${added}`} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#22c58b" strokeWidth="3.5" strokeLinecap="round" className="ln-draw-line" />}
+                    {hot && <line key={`${sel}-${added}`} x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke="#7fb446" strokeWidth="3.5" strokeLinecap="round" className="ln-draw-line" />}
                   </g>
                 );
               })}
@@ -171,10 +171,10 @@ export function Honest() {
                 const hot = path.includes(n.id);
                 const w = n.label.length * 7.4 + 26;
                 const fill = n.kind === "role" ? "#0b3f31" : hot ? "#effbe0" : "#ffffff";
-                const stroke = n.kind === "role" ? "#0b3f31" : hot ? "#22c58b" : n.kind === "project" ? "#17896a" : "#cfc8bd";
+                const stroke = n.kind === "role" ? "#0b3f31" : hot ? "#7fb446" : n.kind === "project" ? "#5b8a32" : "#cfc8bd";
                 return (
                   <g key={n.id} className={n.id === "gql" ? "ln-grow" : undefined}>
-                    {hot && <rect x={n.x - w / 2 - 5} y={n.y - 21} width={w + 10} height={42} rx={21} fill="#c4f26a" opacity=".45" />}
+                    {hot && <rect x={n.x - w / 2 - 5} y={n.y - 21} width={w + 10} height={42} rx={21} fill="#dcec98" opacity=".45" />}
                     <rect x={n.x - w / 2} y={n.y - 16} width={w} height={32} rx={16} fill={fill} stroke={stroke} strokeWidth={hot ? 2 : 1.5} />
                     <text x={n.x} y={n.y + 5} textAnchor="middle" fontSize="13" fontWeight="600" fill={n.kind === "role" ? "#fffcf3" : "#2b2722"}>{n.label}</text>
                   </g>

@@ -112,12 +112,14 @@ Primitives are re-exported from `ui.tsx`.
 
 ## The landing page (`components/landing`)
 
-The one page allowed to perform. It is an onigiri: rice cream on top, a seaweed wrap at the bottom whose edge is the
-logo's own curve, sprout green for growth. Its palette lives in `landing.css` under `.ln` (`--rice`, `--nori`,
-`--sprout`) and never leaks into the app. One or two italic words per heading use Instrument Serif; everything else
-is Inter. Orange keeps its meaning even here: it marks the place Nori stops for you, and nothing else.
+The one page allowed to perform. It is a daisy meadow at golden hour, painted in code (`Meadow.tsx`): sky, low sun,
+hazy hills and a tree line in CSS and SVG, the field in canvas, daisies that sway and lean away from the pointer. The
+page opens on the meadow by day and closes on it at dusk. Its palette lives in `landing.css` under `.ln` (sunlit
+cream, meadow greens, sun gold) and never leaks into the app. One or two italic words per heading use Instrument
+Serif; everything else is Inter. Orange keeps its meaning even here: it marks the place Nori stops for you, and
+nothing else.
 
-- Hero: the 3D Nori (`Doll`) among floating facts from a sample graph, over a drifting constellation.
+- Hero: the promise in the sky, the 3D Nori (`Doll`) standing in the daisies; the nearest flowers are drawn in front of it.
 - See it work: a film scrubbed by the scroll, five scenes on a fixed 760 x 500 screen scaled to fit.
 - Why trust it: a working demo; GraphQL has no evidence until you add the fact.
 - Every animation has a still version under prefers-reduced-motion (the film becomes five stills).

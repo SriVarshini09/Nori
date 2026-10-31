@@ -60,8 +60,8 @@ export function Anywhere() {
     <section id="anywhere" aria-labelledby="anywhere-title" className="relative scroll-mt-16 overflow-hidden">
       <div className="mx-auto grid w-full max-w-[1200px] items-center gap-14 px-4 py-20 sm:px-6 sm:py-28 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:px-8">
         <div className="relative mx-auto w-full max-w-[340px]">
-          <span aria-hidden="true" className="absolute left-1/2 top-1/2 h-[120%] w-[140%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(196,242,106,0.45),transparent)] blur-2xl" />
-          <div ref={phone} className="relative rounded-[46px] bg-[#1d1b18] p-3 shadow-[0_50px_80px_-40px_rgba(11,63,49,0.6)]">
+          <span aria-hidden="true" className="absolute left-1/2 top-1/2 h-[120%] w-[140%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(220,236,152,0.45),transparent)] blur-2xl" />
+          <div ref={phone} className="relative rounded-[46px] bg-[#1d1b18] p-3 shadow-[0_50px_80px_-40px_rgba(42,70,32,0.6)]">
             <div className="overflow-hidden rounded-[36px] bg-[#f4efe2]">
               <div className="flex items-center gap-2.5 border-b border-black/5 bg-white/80 px-4 pb-3 pt-7 backdrop-blur">
                 <NoriMark size={34} />
