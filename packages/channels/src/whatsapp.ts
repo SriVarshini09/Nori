@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { ChannelAdapter, InboundMessage, OutboundMessage } from "@jobgraph/core";
 import { chunkText } from "./telegram.js";
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH = "https://graph.facebook.com/v26.0";
 
 type WaMessage = {
   id?: string; from?: string; type?: string;
